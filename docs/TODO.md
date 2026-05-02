@@ -32,6 +32,7 @@ Sources: `VG-03`, `VG-04`, `VG-05`, `VG-13`.
 - [x] Install `mos` as a real CLI and support provider-style shorthand: `mos "task"`.
 - [x] Add production run board UX: pipeline, agents, artifact status, and next recommended action.
 - [x] Add local production wrappers: `bin/mos`, `scripts/install-mos-cli.sh`, and private npm `production` script.
+- [x] Make bare `mos` enter a conversational operator shell instead of only a thin command shell.
 
 ## Harness Runtime
 
@@ -55,6 +56,7 @@ Sources: `VG-03`, `VG-04`, `VG-13`.
 - [x] Add unified prompt input via `mos prompt` and slash shell `/prompt`.
 - [x] Add adapter registry stubs for opencode, goose, OpenClaude-compatible runtimes.
 - [x] Add `mos next`, `mos agents status`, and `mos memory list` for fast operator loops.
+- [x] Make `mos tui` interactive with prompt input, slash command input, and dashboard layout.
 - [ ] Harden provider result validation for all prepared/executed adapters.
 
 ## Parser Work

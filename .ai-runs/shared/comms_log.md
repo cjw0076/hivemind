@@ -231,6 +231,13 @@
 - Evidence: Updated `memoryos/harness.py`, `memoryos/mos.py`, `memoryos/tui.py`, `docs/TUI_HARNESS.md`, `docs/TODO.md`, `docs/ROADMAP.md`, `bin/mos`, and `package.json`. Verified `npm test`, `bin/mos --root . status`, `mos --root . next`, `mos --root . agents status`, `mos --root . memory list`, and `mos --root . check run`.
 - Next: Harden all provider result adapters and add end-to-end production install smoke coverage.
 
+## 2026-05-02 11:08 KST - Codex
+
+- Context: User clarified that `mos` should communicate inside the CLI like Codex/Claude and that the TUI should match the provided control-plane dashboard while remaining interactive.
+- Decision: Made bare `mos` enter a conversational operator shell, added `mos chat`, and rebuilt the large-terminal TUI into a dashboard with run/health, pipeline, agents, artifacts, latest events, next actions, and interactive `Enter`/`/` input.
+- Evidence: Updated `memoryos/mos.py`, `memoryos/tui.py`, `docs/TUI_HARNESS.md`, and `docs/TODO.md`. Verified `npm test`, `bin/mos --root . chat` with `/help`, and a `bin/mos --root . tui` smoke run through a pseudo-terminal.
+- Next: Add richer streaming progress messages around long provider executions and persist TUI-entered chat turns into `transcript.md`.
+
 ## 2026-05-02 10:43 KST - Codex
 
 - Context: User asked for a unified prompt input and Codex-like visible logs showing which agent/action is doing what, including file edits and commands.

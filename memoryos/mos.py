@@ -37,6 +37,7 @@ from .harness import (
     settings_report,
     ask_router,
     checks_report,
+    agent_icon,
     format_routing_plan,
     format_checks_report,
     format_checks_run,
@@ -72,6 +73,7 @@ COMMANDS = {
     "completion",
     "check",
     "shell",
+    "chat",
     "diff",
     "review-diff",
     "commit-summary",
@@ -84,7 +86,7 @@ COMMANDS = {
 def normalize_argv(argv: list[str]) -> list[str]:
     """Allow provider-style prompt entry: `mos "build this"` -> `mos ask "build this"`."""
     if not argv:
-        return ["shell"] if sys.stdin.isatty() and sys.stdout.isatty() else ["--help"]
+        return ["chat"] if sys.stdin.isatty() and sys.stdout.isatty() else ["--help"]
     if argv[0] in {"-h", "--help", "--version"}:
         return argv
     if argv[0] == "--root":
@@ -210,6 +212,7 @@ def main(argv: list[str] | None = None) -> None:
     check_run_cmd.add_argument("--json", action="store_true")
 
     sub.add_parser("shell", help="open a thin slash-command shell")
+    sub.add_parser("chat", help="open a conversational MemoryOS operator shell")
 
     diff_cmd = sub.add_parser("diff", help="write/show git diff report for current run")
     diff_cmd.add_argument("--run-id")
@@ -424,6 +427,9 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "shell":
         run_shell(root)
         return
+    if args.cmd == "chat":
+        run_chat(root)
+        return
     if args.cmd == "diff":
         report = git_diff_report(root, args.run_id)
         if args.json:
@@ -548,6 +554,155 @@ def run_shell(root: Path) -> None:
             print("unknown slash command")
             continue
         main(["--root", root.as_posix(), "ask", line])
+
+
+def run_chat(root: Path) -> None:
+    print("MemoryOS operator shell. Type a task, or /help.")
+    while True:
+        try:
+            line = input("mos> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("")
+            return
+        if not line:
+            continue
+        if line in {"/quit", "/exit", "quit", "exit"}:
+            return
+        if line == "/help":
+            print_chat_help()
+            continue
+        if line == "/status":
+            main(["--root", root.as_posix(), "status"])
+            continue
+        if line == "/next":
+            main(["--root", root.as_posix(), "next"])
+            continue
+        if line == "/agents":
+            main(["--root", root.as_posix(), "agents", "status"])
+            continue
+        if line == "/plan":
+            main(["--root", root.as_posix(), "plan"])
+            continue
+        if line == "/log":
+            main(["--root", root.as_posix(), "log", "--tail", "30"])
+            continue
+        if line == "/memory":
+            main(["--root", root.as_posix(), "memory", "list"])
+            continue
+        if line == "/draft-memory":
+            main(["--root", root.as_posix(), "memory", "draft"])
+            print_chat_run_update(root)
+            continue
+        if line == "/verify":
+            main(["--root", root.as_posix(), "verify"])
+            print_chat_run_update(root)
+            continue
+        if line == "/summary":
+            main(["--root", root.as_posix(), "summarize"])
+            print_chat_run_update(root)
+            continue
+        if line == "/check":
+            main(["--root", root.as_posix(), "check", "run"])
+            print_chat_run_update(root)
+            continue
+        if line == "/diff":
+            main(["--root", root.as_posix(), "diff"])
+            print_chat_run_update(root)
+            continue
+        if line == "/tui":
+            main(["--root", root.as_posix(), "tui"])
+            continue
+        if line.startswith("/invoke "):
+            parts = line.split()
+            if len(parts) >= 3:
+                main(["--root", root.as_posix(), "invoke", parts[1], "--role", parts[2]])
+                print_chat_run_update(root)
+            else:
+                print("usage: /invoke claude|codex|gemini|local role")
+            continue
+        if line.startswith("/"):
+            print("Unknown command. Type /help.")
+            continue
+        handle_chat_task(root, line)
+
+
+def print_chat_help() -> None:
+    print(
+        "\n".join(
+            [
+                "Type a normal task to create/route a MemoryOS run.",
+                "",
+                "Commands:",
+                "  /status        show run board",
+                "  /next          show next recommended command",
+                "  /agents        show provider/agent status",
+                "  /plan          show routing plan",
+                "  /log           show recent transcript",
+                "  /memory        list memory drafts",
+                "  /draft-memory  create memory draft",
+                "  /verify        validate run artifacts",
+                "  /summary       update final report",
+                "  /check         run policy checks",
+                "  /diff          capture git diff",
+                "  /tui           open status TUI",
+                "  /quit          exit",
+            ]
+        )
+    )
+
+
+def handle_chat_task(root: Path, prompt: str) -> None:
+    print("MemoryOS: 새 작업을 받았습니다.")
+    print("MemoryOS: local router로 의도를 나누고, agent handoff artifact를 준비합니다.")
+    artifact = ask_router(root, prompt, complexity="default")
+    print(f"MemoryOS: route artifact 준비 완료 -> {artifact}")
+    print_chat_run_update(root)
+
+
+def print_chat_run_update(root: Path) -> None:
+    try:
+        board = run_board(root)
+    except Exception as exc:
+        print(f"MemoryOS: 상태를 읽지 못했습니다: {exc}")
+        return
+    print("")
+    print(format_chat_board(board))
+    print("")
+
+
+def format_chat_board(board: dict[str, object]) -> str:
+    pipeline = board.get("pipeline") if isinstance(board.get("pipeline"), list) else []
+    agents = board.get("agents") if isinstance(board.get("agents"), list) else []
+    artifacts = board.get("artifacts") if isinstance(board.get("artifacts"), list) else []
+    next_action = board.get("next") if isinstance(board.get("next"), dict) else {}
+    done = sum(1 for item in pipeline if isinstance(item, dict) and item.get("status") == "done")
+    missing = [item for item in artifacts if isinstance(item, dict) and item.get("status") != "ok"]
+    active_agents = [
+        item
+        for item in agents
+        if isinstance(item, dict) and item.get("status") in {"running", "in_progress", "prepared", "ready", "failed"}
+    ]
+    lines = [
+        f"Run: {board.get('run_id')}  [{board.get('phase')} / {board.get('status')}]",
+        f"Task: {board.get('task')}",
+        f"Pipeline: {done}/{len(pipeline)} complete",
+    ]
+    if active_agents:
+        lines.append("Agents:")
+        for agent in active_agents[:8]:
+            lines.append(f"  {agent_icon(str(agent.get('status')))} {agent.get('name')} [{agent.get('status')}]")
+    if missing:
+        names = ", ".join(str(item.get("name")) for item in missing[:6] if isinstance(item, dict))
+        suffix = f" (+{len(missing) - 6} more)" if len(missing) > 6 else ""
+        lines.append(f"Missing artifacts: {names}{suffix}")
+    lines.extend(
+        [
+            "Next:",
+            f"  {next_action.get('command')}",
+            f"  Reason: {next_action.get('reason')}",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def read_prompt_from_stdin() -> str:
