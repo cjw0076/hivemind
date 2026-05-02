@@ -59,6 +59,7 @@ def draw_loop(screen, root: Path, run_id: str | None, initial_view: str, control
     screen.nodelay(True)
     message = "ready"
     view = initial_view
+    composer = ""
     while True:
         screen.erase()
         height, width = screen.getmaxyx()
@@ -77,19 +78,68 @@ def draw_loop(screen, root: Path, run_id: str | None, initial_view: str, control
         except Exception as exc:  # TUI should show recoverable state instead of crashing.
             add_line(screen, 1, 2, "Hive Mind Harness", curses.A_BOLD)
             add_wrapped(screen, 3, 2, width - 4, str(exc))
-        draw_global_composer(screen, height, width, message, view, control)
+        draw_global_composer(screen, height, width, message, view, control, composer)
         screen.refresh()
         key = screen.getch()
-        if key in {ord("q"), ord("Q"), 27}:
+        if key in {ord("q"), ord("Q"), 27} and not composer:
             return
         if key != -1:
-            next_view = view_for_key(key)
-            if next_view:
-                view = next_view
-                message = f"view -> {view}"
+            if not composer:
+                next_view = view_for_key(key)
+                if next_view:
+                    view = next_view
+                    message = f"view -> {view}"
+                    time.sleep(0.5)
+                    continue
+                if key in {ord("?")}:
+                    message = handle_key(screen, root, run_id, key, control)
+                    time.sleep(0.5)
+                    continue
+            composer_action, composer = update_composer(composer, key)
+            if composer_action == "submit":
+                message = submit_composer(root, run_id, composer, control)
+                composer = ""
+            elif composer_action == "clear":
+                message = "composer cleared"
+            elif composer_action == "editing":
+                message = "typing prompt; Enter submits, Esc clears"
             else:
-                message = handle_key(screen, root, run_id, key, control)
+                if key in {10, 13, curses.KEY_ENTER, ord("/")}:
+                    prefix = "/" if key == ord("/") else ""
+                    message = prompt_and_route(screen, root, run_id=run_id, prefix=prefix)
+                else:
+                    message = handle_key(screen, root, run_id, key, control)
         time.sleep(0.5)
+
+
+def update_composer(composer: str, key: int) -> tuple[str | None, str]:
+    """Return `(action, new_text)` for the always-visible TUI composer."""
+    if key in {10, 13, curses.KEY_ENTER}:
+        return ("submit", composer) if composer.strip() else (None, composer)
+    if key == 27:
+        return "clear", ""
+    if key in {curses.KEY_BACKSPACE, 127, 8}:
+        return ("editing", composer[:-1]) if composer else (None, composer)
+    if key == curses.KEY_DC:
+        return "editing", ""
+    if 32 <= key <= 126:
+        return "editing", composer + chr(key)
+    return None, composer
+
+
+def submit_composer(root: Path, run_id: str | None, prompt: str, control: bool = True) -> str:
+    prompt = prompt.strip()
+    if not prompt:
+        return "empty prompt"
+    if not control:
+        return "observer mode: use controller mode to run actions"
+    try:
+        if prompt.startswith("/"):
+            return handle_tui_command(root, run_id, prompt)
+        report = orchestrate_prompt(root, prompt, run_id=None, complexity="default")
+        return f"society plan -> {report.get('run_id')} ({len(report.get('members') or [])} members)"
+    except Exception as exc:
+        return f"error: {exc}"
 
 
 def view_for_key(key: int) -> str | None:
@@ -345,19 +395,19 @@ def draw_state(
     draw_events(screen, events_top + 1, 4, max(1, footer_row - events_top - 2), content_width - 4, events)
 
 
-def draw_global_composer(screen, height: int, width: int, message: str, view: str = "board", control: bool = True) -> None:
+def draw_global_composer(screen, height: int, width: int, message: str, view: str = "board", control: bool = True, composer: str = "") -> None:
     if height < 4:
         return
     mode = "controller" if control else "observer"
     help_text = (
-        f"view:{view} mode:{mode}  1 board 2 events 3 transcript 4 agents 5 artifacts 6 memory 7 society 8 diff  "
-        "Enter task  / command  q quit"
+        f"view:{view} mode:{mode}  Enter submits  / command  Backspace edits  Esc clears  q quit  "
+        "1-8 views"
     )
     clear_line(screen, height - 2)
     clear_line(screen, height - 1)
-    add_line(screen, height - 2, 2, "hive> ", color(1, curses.A_BOLD))
-    add_line(screen, height - 2, 7, truncate(help_text, max(10, width - 9)), curses.A_DIM)
-    add_line(screen, height - 1, 2, truncate(message, max(10, width - 4)), color(2) if message != "ready" else curses.A_DIM)
+    prompt = f"hive> {composer}"
+    add_line(screen, height - 2, 2, truncate(prompt, max(10, width - 4)), color(1, curses.A_BOLD))
+    add_line(screen, height - 1, 2, truncate(f"{message}  |  {help_text}", max(10, width - 4)), color(2) if message != "ready" else curses.A_DIM)
 
 
 def draw_board_view(

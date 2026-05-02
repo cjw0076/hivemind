@@ -418,3 +418,10 @@ Naming note as of 2026-05-02 12:24 KST:
 - Decision: Added tracked public-alpha security review evidence, defined publish as release/tag/package/announcement rather than current GitHub visibility, and hardened `run_id` format validation across run construction, current-run reads, explicit load, listing, and current-run writes.
 - Evidence: Added `docs/security/PUBLIC_ALPHA_SECURITY_REVIEW.md`, `docs/PUBLISHING_GATE.md`, `tests/test_run_id_validation.py`, and central `is_valid_run_id` / `ensure_valid_run_id` utilities. Claude follow-up returned GO after verifying the security doc, run_id validation call sites, and public-alpha-not-production README language. `npm test` passed with 32 tests; invalid `--run-id ../outside` now exits as `hive: invalid run_id: '../outside'`.
 - Next: Do not create a release tag/package/announcement until structured disagreement extraction, canonical MemoryOS context integration, and high-risk semantic verification are materially working.
+
+## 2026-05-02 16:01 KST - Codex
+
+- Context: User reported that typing `who are in there` at the TUI `hive>` prompt did not enter a prompt and instead surfaced the view/help hint.
+- Decision: Made the always-visible `hive>` line a real composer buffer. Direct printable keys now edit the prompt, Enter submits it, Backspace edits it, and Esc clears it; view hotkeys still work when the composer is empty.
+- Evidence: Added `tests/test_tui_composer.py` for printable input, Enter submit, Backspace, and Esc behavior. Updated `docs/TUI_HARNESS.md` keybindings to match the new composer behavior.
+- Next: Add UTF-8/Hangul composer support if Korean prompt entry inside curses becomes a target workflow.

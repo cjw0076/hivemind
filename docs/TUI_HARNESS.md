@@ -295,24 +295,16 @@ Inside `python -m hivemind.hive tui`:
 
 ```text
 q  quit
-r  refresh
-enter  open an interactive input line
-/  open an interactive slash-command input line
-n  enter a new prompt, create a run, and auto-route it
-e  edit context_pack.md in $EDITOR
-a  auto-route current task through local intent router
-l  invoke local context compressor
-c  create Claude planner prompt
-x  create Codex executor prompt
-g  create Gemini reviewer prompt
-v  create verification report
-s  update final_report.md
-m  create memory_drafts.json
-d  capture git diff report
-h  show keybinding hint
+1-8  switch views
+type text  edit the always-visible hive> composer
+enter  submit the composer
+backspace  edit the composer
+esc  clear the composer
+/command  run a slash command from the composer
+?  show keybinding hint
 ```
 
-Large terminals render the dashboard as a control plane: run/health summary, pipeline, agents, artifacts, latest events, next actions, keybar, and an always-visible `hive>` composer. The TUI is interactive: press `Enter` and type a normal prompt to create and route a new run, or press `/` to enter slash commands such as `/verify`, `/memory`, `/summary`, `/diff`, `/local`, `/claude`, `/codex`, and `/gemini`.
+Large terminals render the dashboard as a control plane: run/health summary, pipeline, agents, artifacts, latest events, next actions, keybar, and an always-visible `hive>` composer. The TUI is interactive: type a normal prompt directly at `hive>` and press Enter to create and route a new run, or type slash commands such as `/verify`, `/memory`, `/summary`, `/diff`, `/local`, `/claude`, `/codex`, and `/gemini`.
 
 The TUI does not try to be the final desktop UI. It is an operational control surface for driving agent work through run artifacts: pipeline first, agent aware, artifact driven, audit friendly.
 
