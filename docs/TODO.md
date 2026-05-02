@@ -30,6 +30,8 @@ Sources: `VG-03`, `VG-04`, `VG-05`, `VG-13`.
 - [x] Persist production settings profile during onboarding so provider paths, local model inventory, and shell exports are tracked.
 - [x] Add prompt-first `mos ask` local intent routing that decomposes work into Claude/Codex/Gemini/local artifacts.
 - [x] Install `mos` as a real CLI and support provider-style shorthand: `mos "task"`.
+- [x] Add production run board UX: pipeline, agents, artifact status, and next recommended action.
+- [x] Add local production wrappers: `bin/mos`, `scripts/install-mos-cli.sh`, and private npm `production` script.
 
 ## Harness Runtime
 
@@ -52,6 +54,7 @@ Sources: `VG-03`, `VG-04`, `VG-13`.
 - [x] Add git-first diff/check/commit summary loop inspired by Aider.
 - [x] Add unified prompt input via `mos prompt` and slash shell `/prompt`.
 - [x] Add adapter registry stubs for opencode, goose, OpenClaude-compatible runtimes.
+- [x] Add `mos next`, `mos agents status`, and `mos memory list` for fast operator loops.
 - [ ] Harden provider result validation for all prepared/executed adapters.
 
 ## Parser Work

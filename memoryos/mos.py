@@ -14,7 +14,9 @@ from .harness import (
     commit_summary,
     detect_agents,
     doctor_report,
+    format_agents_status,
     format_doctor,
+    format_memory_drafts,
     format_local_runtime,
     local_routes_report,
     get_current,
@@ -25,9 +27,11 @@ from .harness import (
     list_runs,
     local_runtime_report,
     load_run,
+    memory_drafts_report,
     open_run_folder,
     read_transcript,
     format_onboarding,
+    format_run_board,
     format_settings,
     format_settings_shell,
     settings_report,
@@ -41,6 +45,7 @@ from .harness import (
     git_diff_report,
     review_diff,
     run_checks,
+    run_board,
 )
 from .tui import print_status, run_tui
 
@@ -72,6 +77,7 @@ COMMANDS = {
     "commit-summary",
     "log",
     "prompt",
+    "next",
 }
 
 
@@ -113,6 +119,8 @@ def main(argv: list[str] | None = None) -> None:
     agents_sub = agents_cmd.add_subparsers(dest="agents_cmd", required=True)
     detect_cmd = agents_sub.add_parser("detect", help="detect installed provider CLIs and runtime config")
     detect_cmd.add_argument("--json", action="store_true")
+    agents_status_cmd = agents_sub.add_parser("status", help="show provider registry as an agent status board")
+    agents_status_cmd.add_argument("--json", action="store_true")
 
     settings_cmd = sub.add_parser("settings", help="detect and persist production CLI settings")
     settings_sub = settings_cmd.add_subparsers(dest="settings_cmd", required=True)
@@ -145,6 +153,10 @@ def main(argv: list[str] | None = None) -> None:
     status_cmd = sub.add_parser("status", help="show current run status")
     status_cmd.add_argument("--run-id")
     status_cmd.add_argument("--json", action="store_true")
+
+    next_cmd = sub.add_parser("next", help="show next recommended command")
+    next_cmd.add_argument("--run-id")
+    next_cmd.add_argument("--json", action="store_true")
 
     tui_cmd = sub.add_parser("tui", help="open the run status TUI")
     tui_cmd.add_argument("--run-id")
@@ -182,6 +194,9 @@ def main(argv: list[str] | None = None) -> None:
     memory_sub = memory_cmd.add_subparsers(dest="memory_cmd", required=True)
     draft_cmd = memory_sub.add_parser("draft", help="create memory_drafts.json")
     draft_cmd.add_argument("--run-id")
+    memory_list_cmd = memory_sub.add_parser("list", help="list memory drafts for the current run")
+    memory_list_cmd.add_argument("--run-id")
+    memory_list_cmd.add_argument("--json", action="store_true")
 
     completion_cmd = sub.add_parser("completion", help="print shell completion script")
     completion_cmd.add_argument("shell", choices=["bash", "zsh", "fish"])
@@ -242,6 +257,15 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"{name}: {item.get('status')} {detail}")
             print(root / ".runs" / "provider_capabilities.json")
         return
+    if args.cmd == "agents" and args.agents_cmd == "status":
+        result = detect_agents(root, write=True)
+        if args.json:
+            import json
+
+            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_agents_status(result))
+        return
     if args.cmd == "settings":
         report = settings_report(root, write=True)
         if args.settings_cmd == "shell":
@@ -300,7 +324,24 @@ def main(argv: list[str] | None = None) -> None:
         print(ask_router(root, args.prompt, run_id=args.run_id, complexity=args.complexity))
         return
     if args.cmd == "status":
-        print_status(root, run_id=args.run_id, json_output=args.json)
+        if args.json:
+            print_status(root, run_id=args.run_id, json_output=True)
+        else:
+            print(format_run_board(run_board(root, args.run_id)))
+        return
+    if args.cmd == "next":
+        board = run_board(root, args.run_id)
+        if args.json:
+            import json
+
+            print(json.dumps(board.get("next", {}), ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            next_action = board.get("next", {})
+            print("Next recommended action:")
+            print(f"  {next_action.get('command')}")
+            print("")
+            print("Reason:")
+            print(f"  {next_action.get('reason')}")
         return
     if args.cmd == "tui":
         run_tui(root, run_id=args.run_id)
@@ -349,6 +390,15 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.cmd == "memory" and args.memory_cmd == "draft":
         print(build_memory_draft(root, args.run_id))
+        return
+    if args.cmd == "memory" and args.memory_cmd == "list":
+        report = memory_drafts_report(root, args.run_id)
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_memory_drafts(report))
         return
     if args.cmd == "completion":
         print_completion(args.shell)
@@ -444,13 +494,16 @@ def run_shell(root: Path) -> None:
         if line in {"/quit", "/exit", "quit", "exit"}:
             return
         if line == "/help":
-            print("/new <task>  /prompt  /status  /route  /log  /verify  /summary  /memory  /check  /diff  /commit  /open  /quit")
+            print("/new <task>  /prompt  /status  /next  /route  /log  /verify  /summary  /memory  /check  /diff  /commit  /open  /quit")
             continue
         if line.startswith("/new "):
             main(["--root", root.as_posix(), "ask", line.split(" ", 1)[1]])
             continue
         if line == "/status":
             main(["--root", root.as_posix(), "status"])
+            continue
+        if line == "/next":
+            main(["--root", root.as_posix(), "next"])
             continue
         if line == "/prompt":
             prompt = read_multiline_prompt()

@@ -40,12 +40,13 @@ Deliverables:
 
 - Stable `.runs/` folder protocol with `task.yaml`, `context_pack.md`, `handoff.yaml`, `events.jsonl`, `run_state.json`, `verification.yaml`, `memory_drafts.json`, and `final_report.md`.
 - Canonical protocol spec in `docs/RUN_ARTIFACT_PROTOCOL.md`.
-- `mos run`, `mos status`, `mos tui`, `mos context`, `mos handoff`, `mos invoke`, `mos verify`, `mos summarize`, and `mos memory draft`.
+- `mos run`, `mos status`, `mos next`, `mos tui`, `mos context`, `mos handoff`, `mos invoke`, `mos verify`, `mos summarize`, `mos memory draft/list`, and `mos agents status`.
 - Provider invocation artifacts for Claude, Codex, Gemini, and local workers.
 - Provider result validation for `agents/<provider>/<role>_result.yaml`.
 - Prepare-only path for providers without a stable non-interactive execution contract.
 - Recoverable failure artifacts when a provider or local model is unavailable.
-- TUI status surface that reads run files without requiring a DB.
+- CLI/TUI run board that reads run files without requiring a DB and shows pipeline, agents, artifacts, and next action.
+- Production wrappers through `scripts/install-mos-cli.sh`, `bin/mos`, and the private npm `production` script.
 
 Exit criteria:
 

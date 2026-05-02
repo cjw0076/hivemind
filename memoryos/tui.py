@@ -19,10 +19,12 @@ from .harness import (
     build_verification,
     append_event,
     ask_router,
+    git_diff_report,
     invoke_external_agent,
     invoke_local,
     load_run,
     read_events,
+    run_board,
 )
 
 
@@ -41,11 +43,12 @@ def draw_loop(screen, root: Path, run_id: str | None) -> None:
             paths, state = load_run(root, run_id)
             events = read_events(paths, limit=8)
             health = collect_run_health(root, paths, state, events)
-            draw_state(screen, height, width, state, events, health)
+            board = run_board(root, paths.run_id)
+            draw_state(screen, height, width, state, events, health, board)
         except Exception as exc:  # TUI should show recoverable state instead of crashing.
             add_line(screen, 1, 2, "MemoryOS Harness", curses.A_BOLD)
             add_wrapped(screen, 3, 2, width - 4, str(exc))
-        footer = "q quit  n new-prompt  e edit-context  a auto-route  l local  c claude  x codex  g gemini  v verify"
+        footer = "q quit  n new  e context  a route  l local  c claude  x codex  g gemini  v verify  s summary  m memory  d diff  h help"
         add_line(screen, height - 2, 2, truncate(footer, max(10, width - 4)), curses.A_DIM)
         add_line(screen, height - 1, 2, truncate(message, max(10, width - 4)), curses.A_DIM)
         screen.refresh()
@@ -91,6 +94,11 @@ def handle_key(screen, root: Path, run_id: str | None, key: int) -> str:
         if key in {ord("m"), ord("M")}:
             path = build_memory_draft(root, run_id=run_id)
             return f"memory draft -> {path}"
+        if key in {ord("d"), ord("D")}:
+            report = git_diff_report(root, run_id=run_id)
+            return f"diff -> {report.get('path')} ({len(report.get('changed_files') or [])} files)"
+        if key in {ord("h"), ord("H"), ord("?")}:
+            return "keys: n prompt, e edit context, a route, l/c/x/g agents, v verify, s summarize, m memory, d diff"
     except Exception as exc:
         return f"error: {exc}"
     return "unknown key"
@@ -145,6 +153,7 @@ def draw_state(
     state: dict[str, Any],
     events: list[dict[str, Any]],
     health: dict[str, Any],
+    board: dict[str, Any],
 ) -> None:
     if height < 18 or width < 64:
         draw_compact(screen, height, width, state, events, health)
@@ -167,7 +176,10 @@ def draw_state(
     )
     add_line(screen, 5, 2, truncate(health_line, content_width), curses.A_DIM)
 
-    panel_top = 7
+    pipeline_line = "  ".join(f"{'✓' if item.get('status') == 'done' else '○'} {item.get('step')}" for item in board.get("pipeline", []))
+    add_line(screen, 6, 2, truncate(f"Pipeline {pipeline_line}", content_width), curses.A_BOLD)
+
+    panel_top = 8
     events_h = 7
     if width >= 96:
         left_x = 2
@@ -176,10 +188,10 @@ def draw_state(
         right_x = left_x + left_w + gap
         right_w = max(32, content_width - left_w - gap)
         panel_h = max(8, footer_row - panel_top - events_h - 1)
-        draw_box(screen, panel_top, left_x, panel_h, left_w, "Agent Pipeline")
+        draw_box(screen, panel_top, left_x, panel_h, left_w, "Agents")
         draw_agents(screen, panel_top + 1, left_x + 2, panel_h - 2, left_w - 4, state.get("agents", []))
-        draw_box(screen, panel_top, right_x, panel_h, right_w, "Run Health / Artifacts")
-        draw_artifacts(screen, panel_top + 1, right_x + 2, panel_h - 2, right_w - 4, state, health)
+        draw_box(screen, panel_top, right_x, panel_h, right_w, "Artifacts / Next")
+        draw_artifacts(screen, panel_top + 1, right_x + 2, panel_h - 2, right_w - 4, state, health, board)
         events_top = panel_top + panel_h + 1
     elif height >= 28:
         panel_h = max(6, min(9, footer_row - panel_top - events_h - 5))
@@ -188,7 +200,7 @@ def draw_state(
         artifacts_top = panel_top + panel_h + 1
         artifacts_h = 5
         draw_box(screen, artifacts_top, 2, artifacts_h, content_width, "Run Health / Artifacts")
-        draw_artifacts(screen, artifacts_top + 1, 4, artifacts_h - 2, content_width - 4, state, health)
+        draw_artifacts(screen, artifacts_top + 1, 4, artifacts_h - 2, content_width - 4, state, health, board)
         events_top = artifacts_top + artifacts_h + 1
     else:
         context = state.get("context") or {}
@@ -273,9 +285,13 @@ def draw_agents(screen, y: int, x: int, height: int, width: int, agents: list[di
         add_line(screen, y + height - 1, x, f"... {hidden} more", curses.A_DIM)
 
 
-def draw_artifacts(screen, y: int, x: int, height: int, width: int, state: dict[str, Any], health: dict[str, Any]) -> None:
+def draw_artifacts(screen, y: int, x: int, height: int, width: int, state: dict[str, Any], health: dict[str, Any], board: dict[str, Any]) -> None:
     context = state.get("context") or {}
+    next_action = board.get("next") or {}
     rows = [
+        f"next: {next_action.get('command')}",
+        f"reason: {next_action.get('reason')}",
+        "",
         f"verify: {health.get('verification_verdict')}",
         f"providers: {health.get('providers_available')}/{health.get('providers_total')} available",
         f"route: {health.get('route_intent')} via {health.get('route_source')}",

@@ -17,10 +17,14 @@ mos diff
 mos review-diff
 mos commit-summary
 mos agents detect --json
+mos agents status
+mos next
 mos prompt
 mos log
+mos memory list
 mos tui
 mos completion zsh
+npm run production
 ```
 
 Without installing:
@@ -37,6 +41,7 @@ python -m memoryos.mos run "Build Draft Review screen"
 python -m memoryos.mos ask "Build Draft Review screen"
 python -m memoryos.mos plan
 python -m memoryos.mos status
+python -m memoryos.mos next
 python -m memoryos.mos tui
 python -m memoryos.mos context
 python -m memoryos.mos handoff
@@ -47,6 +52,7 @@ python -m memoryos.mos invoke gemini --role reviewer
 python -m memoryos.mos verify
 python -m memoryos.mos summarize
 python -m memoryos.mos memory draft
+python -m memoryos.mos memory list
 ```
 
 If installed as a package, `mos` points to the same command.
@@ -54,8 +60,21 @@ If installed as a package, `mos` points to the same command.
 `mos "your task"` is shorthand for `mos ask "your task"`.
 Bare `mos` opens the slash-command shell. Use `mos tui` for the curses status board.
 
+`mos status` prints the run board: pipeline, agent status, artifact status, and the next recommended command. `mos next` prints only the next action for fast terminal loops.
+
 `mos check run` evaluates markdown policy files under `.memoryos/checks/`. `mos diff`, `mos review-diff`, and `mos commit-summary` provide the first git-aware loop without committing automatically.
 `mos prompt` reads a multiline/stdin prompt and routes it through the local intent router. `mos log` shows the current run `transcript.md`.
+
+Production wrappers:
+
+```bash
+scripts/install-mos-cli.sh
+npm run production
+npm link
+bin/mos doctor
+```
+
+`bin/mos` executes `python -m memoryos.mos` from the repo root. The npm package is private and exists as a local production wrapper, not a published registry package.
 
 For a fast local workbench loop:
 
@@ -119,9 +138,11 @@ g  create Gemini reviewer prompt
 v  create verification report
 s  update final_report.md
 m  create memory_drafts.json
+d  capture git diff report
+h  show keybinding hint
 ```
 
-The TUI does not try to be the final product UI. It is an operational control surface for driving agent work through run artifacts.
+The TUI does not try to be the final desktop UI. It is an operational control surface for driving agent work through run artifacts: pipeline first, agent aware, artifact driven, audit friendly.
 
 ## Run Folder
 

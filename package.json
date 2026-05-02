@@ -1,0 +1,15 @@
+{
+  "name": "@memoryos/mos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MemoryOS harness control-plane CLI",
+  "bin": {
+    "mos": "bin/mos"
+  },
+  "scripts": {
+    "doctor": "python -m memoryos.mos doctor",
+    "install:python": "python -m pip install --user -e .",
+    "production": "bash scripts/install-mos-cli.sh",
+    "test": "python -m py_compile memoryos/*.py && python -m unittest discover -s tests -p 'test_*.py'"
+  }
+}

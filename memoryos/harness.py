@@ -28,6 +28,18 @@ PROJECT_DIR = ".memoryos"
 SETTINGS_PROFILE = "settings_profile.json"
 CHECKS_DIR = "checks"
 
+PIPELINE_SPEC = [
+    ("intake", "task.yaml", "task"),
+    ("route", "routing_plan.json", "routing_plan"),
+    ("context", "context_pack.md", "context_pack"),
+    ("deliberate", "agents/claude/planner_result.yaml", "claude_planner"),
+    ("handoff", "handoff.yaml", "handoff"),
+    ("execute", "agents/codex/executor_result.yaml", "codex_executor"),
+    ("verify", "verification.yaml", "verification"),
+    ("memory", "memory_drafts.json", "memory_drafts"),
+    ("close", "final_report.md", "final_report"),
+]
+
 
 @dataclass(frozen=True)
 class RunPaths:
@@ -296,6 +308,205 @@ def list_runs(root: Path) -> list[dict[str, Any]]:
         except json.JSONDecodeError:
             runs.append({"run_id": state_path.parent.name, "status": "corrupt"})
     return runs
+
+
+def run_board(root: Path, run_id: str | None = None) -> dict[str, Any]:
+    paths, state = load_run(root, run_id)
+    artifacts = artifact_status(paths, state)
+    pipeline = pipeline_status(paths)
+    next_action = recommend_next_action(paths, state, pipeline, artifacts)
+    return {
+        "schema_version": 1,
+        "run_id": paths.run_id,
+        "task": state.get("user_request"),
+        "project": state.get("project"),
+        "phase": state.get("phase"),
+        "status": state.get("status"),
+        "pipeline": pipeline,
+        "agents": state.get("agents", []),
+        "artifacts": artifacts,
+        "next": next_action,
+    }
+
+
+def artifact_status(paths: RunPaths, state: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = []
+    for name, rel_path in (state.get("artifacts") or {}).items():
+        exists = isinstance(rel_path, str) and (paths.root / rel_path).exists()
+        rows.append({"name": name, "path": rel_path, "status": "ok" if exists else "missing"})
+    extra = {
+        "routing_plan": paths.run_dir / "routing_plan.json",
+        "checks_report": paths.run_dir / "checks_report.json",
+        "git_diff_report": paths.run_dir / "git_diff_report.json",
+        "commit_summary": paths.run_dir / "commit_summary.md",
+    }
+    known = {row["name"] for row in rows}
+    for name, path in extra.items():
+        if name not in known:
+            rows.append(
+                {
+                    "name": name,
+                    "path": path.relative_to(paths.root).as_posix(),
+                    "status": "ok" if path.exists() else "missing",
+                }
+            )
+    return rows
+
+
+def pipeline_status(paths: RunPaths) -> list[dict[str, Any]]:
+    rows = []
+    for name, rel_path, artifact_id in PIPELINE_SPEC:
+        path = paths.run_dir / rel_path
+        status = "done" if path.exists() else "pending"
+        if name == "verify" and path.exists():
+            text = path.read_text(encoding="utf-8")
+            status = "pending" if "not_run" in text else "done"
+        if name == "memory" and path.exists():
+            status = "done" if memory_draft_count(path) > 0 else "pending"
+        if name == "close" and path.exists():
+            text = path.read_text(encoding="utf-8")
+            status = "pending" if "Status: planned" in text else "done"
+        rows.append(
+            {
+                "step": name,
+                "artifact": artifact_id,
+                "path": path.relative_to(paths.root).as_posix(),
+                "status": status,
+            }
+        )
+    return rows
+
+
+def recommend_next_action(
+    paths: RunPaths,
+    state: dict[str, Any],
+    pipeline: list[dict[str, Any]],
+    artifacts: list[dict[str, Any]],
+) -> dict[str, str]:
+    by_step = {item["step"]: item for item in pipeline}
+    if by_step["route"]["status"] != "done":
+        return {"command": f'mos ask "{state.get("user_request", "")}"', "reason": "routing_plan.json is missing"}
+    if agent_status(state, "local-context-compressor") not in {"completed"}:
+        return {"command": "mos invoke local --role context", "reason": "context compression has not completed"}
+    if agent_status(state, "claude-planner") not in {"prepared", "completed"}:
+        return {"command": "mos invoke claude --role planner", "reason": "planner artifact is not prepared"}
+    if agent_status(state, "codex-executor") not in {"prepared", "completed"}:
+        return {"command": "mos invoke codex --role executor", "reason": "executor artifact is not prepared"}
+    verification = paths.run_dir / "verification.yaml"
+    if not verification.exists() or "not_run" in verification.read_text(encoding="utf-8"):
+        return {"command": "mos verify", "reason": "verification is missing or has not run"}
+    memory_drafts = paths.run_dir / "memory_drafts.json"
+    try:
+        drafts = json.loads(memory_drafts.read_text(encoding="utf-8")).get("memory_drafts") or []
+    except (OSError, json.JSONDecodeError):
+        drafts = []
+    if not drafts:
+        return {"command": "mos memory draft", "reason": "memory_drafts.json has no drafts"}
+    final_report = paths.final_report
+    if "Status: planned" in final_report.read_text(encoding="utf-8"):
+        return {"command": "mos summarize", "reason": "final_report.md is still the initial report"}
+    return {"command": "mos check run", "reason": "run artifacts are ready for policy checks"}
+
+
+def memory_draft_count(path: Path) -> int:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return 0
+    drafts = data.get("memory_drafts") if isinstance(data, dict) else None
+    return len(drafts) if isinstance(drafts, list) else 0
+
+
+def agent_status(state: dict[str, Any], name: str) -> str | None:
+    for agent in state.get("agents", []):
+        if agent.get("name") == name:
+            return agent.get("status")
+    return None
+
+
+def format_run_board(board: dict[str, Any]) -> str:
+    lines = [
+        f"MemoryOS Run: {board.get('run_id')}",
+        f"Task: {board.get('task')}",
+        f"Project: {board.get('project')} | Phase: {board.get('phase')} | Status: {board.get('status')}",
+        "",
+        "Pipeline:",
+    ]
+    lines.append("  " + "  ".join(f"{pipeline_icon(item['status'])} {item['step']}" for item in board["pipeline"]))
+    lines.extend(["", "Agents:"])
+    for agent in board.get("agents") or []:
+        lines.append(f"  {agent_icon(agent.get('status'))} {agent.get('name')} [{agent.get('status')}]")
+    lines.extend(["", "Artifacts:"])
+    for item in board.get("artifacts") or []:
+        lines.append(f"  {pipeline_icon('done' if item.get('status') == 'ok' else 'pending')} {item.get('name')}: {item.get('path')} [{item.get('status')}]")
+    next_action = board.get("next") or {}
+    lines.extend(["", "Next:", f"  {next_action.get('command')}", f"  Reason: {next_action.get('reason')}"])
+    return "\n".join(lines)
+
+
+def pipeline_icon(status: str | None) -> str:
+    return "✓" if status in {"done", "ok", "completed"} else "○"
+
+
+def agent_icon(status: str | None) -> str:
+    return {
+        "completed": "✓",
+        "prepared": "◐",
+        "running": "●",
+        "in_progress": "●",
+        "failed": "!",
+        "pending": "○",
+    }.get(status or "", "○")
+
+
+def format_agents_status(report: dict[str, Any]) -> str:
+    lines = ["MemoryOS Agents", "", "Provider        Mode               Status        Roles"]
+    for name, provider in (report.get("providers") or {}).items():
+        status = str(provider.get("status") or "unknown")
+        mode = str(provider.get("mode") or "-")
+        roles = ", ".join(str(role) for role in (provider.get("roles") or []))
+        icon = "✓" if status in {"available", "configured"} else ("!" if status == "gated" else "○")
+        lines.append(f"{icon} {name:<13} {mode:<18} {status:<13} {roles}")
+    lines.extend(["", f"Registry: {report.get('trusted_root')}/.runs/{PROVIDER_CAPABILITIES}"])
+    return "\n".join(lines)
+
+
+def memory_drafts_report(root: Path, run_id: str | None = None) -> dict[str, Any]:
+    paths, _ = load_run(root, run_id)
+    draft_path = paths.run_dir / "memory_drafts.json"
+    drafts: list[dict[str, Any]] = []
+    if draft_path.exists():
+        try:
+            data = json.loads(draft_path.read_text(encoding="utf-8"))
+            raw = data.get("memory_drafts") if isinstance(data, dict) else []
+            if isinstance(raw, list):
+                drafts = [item for item in raw if isinstance(item, dict)]
+        except json.JSONDecodeError:
+            drafts = []
+    return {
+        "run_id": paths.run_id,
+        "path": draft_path.relative_to(root).as_posix(),
+        "count": len(drafts),
+        "drafts": drafts,
+    }
+
+
+def format_memory_drafts(report: dict[str, Any]) -> str:
+    lines = [f"Memory Drafts: {report.get('run_id')}", f"Path: {report.get('path')}", f"Count: {report.get('count')}", ""]
+    drafts = report.get("drafts") or []
+    if not drafts:
+        lines.append("No memory drafts yet. Next: mos memory draft")
+        return "\n".join(lines)
+    for index, draft in enumerate(drafts, start=1):
+        kind = draft.get("type") or "memory"
+        status = draft.get("status") or "draft"
+        confidence = draft.get("confidence", "-")
+        content = str(draft.get("content") or "").replace("\n", " ")
+        if len(content) > 140:
+            content = content[:139] + "…"
+        lines.append(f"{index}. [{status}] {kind} confidence={confidence}")
+        lines.append(f"   {content}")
+    return "\n".join(lines)
 
 
 def set_current(root: Path, run_id: str) -> None:

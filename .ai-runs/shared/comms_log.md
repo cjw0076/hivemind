@@ -224,6 +224,13 @@
 - Evidence: Added `docs/RUN_ARTIFACT_PROTOCOL.md`, schema dataclasses in `memoryos/schema.py`, stricter validation in `memoryos/run_validation.py`, and tests for invalid memory drafts, invalid provider results, and MemoryObject/Hyperedge constructors. Verified py_compile, unit tests, and `mos verify` on the current run.
 - Next: Keep CapabilityOS deferred; next hardening should add more malformed run fixtures and provider result schema coverage.
 
+## 2026-05-02 10:52 KST - Codex
+
+- Context: User asked to finish `mos` functionality plus CLI/TUI UX against `docs/mos_cli_design.md`, then wrap it for production via shell or npm.
+- Decision: Added the production run board kernel (`mos status`), `mos next`, `mos agents status`, `mos memory list`, TUI next/diff/help controls, and local production wrappers via `bin/mos` plus private npm `production` script.
+- Evidence: Updated `memoryos/harness.py`, `memoryos/mos.py`, `memoryos/tui.py`, `docs/TUI_HARNESS.md`, `docs/TODO.md`, `docs/ROADMAP.md`, `bin/mos`, and `package.json`. Verified `npm test`, `bin/mos --root . status`, `mos --root . next`, `mos --root . agents status`, `mos --root . memory list`, and `mos --root . check run`.
+- Next: Harden all provider result adapters and add end-to-end production install smoke coverage.
+
 ## 2026-05-02 10:43 KST - Codex
 
 - Context: User asked for a unified prompt input and Codex-like visible logs showing which agent/action is doing what, including file edits and commands.
