@@ -14,6 +14,7 @@ BIN_DIR="$USER_BASE/bin"
 echo "Installed Hive Mind CLI."
 echo "hive: $BIN_DIR/hive"
 echo "hivemind: $BIN_DIR/hivemind"
+echo "mos: $BIN_DIR/mos (deprecated compatibility alias)"
 
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;

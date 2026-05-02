@@ -1,4 +1,4 @@
-# MyWorld / MemoryOS Docs
+# MyWorld / Hive Mind Docs
 
 Start here. This directory contains both current implementation docs and large source-vault notes.
 
@@ -16,14 +16,15 @@ Start here. This directory contains both current implementation docs and large s
 
 ## Current Work
 
-The active build target is an installable `mos` CLI/TUI harness:
+The active build target is the installable `hive` CLI/TUI harness. `mos` remains
+as a deprecated compatibility alias during the rename:
 
 ```text
-mos init
-mos doctor
-mos run "your task"
-mos tui
-mos local status
+hive init
+hive doctor
+hive run "your task"
+hive tui
+hive local status
 ```
 
 Relevant docs:
@@ -37,7 +38,7 @@ Relevant docs:
 
 ## Important Boundary
 
-`/home/user/workspaces/jaewon/myworld` is for MemoryOS, CapabilityOS, Agent Society, local/provider harnessing, and multi-ontology memory.
+`/home/user/workspaces/jaewon/myworld` is the umbrella workspace for Hive Mind, MemoryOS, CapabilityOS, Agent Society, local/provider harnessing, and multi-ontology memory.
 
 `/home/user/workspaces/jaewon/universe/quantum` is the quantum Paper #4 / P18 workspace. Do not modify it from here unless explicitly asked.
 
@@ -56,8 +57,8 @@ Do not read them fully for routine implementation. Use `ROUTE.md` and the split 
 Onboarding checks local LLM state:
 
 ```bash
-python -m memoryos.mos init
-python -m memoryos.mos local status
+python -m hivemind.hive init
+python -m hivemind.hive local status
 ```
 
 DeepSeek and Qwen local open-weight models through Ollama do not need API keys. Hosted API providers need `DEEPSEEK_API_KEY` or `QWEN_API_KEY`.

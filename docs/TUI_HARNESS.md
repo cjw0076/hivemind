@@ -58,7 +58,9 @@ python -m hivemind.hive memory draft
 python -m hivemind.hive memory list
 ```
 
-If installed as a package, `hive` points to the same command.
+If installed as a package, `hive` and `hivemind` point to the same command.
+`mos` is also installed as a deprecated compatibility alias so old shell history
+does not break during the rename.
 
 `hive "your task"` is shorthand for `hive orchestrate "your task"`.
 Bare `hive` opens the conversational operator shell. Use `hive chat` explicitly for the same shell, or `hive shell` for the older thin slash-command shell. Use `hive tui` for the curses status board.

@@ -31,7 +31,12 @@ from .harness import (
 
 
 def run_tui(root: Path, run_id: str | None = None) -> None:
-    curses.wrapper(lambda screen: draw_loop(screen, root, run_id))
+    try:
+        curses.wrapper(lambda screen: draw_loop(screen, root, run_id))
+    except KeyboardInterrupt:
+        return
+    except curses.error as exc:
+        raise SystemExit(f"hive tui requires an interactive terminal: {exc}") from exc
 
 
 def draw_loop(screen, root: Path, run_id: str | None) -> None:

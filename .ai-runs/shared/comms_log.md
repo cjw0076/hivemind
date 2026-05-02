@@ -286,3 +286,10 @@
 - Decision: Reorganized the local workspace to `myworld/hivemind`, `myworld/memoryOS`, and `myworld/CapabilityOS`; kept historical `.runs` and `.ai-runs` inside Hive Mind; made `memoryOS/docs/shared` and `CapabilityOS/docs/shared` point to `hivemind/docs`; cleaned up `docs/final.md` section 14 as the intelligence-emergence model.
 - Evidence: Added `docs/REPO_SPLIT.md`, updated child repo READMEs and local shared-doc symlink ignores, verified shared docs resolve, and ran Hive Mind Python/unit/npm tests successfully.
 - Next: Commit and push the three repositories separately, then start extracting MemoryOS substrate code out of Hive Mind.
+
+## 2026-05-02 11:58 KST - Codex
+
+- Context: User hit broken old `mos` entrypoints after the workspace moved to `myworld/hivemind`, and clarified that the work so far is Hive Mind rather than MemoryOS.
+- Decision: Kept `hive`/`hivemind` as the canonical product commands and restored `mos` as a deprecated compatibility alias that points to `hivemind.hive`; added umbrella-root detection so commands launched from `myworld/` resolve the child Hive Mind repo; made TUI interruption/non-interactive terminal failures exit cleanly.
+- Evidence: Updated `pyproject.toml`, `bin/mos`, `hivemind/hive.py`, `hivemind/tui.py`, install/docs references, reinstalled the editable package, and verified `hive`, `hivemind`, and `mos` from the umbrella workspace.
+- Next: Extract MemoryOS-specific schemas/importers from Hive Mind into the `memoryOS` repo while keeping Hive Mind focused on orchestration.

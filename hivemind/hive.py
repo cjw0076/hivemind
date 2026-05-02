@@ -107,9 +107,22 @@ def normalize_argv(argv: list[str]) -> list[str]:
     return argv
 
 
+def resolve_root(root_arg: str) -> Path:
+    """Resolve Hive Mind root, including the umbrella `myworld/` workspace layout."""
+    root = Path(root_arg).resolve()
+    if root_arg == ".":
+        if (root / ".runs").exists():
+            return root
+        child = root / "hivemind"
+        if (child / "pyproject.toml").exists() and (child / "hivemind").is_dir():
+            return child.resolve()
+    return root
+
+
 def main(argv: list[str] | None = None) -> None:
     argv = normalize_argv(list(sys.argv[1:] if argv is None else argv))
-    parser = argparse.ArgumentParser(prog="hive", description="Hive Mind control plane for provider CLI harnessing")
+    prog = "mos" if Path(sys.argv[0]).name == "mos" else "hive"
+    parser = argparse.ArgumentParser(prog=prog, description="Hive Mind control plane for provider CLI harnessing")
     parser.add_argument("--root", default=".", help="workspace root")
     parser.add_argument("--version", action="version", version="hive 0.1.0")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -244,7 +257,7 @@ def main(argv: list[str] | None = None) -> None:
     hive_activity_cmd.add_argument("--tail", type=int, default=30)
 
     args = parser.parse_args(argv)
-    root = Path(args.root).resolve()
+    root = resolve_root(args.root)
 
     if args.cmd == "init":
         report = init_onboarding(root)
