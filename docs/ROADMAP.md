@@ -1,4 +1,4 @@
-# MemoryOS Roadmap
+# Hive Mind Roadmap
 
 This roadmap keeps MemoryOS small enough to execute while preserving the longer GoEN/Dipeen research direction.
 
@@ -34,20 +34,20 @@ Exit criteria:
 
 Status: started.
 
-Goal: make `mos` the first operational Hive Mind wrapper around MemoryOS, local workers, and provider CLIs.
+Goal: make `hive` the first operational Hive Mind wrapper around MemoryOS, local workers, and provider CLIs.
 
 Deliverables:
 
 - Stable `.runs/` folder protocol with `task.yaml`, `context_pack.md`, `handoff.yaml`, `events.jsonl`, `run_state.json`, `verification.yaml`, `memory_drafts.json`, and `final_report.md`.
 - Canonical protocol spec in `docs/RUN_ARTIFACT_PROTOCOL.md`.
-- `mos run`, `mos status`, `mos next`, `mos tui`, `mos context`, `mos handoff`, `mos invoke`, `mos verify`, `mos summarize`, `mos memory draft/list`, and `mos agents status`.
+- `hive run`, `hive status`, `hive next`, `hive tui`, `hive context`, `hive handoff`, `hive invoke`, `hive verify`, `hive summarize`, `hive memory draft/list`, and `hive agents status`.
 - Provider invocation artifacts for Claude, Codex, Gemini, and local workers.
 - Provider result validation for `agents/<provider>/<role>_result.yaml`.
 - Prepare-only path for providers without a stable non-interactive execution contract.
 - Recoverable failure artifacts when a provider or local model is unavailable.
 - CLI/TUI run board that reads run files without requiring a DB and shows pipeline, agents, artifacts, and next action.
-- Production wrappers through `scripts/install-mos-cli.sh`, `bin/mos`, and the private npm `production` script.
-- Hive Mind activity feed through `hive_events.jsonl` and `mos hive activity`, separate from machine-oriented `events.jsonl`.
+- Production wrappers through `scripts/install-hive-cli.sh`, `bin/hive`, and the private npm `production` script.
+- Hive Mind activity feed through `hive_events.jsonl` and `hive hive activity`, separate from machine-oriented `events.jsonl`.
 
 Exit criteria:
 
@@ -119,7 +119,7 @@ Deliverables:
 - Draft schemas for `TechnologyCard`, `Capability`, `WorkflowRecipe`, `ProviderRuntime`, `QualityProfile`, `Risk`, and `LegacyRelation`.
 - Seed provider/runtime records for local LLM workers, Claude, Codex, Gemini, Ollama, and visible MCP/skill capabilities.
 - `extract-capability` worker output as reviewable draft records.
-- First workflow recipe: `mos planning -> Codex implementation -> local summarize -> MemoryOS draft`.
+- First workflow recipe: `hive planning -> Codex implementation -> local summarize -> MemoryOS memory draft`.
 - Legacy comparisons against raw chat, manual shared folder, screenshot-only, and local-model-only workflows.
 
 Exit criteria:

@@ -1,4 +1,4 @@
-"""Minimal stdlib TUI for MemoryOS harness run status."""
+"""Minimal stdlib TUI for Hive Mind run status."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def draw_loop(screen, root: Path, run_id: str | None) -> None:
             board = run_board(root, paths.run_id)
             draw_state(screen, height, width, state, activities, health, board)
         except Exception as exc:  # TUI should show recoverable state instead of crashing.
-            add_line(screen, 1, 2, "MemoryOS Harness", curses.A_BOLD)
+            add_line(screen, 1, 2, "Hive Mind Harness", curses.A_BOLD)
             add_wrapped(screen, 3, 2, width - 4, str(exc))
         draw_global_composer(screen, height, width, message)
         screen.refresh()
@@ -118,7 +118,7 @@ def prompt_and_route(screen, root: Path, run_id: str | None = None, prefix: str 
     try:
         row = max(0, height - 2)
         clear_line(screen, row)
-        label = "mos> "
+        label = "hive> "
         add_line(screen, row, 2, label + prefix, curses.A_BOLD)
         screen.refresh()
         raw = screen.getstr(row, 2 + len(label) + len(prefix), max(20, min(1000, width - 8 - len(prefix))))
@@ -203,7 +203,7 @@ def draw_state(
 
     content_width = max(40, width - 4)
     footer_row = max(0, height - 2)
-    top_status = f"MemoryOS Harness  {state.get('project')}  {state.get('phase')} / {state.get('status')}"
+    top_status = f"Hive Mind Harness  {state.get('project')}  {state.get('phase')} / {state.get('status')}"
     add_line(screen, 0, 2, truncate(top_status, content_width), curses.A_BOLD)
     add_line(screen, 1, 2, "─" * min(content_width, 100), curses.A_DIM)
 
@@ -267,7 +267,7 @@ def draw_global_composer(screen, height: int, width: int, message: str) -> None:
     help_text = "Enter: type task  /: command  Examples: build parser | /verify | /codex executor | q quit"
     clear_line(screen, height - 2)
     clear_line(screen, height - 1)
-    add_line(screen, height - 2, 2, "mos> ", color(1, curses.A_BOLD))
+    add_line(screen, height - 2, 2, "hive> ", color(1, curses.A_BOLD))
     add_line(screen, height - 2, 7, truncate(help_text, max(10, width - 9)), curses.A_DIM)
     add_line(screen, height - 1, 2, truncate(message, max(10, width - 4)), color(2) if message != "ready" else curses.A_DIM)
 
@@ -301,7 +301,7 @@ def draw_dashboard(
     margin = 2
     content_width = width - 4
     composer_top = height - 3
-    add_line(screen, 0, margin, "mos", color(1, curses.A_BOLD))
+    add_line(screen, 0, margin, "hive", color(1, curses.A_BOLD))
     add_line(screen, 0, margin + 5, "Hive Mind Harness", curses.A_BOLD)
     clock = time.strftime("%H:%M:%S")
     top_right = f"Local {health.get('providers_available')}/{health.get('providers_total')}   Safe Mode workspace-write   {clock}"
@@ -423,8 +423,8 @@ def draw_next_actions(screen, y: int, x: int, height: int, width: int, board: di
     rows = [
         f"1. {next_action.get('command')}",
         f"Reason: {next_action.get('reason')}",
-        "2. mos status",
-        "3. mos check run",
+        "2. hive status",
+        "3. hive check run",
     ]
     for index, row in enumerate(rows[:height]):
         attr = color(5 if index == 0 else 2) if index in {0, 2, 3} else curses.A_DIM
@@ -464,7 +464,7 @@ def draw_compact(
 ) -> None:
     inner = max(20, width - 4)
     row = 1
-    add_line(screen, row, 2, "MemoryOS Harness", curses.A_BOLD)
+    add_line(screen, row, 2, "Hive Mind Harness", curses.A_BOLD)
     row += 1
     add_line(screen, row, 2, f"{state.get('run_id')} [{state.get('status')}]", curses.A_DIM)
     row += 1
@@ -634,7 +634,7 @@ def print_status(root: Path, run_id: str | None = None, json_output: bool = Fals
     if json_output:
         print(json.dumps({"state": state, "recent_events": events, "health": health}, ensure_ascii=False, indent=2))
         return
-    print(f"MemoryOS Harness: {state.get('run_id')}")
+    print(f"Hive Mind Harness: {state.get('run_id')}")
     print(f"Task: {state.get('user_request')}")
     print(f"Project: {state.get('project')} | Phase: {state.get('phase')} | Status: {state.get('status')}")
     print(

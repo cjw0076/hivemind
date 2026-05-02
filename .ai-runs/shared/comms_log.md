@@ -259,6 +259,13 @@
 - Evidence: Added `docs/HIVE_MIND.md`; updated `README.md`, `docs/TUI_HARNESS.md`, `docs/ROADMAP.md`, `docs/TODO.md`, `memoryos/harness.py`, `memoryos/mos.py`, `memoryos/tui.py`, `memoryos/run_validation.py`, and `package.json`. Verified `npm test`, `mos orchestrate "hive activity smoke" --json`, `mos hive activity`, and TUI activity smoke.
 - Next: Add synthesis artifact that merges member outputs into a single hive response.
 
+## 2026-05-02 11:40 KST - Codex
+
+- Context: User chose the split repo plan: `hivemind`, `memoryOS`, and `CapabilityOS` should become separate projects, with this repo becoming Hive Mind.
+- Decision: Renamed the executable/package surface from `memoryos`/`mos` to `hivemind`/`hive`; kept MemoryOS references only where they describe the future memory substrate or source-vault history.
+- Evidence: Moved Python package to `hivemind/`, renamed `bin/hive`, `scripts/install-hive-cli.sh`, `scripts/hive-workbench.sh`, updated package metadata, docs, tests, and CLI strings. Verified `python -m py_compile hivemind/*.py`, `python -m unittest discover -s tests -p 'test_*.py'`, `npm test`, `bin/hive --version`, `bin/hive doctor`, and `bin/hive status`.
+- Next: Rename GitHub repo to `cjw0076/hivemind`, then create separate private `cjw0076/memoryOS` and `cjw0076/CapabilityOS` repos.
+
 ## 2026-05-02 10:43 KST - Codex
 
 - Context: User asked for a unified prompt input and Codex-like visible logs showing which agent/action is doing what, including file edits and commands.

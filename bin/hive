@@ -5,4 +5,4 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 PYTHON="${PYTHON:-python}"
-exec "$PYTHON" -m memoryos.mos "$@"
+exec "$PYTHON" -m hivemind.hive "$@"

@@ -23,7 +23,7 @@
   "created_at": "2026-05-02T00:00:00+09:00",
   "latest_event": "run_created",
   "phase": "planned",
-  "project": "MemoryOS",
+  "project": "Hive Mind",
   "run_id": "minimal_valid",
   "status": "planned",
   "task_type": "implementation",

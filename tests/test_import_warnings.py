@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from memoryos.importers import import_path_with_warnings
+from hivemind.importers import import_path_with_warnings
 
 
 class ImportWarningsTest(unittest.TestCase):

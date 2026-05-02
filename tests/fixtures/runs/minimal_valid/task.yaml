@@ -1,6 +1,6 @@
 run_id: minimal_valid
 user_request: "fixture task"
-project: MemoryOS
+project: Hive Mind
 task_type: implementation
 goal: "Validate the minimal run schema."
 priority: high

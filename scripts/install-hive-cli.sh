@@ -11,19 +11,19 @@ PYTHON="${PYTHON:-python}"
 USER_BASE="$("$PYTHON" -m site --user-base)"
 BIN_DIR="$USER_BASE/bin"
 
-echo "Installed MemoryOS CLI."
-echo "mos: $BIN_DIR/mos"
-echo "memoryos: $BIN_DIR/memoryos"
+echo "Installed Hive Mind CLI."
+echo "hive: $BIN_DIR/hive"
+echo "hivemind: $BIN_DIR/hivemind"
 
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *)
     echo ""
-    echo "Add this to your shell profile if mos is not found:"
+    echo "Add this to your shell profile if hive is not found:"
     echo "  export PATH=\"$BIN_DIR:\$PATH\""
     ;;
 esac
 
 echo ""
-"$BIN_DIR/mos" --version
-"$BIN_DIR/mos" doctor
+"$BIN_DIR/hive" --version
+"$BIN_DIR/hive" doctor

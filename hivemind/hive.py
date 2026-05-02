@@ -1,4 +1,4 @@
-"""`mos` command: MemoryOS harness CLI and TUI."""
+"""`hive` command: Hive Mind CLI and TUI."""
 
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ COMMANDS = {
 
 
 def normalize_argv(argv: list[str]) -> list[str]:
-    """Allow provider-style prompt entry: `mos "build this"` -> `mos ask "build this"`."""
+    """Allow provider-style prompt entry: `hive "build this"` -> `hive orchestrate "build this"`."""
     if not argv:
         return ["chat"] if sys.stdin.isatty() and sys.stdout.isatty() else ["--help"]
     if argv[0] in {"-h", "--help", "--version"}:
@@ -109,17 +109,17 @@ def normalize_argv(argv: list[str]) -> list[str]:
 
 def main(argv: list[str] | None = None) -> None:
     argv = normalize_argv(list(sys.argv[1:] if argv is None else argv))
-    parser = argparse.ArgumentParser(prog="mos", description="Hive Mind control plane for MemoryOS provider harnessing")
+    parser = argparse.ArgumentParser(prog="hive", description="Hive Mind control plane for provider CLI harnessing")
     parser.add_argument("--root", default=".", help="workspace root")
-    parser.add_argument("--version", action="version", version="mos 0.1.0")
+    parser.add_argument("--version", action="version", version="hive 0.1.0")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    init_cmd = sub.add_parser("init", help="initialize MemoryOS onboarding state")
+    init_cmd = sub.add_parser("init", help="initialize Hive Mind onboarding state")
     init_cmd.add_argument("--json", action="store_true")
     init_cmd.add_argument("--no-tui", action="store_true", help="non-interactive init; accepted for installer compatibility")
     init_cmd.add_argument("--skills", choices=["yes", "no"], default="no", help="prepare skill config placeholders")
     init_cmd.add_argument("--mcp", choices=["yes", "no"], default="no", help="prepare MCP config placeholders")
-    doctor_cmd = sub.add_parser("doctor", help="check MemoryOS runtime health")
+    doctor_cmd = sub.add_parser("doctor", help="check Hive Mind runtime health")
     doctor_cmd.add_argument("--json", action="store_true")
 
     agents_cmd = sub.add_parser("agents", help="provider/agent registry helpers")
@@ -147,7 +147,7 @@ def main(argv: list[str] | None = None) -> None:
 
     run_cmd = sub.add_parser("run", help="create a structured run folder")
     run_cmd.add_argument("task", help="user task/request")
-    run_cmd.add_argument("--project", default="MemoryOS")
+    run_cmd.add_argument("--project", default="Hive Mind")
     run_cmd.add_argument("--type", default="implementation", dest="task_type")
     run_cmd.add_argument("-q", "--quiet", action="store_true", help="only print the run id/path")
     run_cmd.add_argument("--json", action="store_true")
@@ -223,7 +223,7 @@ def main(argv: list[str] | None = None) -> None:
     check_run_cmd.add_argument("--json", action="store_true")
 
     sub.add_parser("shell", help="open a thin slash-command shell")
-    sub.add_parser("chat", help="open a conversational MemoryOS operator shell")
+    sub.add_parser("chat", help="open a conversational Hive Mind operator shell")
 
     diff_cmd = sub.add_parser("diff", help="write/show git diff report for current run")
     diff_cmd.add_argument("--run-id")
@@ -323,7 +323,7 @@ def main(argv: list[str] | None = None) -> None:
             print(format_local_runtime(report))
             if args.local_cmd == "setup":
                 print("")
-                print(f"Wrote {root / '.memoryos' / 'local_runtime.json'}")
+                print(f"Wrote {root / '.hivemind' / 'local_runtime.json'}")
                 print("To start the local server:")
                 print("  scripts/start-ollama-local.sh")
         return
@@ -402,10 +402,10 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.cmd == "invoke":
         if args.execute and args.dry_run:
-            parser.error("mos invoke: --execute and --dry-run are mutually exclusive")
+            parser.error("hive invoke: --execute and --dry-run are mutually exclusive")
         if args.agent == "local":
             if args.dry_run:
-                parser.error("mos invoke local: --dry-run is only supported for external providers for now")
+                parser.error("hive invoke local: --dry-run is only supported for external providers for now")
             print(invoke_local(root, args.role, run_id=args.run_id, complexity=args.complexity))
             return
         print(invoke_external_agent(root, args.agent, args.role, run_id=args.run_id, execute=args.execute))
@@ -488,38 +488,38 @@ def print_completion(shell: str) -> None:
     commands = " ".join(sorted(COMMANDS))
     if shell == "bash":
         print(
-            f"""_mos_completion() {{
+            f"""_hive_completion() {{
   local cur="${{COMP_WORDS[COMP_CWORD]}}"
   if [[ $COMP_CWORD -eq 1 ]]; then
     COMPREPLY=( $(compgen -W "{commands}" -- "$cur") )
   fi
 }}
-complete -F _mos_completion mos"""
+complete -F _hive_completion hive"""
         )
         return
     if shell == "zsh":
         print(
-            f"""#compdef mos
-_mos() {{
+            f"""#compdef hive
+_hive() {{
   local -a commands
   commands=({commands})
   if (( CURRENT == 2 )); then
     _describe 'command' commands
   fi
 }}
-compdef _mos mos"""
+compdef _hive hive"""
         )
         return
     if shell == "fish":
         for command in sorted(COMMANDS):
-            print(f"complete -c mos -f -n '__fish_use_subcommand' -a {command}")
+            print(f"complete -c hive -f -n '__fish_use_subcommand' -a {command}")
 
 
 def run_shell(root: Path) -> None:
-    print("MemoryOS shell. Type /help or /quit.")
+    print("Hive Mind shell. Type /help or /quit.")
     while True:
         try:
-            line = input("mos> ").strip()
+            line = input("hive> ").strip()
         except (EOFError, KeyboardInterrupt):
             print("")
             return
@@ -588,7 +588,7 @@ def run_chat(root: Path) -> None:
     print("Hive Mind operator shell. Type a task, or /help.")
     while True:
         try:
-            line = input("mos> ").strip()
+            line = input("hive> ").strip()
         except (EOFError, KeyboardInterrupt):
             print("")
             return

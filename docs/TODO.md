@@ -1,4 +1,4 @@
-# MemoryOS TODO
+# Hive Mind TODO
 
 This TODO is ordered by dependency. Do the earliest unfinished item that improves the working loop.
 
@@ -15,52 +15,52 @@ Sources: `VG-03`, `VG-04`, `VG-05`, `VG-13`.
 - [x] Add `memoryos audit --json` report snapshots under `runs/reports/`.
 - [x] Add `memoryos stats` with platform, role, conversation, pair, and source counts.
 - [x] Add local LLM worker prompt/CLI layer before runtime installation.
-- [x] Add production-minimum `mos init` onboarding for global/project config, provider detection, and next actions.
+- [x] Add production-minimum `hive init` onboarding for global/project config, provider detection, and next actions.
 - [x] Split local open-weight DeepSeek/Qwen status from hosted `deepseek_api`/`qwen_api` key checks.
-- [x] Add `mos local status/setup` for Ollama wrapper, server state, and local model manifests.
-- [x] Include local LLM model manifest detection in `mos init` onboarding output.
-- [x] Stabilize `mos` run artifact schemas: task, handoff, run state, verification, memory drafts, final report.
-- [x] Add canonical `.runs` protocol spec for the MemoryOS Core kernel.
+- [x] Add `hive local status/setup` for Ollama wrapper, server state, and local model manifests.
+- [x] Include local LLM model manifest detection in `hive init` onboarding output.
+- [x] Stabilize `hive` run artifact schemas: task, handoff, run state, verification, memory drafts, final report.
+- [x] Add canonical `.runs` protocol spec for the Hive Mind run kernel.
 - [x] Add human-readable `transcript.md` for Codex-style run logs.
 - [x] Add event taxonomy and validation for `.runs/*/events.jsonl`.
 - [x] Normalize provider invocation artifacts for Claude, Codex, Gemini, and local workers.
 - [x] Add local worker route table with schema validation, confidence, and escalation fields.
-- [x] Make `mos tui` show current run health, provider availability, latest event, failures, and missing artifacts.
+- [x] Make `hive tui` show current run health, provider availability, latest event, failures, and missing artifacts.
 - [x] Add parser warnings instead of failing entire imports on one malformed record.
 - [x] Persist production settings profile during onboarding so provider paths, local model inventory, and shell exports are tracked.
-- [x] Add prompt-first `mos ask` local intent routing that decomposes work into Claude/Codex/Gemini/local artifacts.
-- [x] Install `mos` as a real CLI and support provider-style shorthand: `mos "task"`.
+- [x] Add prompt-first `hive ask` local intent routing that decomposes work into Claude/Codex/Gemini/local artifacts.
+- [x] Install `hive` as a real CLI and support provider-style shorthand: `hive "task"`.
 - [x] Add production run board UX: pipeline, agents, artifact status, and next recommended action.
-- [x] Add local production wrappers: `bin/mos`, `scripts/install-mos-cli.sh`, and private npm `production` script.
-- [x] Make bare `mos` enter a conversational operator shell instead of only a thin command shell.
-- [x] Make prompt input default to `mos orchestrate`, creating a multi-agent `society_plan.json`.
+- [x] Add local production wrappers: `bin/hive`, `scripts/install-hive-cli.sh`, and private npm `production` script.
+- [x] Make bare `hive` enter a conversational operator shell instead of only a thin command shell.
+- [x] Make prompt input default to `hive orchestrate`, creating a multi-agent `society_plan.json`.
 - [x] Name the provider-CLI harness product `Hive Mind` and document the API-first harness distinction.
 
 ## Harness Runtime
 
 Sources: `VG-03`, `VG-04`, `VG-13`.
 
-- [x] Add schema validation to `python -m memoryos.mos verify`.
-- [x] Validate provider `*_result.yaml` artifacts during `mos verify`.
+- [x] Add schema validation to `python -m hivemind.hive verify`.
+- [x] Validate provider `*_result.yaml` artifacts during `hive verify`.
 - [x] Add `MemoryObject` and `Hyperedge` schemas in code.
-- [x] Add `mos invoke <provider> --dry-run` for prompt/command artifact generation.
+- [x] Add `hive invoke <provider> --dry-run` for prompt/command artifact generation.
 - [x] Keep Codex prepare-only until non-interactive execution is explicitly stable.
 - [x] Record provider mode: `prepare_only`, `execute_supported`, or `unavailable`.
 - [x] Ensure failed provider/local invocations write artifacts and events.
 - [x] Add a minimal valid run fixture for harness tests.
 - [x] Add `memoryos import-run .runs/<run_id>` or equivalent draft import path.
-- [x] Add `mos settings detect/shell` and `scripts/mos-workbench.sh` for context editing plus fast provider artifact preparation.
+- [x] Add `hive settings detect/shell` and `scripts/hive-workbench.sh` for context editing plus fast provider artifact preparation.
 - [x] Add TUI prompt routing controls: `n` for new prompt and `a` for auto-routing the current run.
-- [x] Add `mos run -q --json` and shell completion script generation for bash/zsh/fish.
-- [x] Add interactive slash-command shell for `mos` inspired by OpenClaude/Open Codex.
-- [x] Add `.memoryos/checks/*.md` markdown-as-agent-check policy files inspired by Continue.
+- [x] Add `hive run -q --json` and shell completion script generation for bash/zsh/fish.
+- [x] Add interactive slash-command shell for `hive` inspired by OpenClaude/Open Codex.
+- [x] Add `.hivemind/checks/*.md` markdown-as-agent-check policy files inspired by Continue.
 - [x] Add git-first diff/check/commit summary loop inspired by Aider.
-- [x] Add unified prompt input via `mos prompt` and slash shell `/prompt`.
+- [x] Add unified prompt input via `hive prompt` and slash shell `/prompt`.
 - [x] Add adapter registry stubs for opencode, goose, OpenClaude-compatible runtimes.
-- [x] Add `mos next`, `mos agents status`, and `mos memory list` for fast operator loops.
-- [x] Make `mos tui` interactive with prompt input, slash command input, and dashboard layout.
-- [x] Add always-visible TUI `mos>` composer so prompt entry is discoverable.
-- [x] Add `hive_events.jsonl` and `mos hive activity` so human activity shows role assignment, not only artifact creation.
+- [x] Add `hive next`, `hive agents status`, and `hive memory list` for fast operator loops.
+- [x] Make `hive tui` interactive with prompt input, slash command input, and dashboard layout.
+- [x] Add always-visible TUI `hive>` composer so prompt entry is discoverable.
+- [x] Add `hive_events.jsonl` and `hive hive activity` so human activity shows role assignment, not only artifact creation.
 - [ ] Harden provider result validation for all prepared/executed adapters.
 
 ## Parser Work
@@ -146,7 +146,7 @@ Sources: `VG-10`, `VG-01`, `VG-03`.
 - [ ] Build Ask Memory with evidence-linked answers.
 - [ ] Build graph explorer for project/concept/claim/task edges.
 - [ ] Build draft review screen for accept/edit/reject.
-- [ ] Keep Desktop cockpit deferred until `mos` run artifacts and review state are stable.
+- [ ] Keep Desktop cockpit deferred until `hive` run artifacts and review state are stable.
 
 ## Agent Harness
 
@@ -169,7 +169,7 @@ Sources: `VG-02`, `VG-04`, `VG-13`.
 - [ ] Define `TechnologyCard`, `Capability`, `WorkflowRecipe`, `ProviderRuntime`, `QualityProfile`, `Risk`, and `LegacyRelation` schemas.
 - [ ] Seed provider/runtime records for qwen local workers, DeepSeek code workers, Claude, Codex, Gemini, and Ollama.
 - [ ] Store `extract-capability` output as draft CapabilityOS records only.
-- [ ] Add first workflow recipe: `mos planning -> Codex implementation -> local summarize -> MemoryOS draft`.
+- [ ] Add first workflow recipe: `hive planning -> Codex implementation -> local summarize -> MemoryOS memory draft`.
 - [ ] Add legacy comparisons for raw chat, manual shared folder, screenshot-only, and local-model-only workflows.
 - [ ] Require source refs for every capability recommendation.
 

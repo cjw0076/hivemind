@@ -1,15 +1,15 @@
 {
-  "name": "@memoryos/mos",
+  "name": "@hive-mind/hive",
   "version": "0.1.0",
   "private": true,
-  "description": "Hive Mind control-plane CLI for MemoryOS provider harnessing",
+  "description": "Hive Mind control-plane CLI for provider CLI harnessing",
   "bin": {
-    "mos": "bin/mos"
+    "hive": "bin/hive"
   },
   "scripts": {
-    "doctor": "python -m memoryos.mos doctor",
+    "doctor": "python -m hivemind.hive doctor",
     "install:python": "python -m pip install --user -e .",
-    "production": "bash scripts/install-mos-cli.sh",
-    "test": "python -m py_compile memoryos/*.py && python -m unittest discover -s tests -p 'test_*.py'"
+    "production": "bash scripts/install-hive-cli.sh",
+    "test": "python -m py_compile hivemind/*.py && python -m unittest discover -s tests -p 'test_*.py'"
   }
 }

@@ -1,4 +1,4 @@
-"""Structured blackboard run folders for the MemoryOS harness."""
+"""Structured blackboard run folders for the Hive Mind harness."""
 
 from __future__ import annotations
 
@@ -23,8 +23,8 @@ from .schema import now_iso, stable_id
 RUNS_DIR = ".runs"
 CURRENT_FILE = "current"
 PROVIDER_CAPABILITIES = "provider_capabilities.json"
-GLOBAL_DIR = ".memoryos"
-PROJECT_DIR = ".memoryos"
+GLOBAL_DIR = ".hivemind"
+PROJECT_DIR = ".hivemind"
 SETTINGS_PROFILE = "settings_profile.json"
 CHECKS_DIR = "checks"
 
@@ -109,8 +109,8 @@ def init_harness(root: Path) -> Path:
     readme = runs_dir / "README.md"
     if not readme.exists():
         readme.write_text(
-            "# MemoryOS Runs\n\n"
-            "This directory is the structured blackboard for `mos` runs.\n"
+            "# Hive Mind Runs\n\n"
+            "This directory is the structured blackboard for Hive Mind `hive` runs.\n"
             "Each run stores task, context, handoff, events, verification, and memory draft artifacts.\n",
             encoding="utf-8",
         )
@@ -118,7 +118,7 @@ def init_harness(root: Path) -> Path:
 
 
 def init_onboarding(root: Path) -> dict[str, Any]:
-    """Initialize global/project MemoryOS state and detect provider runtimes."""
+    """Initialize global/project Hive Mind state and detect provider runtimes."""
     runs_dir = init_harness(root)
     global_dir = Path.home() / GLOBAL_DIR
     project_dir = root / PROJECT_DIR
@@ -184,7 +184,7 @@ def init_onboarding(root: Path) -> dict[str, Any]:
 
 def format_onboarding(report: dict[str, Any]) -> str:
     lines = [
-        "Welcome to MemoryOS.",
+        "Welcome to Hive Mind.",
         "",
         "Initialized:",
         f"✓ Global home: {report['global_dir']}",
@@ -227,18 +227,18 @@ def format_onboarding(report: dict[str, Any]) -> str:
         [
             "",
             "Next:",
-            "1. mos doctor",
-            '2. mos run "your task"',
-            "3. mos tui",
-            "4. optional: eval \"$(mos settings shell)\"",
-            "5. optional: mos local setup",
-            "6. optional: mos mcp install --for all",
+            "1. hive doctor",
+            '2. hive run "your task"',
+            "3. hive tui",
+            "4. optional: eval \"$(hive settings shell)\"",
+            "5. optional: hive local setup",
+            "6. optional: hive mcp install --for all",
         ]
     )
     return "\n".join(lines)
 
 
-def create_run(root: Path, user_request: str, project: str = "MemoryOS", task_type: str = "implementation") -> RunPaths:
+def create_run(root: Path, user_request: str, project: str = "Hive Mind", task_type: str = "implementation") -> RunPaths:
     init_harness(root)
     run_id = make_run_id(user_request)
     paths = RunPaths(root=root, run_id=run_id)
@@ -296,7 +296,7 @@ def create_run(root: Path, user_request: str, project: str = "MemoryOS", task_ty
 def load_run(root: Path, run_id: str | None = None) -> tuple[RunPaths, dict[str, Any]]:
     actual_run_id = run_id or get_current(root)
     if not actual_run_id:
-        raise FileNotFoundError("No current run. Create one with: mos run \"task\"")
+        raise FileNotFoundError("No current run. Create one with: hive run \"task\"")
     paths = RunPaths(root=root, run_id=actual_run_id)
     if not paths.state.exists():
         raise FileNotFoundError(f"Run state not found: {paths.state}")
@@ -393,27 +393,27 @@ def recommend_next_action(
 ) -> dict[str, str]:
     by_step = {item["step"]: item for item in pipeline}
     if by_step["route"]["status"] != "done":
-        return {"command": f'mos ask "{state.get("user_request", "")}"', "reason": "routing_plan.json is missing"}
+        return {"command": f'hive ask "{state.get("user_request", "")}"', "reason": "routing_plan.json is missing"}
     if agent_status(state, "local-context-compressor") not in {"completed"}:
-        return {"command": "mos invoke local --role context", "reason": "context compression has not completed"}
+        return {"command": "hive invoke local --role context", "reason": "context compression has not completed"}
     if agent_status(state, "claude-planner") not in {"prepared", "completed"}:
-        return {"command": "mos invoke claude --role planner", "reason": "planner artifact is not prepared"}
+        return {"command": "hive invoke claude --role planner", "reason": "planner artifact is not prepared"}
     if agent_status(state, "codex-executor") not in {"prepared", "completed"}:
-        return {"command": "mos invoke codex --role executor", "reason": "executor artifact is not prepared"}
+        return {"command": "hive invoke codex --role executor", "reason": "executor artifact is not prepared"}
     verification = paths.run_dir / "verification.yaml"
     if not verification.exists() or "not_run" in verification.read_text(encoding="utf-8"):
-        return {"command": "mos verify", "reason": "verification is missing or has not run"}
+        return {"command": "hive verify", "reason": "verification is missing or has not run"}
     memory_drafts = paths.run_dir / "memory_drafts.json"
     try:
         drafts = json.loads(memory_drafts.read_text(encoding="utf-8")).get("memory_drafts") or []
     except (OSError, json.JSONDecodeError):
         drafts = []
     if not drafts:
-        return {"command": "mos memory draft", "reason": "memory_drafts.json has no drafts"}
+        return {"command": "hive memory draft", "reason": "memory_drafts.json has no drafts"}
     final_report = paths.final_report
     if "Status: planned" in final_report.read_text(encoding="utf-8"):
-        return {"command": "mos summarize", "reason": "final_report.md is still the initial report"}
-    return {"command": "mos check run", "reason": "run artifacts are ready for policy checks"}
+        return {"command": "hive summarize", "reason": "final_report.md is still the initial report"}
+    return {"command": "hive check run", "reason": "run artifacts are ready for policy checks"}
 
 
 def memory_draft_count(path: Path) -> int:
@@ -434,7 +434,7 @@ def agent_status(state: dict[str, Any], name: str) -> str | None:
 
 def format_run_board(board: dict[str, Any]) -> str:
     lines = [
-        f"MemoryOS Run: {board.get('run_id')}",
+        f"Hive Mind Run: {board.get('run_id')}",
         f"Task: {board.get('task')}",
         f"Project: {board.get('project')} | Phase: {board.get('phase')} | Status: {board.get('status')}",
         "",
@@ -468,7 +468,7 @@ def agent_icon(status: str | None) -> str:
 
 
 def format_agents_status(report: dict[str, Any]) -> str:
-    lines = ["MemoryOS Agents", "", "Provider        Mode               Status        Roles"]
+    lines = ["Hive Mind Agents", "", "Provider        Mode               Status        Roles"]
     for name, provider in (report.get("providers") or {}).items():
         status = str(provider.get("status") or "unknown")
         mode = str(provider.get("mode") or "-")
@@ -503,7 +503,7 @@ def format_memory_drafts(report: dict[str, Any]) -> str:
     lines = [f"Memory Drafts: {report.get('run_id')}", f"Path: {report.get('path')}", f"Count: {report.get('count')}", ""]
     drafts = report.get("drafts") or []
     if not drafts:
-        lines.append("No memory drafts yet. Next: mos memory draft")
+        lines.append("No memory drafts yet. Next: hive memory draft")
         return "\n".join(lines)
     for index, draft in enumerate(drafts, start=1):
         kind = draft.get("type") or "memory"
@@ -564,8 +564,8 @@ def build_settings_profile(
     provider_items = providers.get("providers", {})
     warnings = []
     shell_exports: dict[str, str] = {
-        "MEMORYOS_ROOT": root.as_posix(),
-        "MEMORYOS_RUNS_DIR": (root / RUNS_DIR).as_posix(),
+        "HIVE_ROOT": root.as_posix(),
+        "HIVE_RUNS_DIR": (root / RUNS_DIR).as_posix(),
     }
     tracked_providers: dict[str, Any] = {}
     for name, item in provider_items.items():
@@ -581,7 +581,7 @@ def build_settings_profile(
         }
         tracked_providers[name] = tracked
         if command_path:
-            shell_exports[f"MOS_{name.upper()}_BIN"] = command_path
+            shell_exports[f"HIVE_{name.upper()}_BIN"] = command_path
         if item.get("status") == "gated":
             warnings.append(f"{name} first candidate is gated: {item.get('reason', '')}".strip())
     codex = provider_items.get("codex") or {}
@@ -591,7 +591,7 @@ def build_settings_profile(
         warnings.append(f"codex PATH resolves to {path_codex}, but usable binary is {codex_path}")
     ollama = (local_runtime.get("ollama") or {}) if isinstance(local_runtime, dict) else {}
     if ollama.get("path"):
-        shell_exports["MOS_OLLAMA_BIN"] = ollama["path"]
+        shell_exports["HIVE_OLLAMA_BIN"] = ollama["path"]
     return {
         "schema_version": 1,
         "generated_at": now_iso(),
@@ -635,7 +635,7 @@ def settings_report(root: Path, write: bool = True) -> dict[str, Any]:
 
 
 def format_settings(report: dict[str, Any]) -> str:
-    lines = ["MemoryOS Settings Profile", "", f"Root: {report.get('root')}"]
+    lines = ["Hive Mind Settings Profile", "", f"Root: {report.get('root')}"]
     if report.get("project_profile"):
         lines.append(f"Project profile: {report.get('project_profile')}")
     if report.get("global_profile"):
@@ -646,7 +646,7 @@ def format_settings(report: dict[str, Any]) -> str:
         icon = "✓" if provider.get("status") in {"available", "configured"} else ("!" if provider.get("status") == "gated" else "○")
         lines.append(f"{icon} {name}: {provider.get('status')} {detail}")
     lines.extend(["", "Shell:"])
-    lines.append('eval "$(mos settings shell)"')
+    lines.append('eval "$(hive settings shell)"')
     if report.get("warnings"):
         lines.extend(["", "Warnings:"])
         for warning in report["warnings"]:
@@ -655,7 +655,7 @@ def format_settings(report: dict[str, Any]) -> str:
 
 
 def format_settings_shell(report: dict[str, Any]) -> str:
-    lines = ["# MemoryOS shell profile"]
+    lines = ["# Hive Mind shell profile"]
     for key, value in sorted((report.get("shell_exports") or {}).items()):
         lines.append(f"export {key}={shlex.quote(str(value))}")
     return "\n".join(lines)
@@ -686,7 +686,7 @@ def doctor_report(root: Path) -> dict[str, Any]:
 
 
 def format_doctor(report: dict[str, Any]) -> str:
-    lines = ["MemoryOS Doctor", "", "Core:"]
+    lines = ["Hive Mind Doctor", "", "Core:"]
     for name, check in report["checks"].items():
         icon = "✓" if check.get("status") == "ok" else "!"
         value = check.get("path") or check.get("run_id") or check.get("status")
@@ -921,7 +921,7 @@ def local_runtime_report(root: Path, write: bool = False) -> dict[str, Any]:
 def format_local_runtime(report: dict[str, Any]) -> str:
     ollama = report["ollama"]
     lines = [
-        "MemoryOS Local Runtime",
+        "Hive Mind Local Runtime",
         "",
         f"Ollama wrapper: {ollama.get('status')} {ollama.get('path') or ''}",
         f"Ollama server: {ollama.get('server')}",
@@ -961,10 +961,10 @@ def checks_report(root: Path) -> dict[str, Any]:
 
 
 def format_checks_report(report: dict[str, Any]) -> str:
-    lines = [f"MemoryOS Checks: {report.get('checks_dir')}", ""]
+    lines = [f"Hive Mind Checks: {report.get('checks_dir')}", ""]
     checks = report.get("checks") or []
     if not checks:
-        lines.append("No checks found. Run: mos init")
+        lines.append("No checks found. Run: hive init")
         return "\n".join(lines)
     for check in checks:
         lines.append(f"- {check.get('id')} [{check.get('severity')}] {check.get('title')}")
@@ -991,7 +991,7 @@ def run_checks(root: Path, run_id: str | None = None) -> dict[str, Any]:
     }
     out_path = paths.run_dir / "checks_report.json"
     write_json(out_path, out)
-    append_transcript(paths, "Ran", f"`mos check run` -> `{out_path.relative_to(root).as_posix()}` verdict={verdict}")
+    append_transcript(paths, "Ran", f"`hive check run` -> `{out_path.relative_to(root).as_posix()}` verdict={verdict}")
     append_event(paths, "checks_report_created", {"artifact": out_path.relative_to(root).as_posix(), "verdict": verdict})
     return out
 
@@ -1077,14 +1077,14 @@ def run_git(root: Path, args: list[str]) -> dict[str, Any]:
 
 
 def proposed_commit_message(state: dict[str, Any], report: dict[str, Any]) -> str:
-    request = str(state.get("user_request") or "Update MemoryOS")
+    request = str(state.get("user_request") or "Update Hive Mind")
     first = request.strip().splitlines()[0][:72]
     if first:
         return first[0].upper() + first[1:]
     changed = report.get("changed_files") or []
     if changed:
         return f"Update {changed[0]}"
-    return "Update MemoryOS"
+    return "Update Hive Mind"
 
 
 def format_checks_run(report: dict[str, Any]) -> str:
@@ -1153,7 +1153,7 @@ def first_heading(text: str) -> str | None:
 
 def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: str = "default") -> Path:
     """Route one user prompt through the local intent router and prepare provider artifacts."""
-    paths = create_run(root, prompt, project="MemoryOS", task_type="routed") if run_id is None else load_run(root, run_id)[0]
+    paths = create_run(root, prompt, project="Hive Mind", task_type="routed") if run_id is None else load_run(root, run_id)[0]
     paths.local_dir.mkdir(parents=True, exist_ok=True)
     ensure_ollama_server(root)
     router_input = (
@@ -1219,7 +1219,7 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
     }
     router_path = paths.local_dir / "intent_router.json"
     write_json(router_path, result)
-    append_transcript(paths, "Ran", f"`mos ask` routed prompt via {route_source} -> `{router_path.relative_to(root).as_posix()}`")
+    append_transcript(paths, "Ran", f"`hive ask` routed prompt via {route_source} -> `{router_path.relative_to(root).as_posix()}`")
     set_agent_status(paths, "local-intent-router", "completed" if router_status in {"completed", "fallback"} else "failed")
     append_event(paths, "intent_routed", {"agent": "local", "role": "intent-router", "artifact": router_path.relative_to(root).as_posix(), "source": route_source})
     append_hive_activity(
@@ -1300,9 +1300,9 @@ def orchestrate_prompt(
         role = str(action.get("role"))
         mode = "local_runtime" if provider == "local" else (providers.get(provider) or {}).get("mode", "prepare_only")
         command = (
-            f"mos invoke local --role {role}"
+            f"hive invoke local --role {role}"
             if provider == "local"
-            else f"mos invoke {provider} --role {role}" + (" --execute" if execute and provider != "codex" else "")
+            else f"hive invoke {provider} --role {role}" + (" --execute" if execute and provider != "codex" else "")
         )
         members.append(
             {
@@ -1375,7 +1375,7 @@ def load_routing_plan(root: Path, run_id: str | None = None) -> dict[str, Any]:
             "run_id": paths.run_id,
             "status": "missing",
             "path": plan_path.as_posix(),
-            "message": "No routing plan yet. Run: mos ask \"your task\"",
+            "message": "No routing plan yet. Run: hive ask \"your task\"",
         }
     return json.loads(plan_path.read_text(encoding="utf-8"))
 
@@ -1712,7 +1712,7 @@ def invoke_local(root: Path, role: str, run_id: str | None = None, complexity: s
         run_status = "needs_attention"
     out_path = paths.local_dir / f"{role.replace('-', '_')}.json"
     write_json(out_path, result)
-    append_transcript(paths, "Ran", f"`mos invoke local --role {role}` -> `{out_path.relative_to(root).as_posix()}` status={agent_status}")
+    append_transcript(paths, "Ran", f"`hive invoke local --role {role}` -> `{out_path.relative_to(root).as_posix()}` status={agent_status}")
     set_agent_status(paths, agent_name, agent_status)
     append_event(
         paths,
@@ -1839,7 +1839,7 @@ def build_verification(root: Path, run_id: str | None = None) -> Path:
     report = validate_run_artifacts(paths.run_dir, root)
     out_path = paths.run_dir / "verification.yaml"
     out_path.write_text(format_simple_yaml(report), encoding="utf-8")
-    append_transcript(paths, "Ran", f"`mos verify` -> `{out_path.relative_to(root).as_posix()}` verdict={report.get('verdict')}")
+    append_transcript(paths, "Ran", f"`hive verify` -> `{out_path.relative_to(root).as_posix()}` verdict={report.get('verdict')}")
     append_event(paths, "verification_created", {"artifact": out_path.relative_to(root).as_posix()})
     set_agent_status(paths, "verifier", "completed")
     update_state(paths, phase="verification", status="needs_review")
@@ -1852,7 +1852,7 @@ def build_memory_draft(root: Path, run_id: str | None = None) -> Path:
         "type": "artifact",
         "content": f"Run {paths.run_id} created structured blackboard artifacts for: {state.get('user_request')}",
         "origin": "mixed",
-        "project": state.get("project", "MemoryOS"),
+        "project": state.get("project", "Hive Mind"),
         "confidence": 0.8,
         "status": "draft",
         "raw_refs": [paths.final_report.relative_to(root).as_posix(), paths.events.relative_to(root).as_posix()],
@@ -1898,7 +1898,7 @@ def build_external_prompt(paths: RunPaths, state: dict[str, Any], agent: str, ro
         "executor": "Implement only the scoped task. Update result artifacts with changed files, commands, and unresolved issues.",
     }.get(role, "Work only through structured artifacts and return a concise result.")
     return (
-        f"# MemoryOS Harness Prompt\n\n"
+        f"# Hive Mind Harness Prompt\n\n"
         f"Agent: {agent}\n"
         f"Role: {role}\n"
         f"Run: {paths.run_id}\n"
@@ -2114,12 +2114,12 @@ def default_routing_yaml() -> str:
 def default_project_readme() -> str:
     return (
         "# Project MemoryOS\n\n"
-        "This directory stores project-local MemoryOS config, context, skills, and run references.\n\n"
+        "This directory stores project-local Hive Mind config, context, skills, and run references.\n\n"
         "Start with:\n\n"
         "```bash\n"
-        "mos doctor\n"
-        "mos run \"your task\"\n"
-        "mos tui\n"
+        "hive doctor\n"
+        "hive run \"your task\"\n"
+        "hive tui\n"
         "```\n"
     )
 

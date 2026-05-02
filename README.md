@@ -1,8 +1,10 @@
-# MyWorld Agent System / Hive Mind
+# Hive Mind
+
+Hive Mind is a local swarm harness for existing provider CLIs and local LLM workers.
+
+It coordinates installed tools such as Claude, Codex, Gemini, and Ollama-backed local workers into one shared run state. It does not replace provider CLIs; it wraps them into a user-governed blackboard loop.
 
 Purpose: implement the user's broader agent / ontology system separately from the `universe/quantum` paper workspace.
-
-`mos` is now the Hive Mind CLI: a local control plane that combines installed provider CLIs such as Claude, Codex, Gemini, and local LLM workers into one shared run state.
 
 Current boundary:
 
@@ -59,21 +61,21 @@ See:
 ## Fast Workbench
 
 ```bash
-scripts/install-mos-cli.sh
-mos init
-mos
-mos "your task"
-mos hive activity
-mos plan
-mos check run
-mos tui
+scripts/install-hive-cli.sh
+hive init
+hive
+hive "your task"
+hive hive activity
+hive plan
+hive check run
+hive tui
 ```
 
 Or without installing:
 
 ```bash
-python -m memoryos.mos init
-scripts/mos-workbench.sh "your task"
+python -m hivemind.hive init
+scripts/hive-workbench.sh "your task"
 ```
 
-Onboarding persists detected provider/runtime settings to `.memoryos/settings_profile.json` and `~/.memoryos/settings_profile.json`. Use `eval "$(python -m memoryos.mos settings shell)"` when launching provider CLIs from custom scripts.
+Onboarding persists detected provider/runtime settings to `.hivemind/settings_profile.json` and `~/.hivemind/settings_profile.json`. Use `eval "$(python -m hivemind.hive settings shell)"` when launching provider CLIs from custom scripts.

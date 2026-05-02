@@ -1,102 +1,102 @@
-# Hive Mind / MemoryOS Harness TUI
+# Hive Mind CLI/TUI
 
-`mos` is the Hive Mind control plane for the structured agent blackboard described in `docs/tui.md`. It combines already-installed provider CLIs and local LLM workers instead of replacing their native interfaces.
+`hive` is the Hive Mind control plane for the structured agent blackboard described in `docs/tui.md`. It combines already-installed provider CLIs and local LLM workers instead of replacing their native interfaces.
 
 ## Commands
 
 ```bash
-python -m memoryos.mos init
-scripts/install-mos-cli.sh
-mos
-mos "Build Draft Review screen"
-mos run -q --json "Build Draft Review screen"
-mos plan
-mos check list
-mos check run
-mos diff
-mos review-diff
-mos commit-summary
-mos agents detect --json
-mos agents status
-mos chat
-mos orchestrate "Build parser and review risks"
-mos next
-mos prompt
-mos log
-mos hive activity
-mos memory list
-mos tui
-mos completion zsh
+python -m hivemind.hive init
+scripts/install-hive-cli.sh
+hive
+hive "Build Draft Review screen"
+hive run -q --json "Build Draft Review screen"
+hive plan
+hive check list
+hive check run
+hive diff
+hive review-diff
+hive commit-summary
+hive agents detect --json
+hive agents status
+hive chat
+hive orchestrate "Build parser and review risks"
+hive next
+hive prompt
+hive log
+hive hive activity
+hive memory list
+hive tui
+hive completion zsh
 npm run production
 ```
 
 Without installing:
 
 ```bash
-python -m memoryos.mos init
-python -m memoryos.mos doctor
-python -m memoryos.mos local status
-python -m memoryos.mos local setup
-python -m memoryos.mos agents detect
-python -m memoryos.mos settings detect
-eval "$(python -m memoryos.mos settings shell)"
-python -m memoryos.mos run "Build Draft Review screen"
-python -m memoryos.mos ask "Build Draft Review screen"
-python -m memoryos.mos plan
-python -m memoryos.mos status
-python -m memoryos.mos next
-python -m memoryos.mos tui
-python -m memoryos.mos context
-python -m memoryos.mos handoff
-python -m memoryos.mos invoke local --role context
-python -m memoryos.mos invoke claude --role planner
-python -m memoryos.mos invoke codex --role executor
-python -m memoryos.mos invoke gemini --role reviewer
-python -m memoryos.mos verify
-python -m memoryos.mos summarize
-python -m memoryos.mos memory draft
-python -m memoryos.mos memory list
+python -m hivemind.hive init
+python -m hivemind.hive doctor
+python -m hivemind.hive local status
+python -m hivemind.hive local setup
+python -m hivemind.hive agents detect
+python -m hivemind.hive settings detect
+eval "$(python -m hivemind.hive settings shell)"
+python -m hivemind.hive run "Build Draft Review screen"
+python -m hivemind.hive ask "Build Draft Review screen"
+python -m hivemind.hive plan
+python -m hivemind.hive status
+python -m hivemind.hive next
+python -m hivemind.hive tui
+python -m hivemind.hive context
+python -m hivemind.hive handoff
+python -m hivemind.hive invoke local --role context
+python -m hivemind.hive invoke claude --role planner
+python -m hivemind.hive invoke codex --role executor
+python -m hivemind.hive invoke gemini --role reviewer
+python -m hivemind.hive verify
+python -m hivemind.hive summarize
+python -m hivemind.hive memory draft
+python -m hivemind.hive memory list
 ```
 
-If installed as a package, `mos` points to the same command.
+If installed as a package, `hive` points to the same command.
 
-`mos "your task"` is shorthand for `mos orchestrate "your task"`.
-Bare `mos` opens the conversational operator shell. Use `mos chat` explicitly for the same shell, or `mos shell` for the older thin slash-command shell. Use `mos tui` for the curses status board.
+`hive "your task"` is shorthand for `hive orchestrate "your task"`.
+Bare `hive` opens the conversational operator shell. Use `hive chat` explicitly for the same shell, or `hive shell` for the older thin slash-command shell. Use `hive tui` for the curses status board.
 
-`mos orchestrate` is the default prompt path. It asks the local router to split the request into a small agent society, prepares each provider/local worker artifact, writes `society_plan.json`, and reports which member owns which role. `mos ask` remains available for route-only debugging.
+`hive orchestrate` is the default prompt path. It asks the local router to split the request into a small agent society, prepares each provider/local worker artifact, writes `society_plan.json`, and reports which member owns which role. `hive ask` remains available for route-only debugging.
 
 Hive Mind keeps `events.jsonl` as a machine/audit log and `hive_events.jsonl` as the human activity feed. The TUI latest-events panel prefers `hive_events.jsonl`, so it shows role assignment and swarm decisions instead of only file-created events.
 
-`mos status` prints the run board: pipeline, agent status, artifact status, and the next recommended command. `mos next` prints only the next action for fast terminal loops.
+`hive status` prints the run board: pipeline, agent status, artifact status, and the next recommended command. `hive next` prints only the next action for fast terminal loops.
 
-`mos check run` evaluates markdown policy files under `.memoryos/checks/`. `mos diff`, `mos review-diff`, and `mos commit-summary` provide the first git-aware loop without committing automatically.
-`mos prompt` reads a multiline/stdin prompt and routes it through the local intent router. `mos log` shows the current run `transcript.md`.
+`hive check run` evaluates markdown policy files under `.hivemind/checks/`. `hive diff`, `hive review-diff`, and `hive commit-summary` provide the first git-aware loop without committing automatically.
+`hive prompt` reads a multiline/stdin prompt and routes it through the local intent router. `hive log` shows the current run `transcript.md`.
 
 Production wrappers:
 
 ```bash
-scripts/install-mos-cli.sh
+scripts/install-hive-cli.sh
 npm run production
 npm link
-bin/mos doctor
+bin/hive doctor
 ```
 
-`bin/mos` executes `python -m memoryos.mos` from the repo root. The npm package is private and exists as a local production wrapper, not a published registry package.
+`bin/hive` executes `python -m hivemind.hive` from the repo root. The npm package is private and exists as a local production wrapper, not a published registry package.
 
 For a fast local workbench loop:
 
 ```bash
-scripts/mos-workbench.sh "your task"
+scripts/hive-workbench.sh "your task"
 ```
 
-This creates or reuses a run, persists provider/runtime settings, opens the context pack in `$EDITOR`, prepares Claude/Codex/Gemini artifacts, runs verification, and opens the TUI. Set `MOS_SKIP_EDIT=1` or `MOS_OPEN_TUI=0` for scripted runs.
+This creates or reuses a run, persists provider/runtime settings, opens the context pack in `$EDITOR`, prepares Claude/Codex/Gemini artifacts, runs verification, and opens the TUI. Set `HIVE_SKIP_EDIT=1` or `HIVE_OPEN_TUI=0` for scripted runs.
 
 ## Onboarding
 
-`python -m memoryos.mos init` is idempotent. It creates:
+`python -m hivemind.hive init` is idempotent. It creates:
 
 ```text
-~/.memoryos/
+~/.hivemind/
   config.yaml
   agents.yaml
   routing.yaml
@@ -108,7 +108,7 @@ This creates or reuses a run, persists provider/runtime settings, opens the cont
   mcp/
   cache/
 
-project/.memoryos/
+project/.hivemind/
   project.yaml
   routing.yaml
   README.md
@@ -117,20 +117,20 @@ project/.memoryos/
   skills/
 ```
 
-It also initializes `.runs/`, runs provider detection, writes `.runs/provider_capabilities.json`, scans local Ollama model manifests, writes `.memoryos/local_runtime.json`, and prints next actions.
+It also initializes `.runs/`, runs provider detection, writes `.runs/provider_capabilities.json`, scans local Ollama model manifests, writes `.hivemind/local_runtime.json`, and prints next actions.
 
 It also writes a production settings profile:
 
 ```text
-~/.memoryos/settings_profile.json
-project/.memoryos/settings_profile.json
+~/.hivemind/settings_profile.json
+project/.hivemind/settings_profile.json
 ```
 
-That profile tracks provider command paths, versions, roles, modes, local model inventory, warnings, and shell exports such as `MOS_CODEX_BIN`. This matters when a PATH wrapper is pinned ahead of the real provider binary. On this machine, `/home/user/bin/codex` is gated, while the usable Codex CLI is detected at `/home/user/.nvm/versions/node/v22.22.2/bin/codex`.
+That profile tracks provider command paths, versions, roles, modes, local model inventory, warnings, and shell exports such as `HIVE_CODEX_BIN`. This matters when a PATH wrapper is pinned ahead of the real provider binary. On this machine, `/home/user/bin/codex` is gated, while the usable Codex CLI is detected at `/home/user/.nvm/versions/node/v22.22.2/bin/codex`.
 
 ## TUI Keybindings
 
-Inside `python -m memoryos.mos tui`:
+Inside `python -m hivemind.hive tui`:
 
 ```text
 q  quit
@@ -151,7 +151,7 @@ d  capture git diff report
 h  show keybinding hint
 ```
 
-Large terminals render the dashboard as a control plane: run/health summary, pipeline, agents, artifacts, latest events, next actions, keybar, and an always-visible `mos>` composer. The TUI is interactive: press `Enter` and type a normal prompt to create and route a new run, or press `/` to enter slash commands such as `/verify`, `/memory`, `/summary`, `/diff`, `/local`, `/claude`, `/codex`, and `/gemini`.
+Large terminals render the dashboard as a control plane: run/health summary, pipeline, agents, artifacts, latest events, next actions, keybar, and an always-visible `hive>` composer. The TUI is interactive: press `Enter` and type a normal prompt to create and route a new run, or press `/` to enter slash commands such as `/verify`, `/memory`, `/summary`, `/diff`, `/local`, `/claude`, `/codex`, and `/gemini`.
 
 The TUI does not try to be the final desktop UI. It is an operational control surface for driving agent work through run artifacts: pipeline first, agent aware, artifact driven, audit friendly.
 
@@ -186,16 +186,16 @@ The TUI reads `run_state.json` and `events.jsonl`. It does not require a databas
 For prompt-first work, use:
 
 ```bash
-python -m memoryos.mos ask "your task"
+python -m hivemind.hive ask "your task"
 ```
 
-`mos ask` creates or reuses a run, asks the local `intent_router` worker to decompose the prompt, writes `routing_plan.json`, and prepares the matching Claude/Codex/Gemini/local artifacts. If Ollama is unreachable, it writes a heuristic fallback route so the run remains usable instead of blocking.
+`hive ask` creates or reuses a run, asks the local `intent_router` worker to decompose the prompt, writes `routing_plan.json`, and prepares the matching Claude/Codex/Gemini/local artifacts. If Ollama is unreachable, it writes a heuristic fallback route so the run remains usable instead of blocking.
 
-Inside `mos tui`, press `n` to enter a fresh prompt directly. The TUI creates a new run and routes it through the same local intent router. Press `a` to re-route the current run.
+Inside `hive tui`, press `n` to enter a fresh prompt directly. The TUI creates a new run and routes it through the same local intent router. Press `a` to re-route the current run.
 
-`mos invoke local --role ...` writes an artifact even when Ollama is unavailable. This keeps the run trace complete and makes infrastructure failures visible in the TUI instead of crashing the harness.
+`hive invoke local --role ...` writes an artifact even when Ollama is unavailable. This keeps the run trace complete and makes infrastructure failures visible in the TUI instead of crashing the harness.
 
-`mos local status` reports the local runtime without requiring hosted provider keys. `mos local setup` writes `.memoryos/local_runtime.json` with the detected wrapper, server state, and model manifests.
+`hive local status` reports the local runtime without requiring hosted provider keys. `hive local setup` writes `.hivemind/local_runtime.json` with the detected wrapper, server state, and model manifests.
 
 DeepSeek and Qwen have two separate paths:
 
@@ -218,9 +218,9 @@ Supported local roles:
 Provider CLIs are treated as workers behind the same artifact protocol.
 
 ```bash
-python -m memoryos.mos invoke claude --role planner
-python -m memoryos.mos invoke codex --role executor
-python -m memoryos.mos invoke gemini --role reviewer
+python -m hivemind.hive invoke claude --role planner
+python -m hivemind.hive invoke codex --role executor
+python -m hivemind.hive invoke gemini --role reviewer
 ```
 
 These commands create:
@@ -233,8 +233,8 @@ agents/<provider>/<role>_command.txt
 For supported non-interactive execution:
 
 ```bash
-python -m memoryos.mos invoke claude --role planner --execute
-python -m memoryos.mos invoke gemini --role reviewer --execute
+python -m hivemind.hive invoke claude --role planner --execute
+python -m hivemind.hive invoke gemini --role reviewer --execute
 ```
 
 `codex` uses the documented non-interactive shape:
@@ -251,7 +251,7 @@ The installed provider commands currently visible to the harness are:
 - `codex` (`exec` contract known; local execution currently gated)
 - `gemini` (`gemini --version` reported `0.40.1`)
 
-Use `python -m memoryos.mos settings detect` to refresh the profile after installing or changing provider CLIs. Use `eval "$(python -m memoryos.mos settings shell)"` before custom shell scripts that need the resolved binaries.
+Use `python -m hivemind.hive settings detect` to refresh the profile after installing or changing provider CLIs. Use `eval "$(python -m hivemind.hive settings shell)"` before custom shell scripts that need the resolved binaries.
 
 ## Current Boundary
 

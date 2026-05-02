@@ -1,4 +1,4 @@
-"""Validation for MemoryOS harness run artifacts."""
+"""Validation for Hive Mind run artifacts."""
 
 from __future__ import annotations
 

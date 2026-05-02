@@ -24,7 +24,7 @@ def main() -> None:
     import_cmd.add_argument("paths", nargs="+", help="files to import")
     import_cmd.add_argument("--dry-run", action="store_true", help="preview import counts without appending")
 
-    import_run_cmd = sub.add_parser("import-run", help="import memory drafts from a mos run folder")
+    import_run_cmd = sub.add_parser("import-run", help="import memory drafts from a hive run folder")
     import_run_cmd.add_argument("run", help="run id, run folder, or 'current'")
     import_run_cmd.add_argument("--dry-run", action="store_true", help="preview import counts without appending")
 
