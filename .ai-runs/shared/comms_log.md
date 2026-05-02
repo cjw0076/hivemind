@@ -188,3 +188,10 @@
 - Decision: Added prompt-first routing: `mos ask`, local `intent_router`, `routing_plan.json`, `mos plan`, TUI `n` new prompt, and TUI `a` auto-route current run. `mos ask` starts workspace-local Ollama if needed and falls back to heuristic routing if local output is unavailable or invalid.
 - Evidence: `run_20260502_100751_a8d41e` routed through `qwen3:8b` with intent `implementation` and prepared local context, Claude planner, Codex executor, and Gemini reviewer artifacts. Verified py_compile, unit tests, `mos plan`, and status route health.
 - Next: Add richer routing policy and provider execution controls after the artifact loop stays stable.
+
+## 2026-05-02 10:17 KST - Codex
+
+- Context: User asked to turn the harness into a real CLI now.
+- Decision: Made `mos` installable with `scripts/install-mos-cli.sh`, fixed setuptools package discovery, and added provider-style shorthand so `mos "task"` routes through `mos ask`.
+- Evidence: Editable install succeeded to `/home/user/.local/bin/mos`; verified `mos --version`, `mos doctor`, `mos "CLI shorthand smoke route"`, `mos plan`, `mos status`, py_compile, and unit tests.
+- Next: Continue CLI hardening around provider execution controls, better TUI layout, and install/onboarding polish.

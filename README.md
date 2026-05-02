@@ -57,6 +57,16 @@ See:
 ## Fast Workbench
 
 ```bash
+scripts/install-mos-cli.sh
+mos init
+mos "your task"
+mos plan
+mos tui
+```
+
+Or without installing:
+
+```bash
 python -m memoryos.mos init
 scripts/mos-workbench.sh "your task"
 ```

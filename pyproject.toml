@@ -9,5 +9,8 @@ dependencies = ["PyYAML>=6.0.3"]
 memoryos = "memoryos.cli:main"
 mos = "memoryos.mos:main"
 
+[tool.setuptools.packages.find]
+include = ["memoryos*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

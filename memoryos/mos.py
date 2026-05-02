@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from .harness import (
@@ -35,9 +36,52 @@ from .harness import (
 from .tui import print_status, run_tui
 
 
-def main() -> None:
+COMMANDS = {
+    "init",
+    "doctor",
+    "agents",
+    "settings",
+    "local",
+    "run",
+    "ask",
+    "status",
+    "tui",
+    "plan",
+    "runs",
+    "open",
+    "context",
+    "handoff",
+    "invoke",
+    "verify",
+    "summarize",
+    "memory",
+}
+
+
+def normalize_argv(argv: list[str]) -> list[str]:
+    """Allow provider-style prompt entry: `mos "build this"` -> `mos ask "build this"`."""
+    if not argv:
+        return argv
+    if argv[0] in {"-h", "--help", "--version"}:
+        return argv
+    if argv[0] == "--root":
+        if len(argv) >= 3 and argv[2] not in COMMANDS and not argv[2].startswith("-"):
+            return [argv[0], argv[1], "ask", " ".join(argv[2:])]
+        return argv
+    if argv[0].startswith("--root="):
+        if len(argv) >= 2 and argv[1] not in COMMANDS and not argv[1].startswith("-"):
+            return [argv[0], "ask", " ".join(argv[1:])]
+        return argv
+    if argv[0] not in COMMANDS and not argv[0].startswith("-"):
+        return ["ask", " ".join(argv)]
+    return argv
+
+
+def main(argv: list[str] | None = None) -> None:
+    argv = normalize_argv(list(sys.argv[1:] if argv is None else argv))
     parser = argparse.ArgumentParser(prog="mos", description="MemoryOS harness CLI/TUI")
     parser.add_argument("--root", default=".", help="workspace root")
+    parser.add_argument("--version", action="version", version="mos 0.1.0")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     init_cmd = sub.add_parser("init", help="initialize MemoryOS onboarding state")
@@ -117,7 +161,7 @@ def main() -> None:
     draft_cmd = memory_sub.add_parser("draft", help="create memory_drafts.json")
     draft_cmd.add_argument("--run-id")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     root = Path(args.root).resolve()
 
     if args.cmd == "init":

@@ -6,6 +6,16 @@
 
 ```bash
 python -m memoryos.mos init
+scripts/install-mos-cli.sh
+mos "Build Draft Review screen"
+mos plan
+mos tui
+```
+
+Without installing:
+
+```bash
+python -m memoryos.mos init
 python -m memoryos.mos doctor
 python -m memoryos.mos local status
 python -m memoryos.mos local setup
@@ -29,6 +39,8 @@ python -m memoryos.mos memory draft
 ```
 
 If installed as a package, `mos` points to the same command.
+
+`mos "your task"` is shorthand for `mos ask "your task"`.
 
 For a fast local workbench loop:
 
