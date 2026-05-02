@@ -21,6 +21,7 @@ Sources: `VG-03`, `VG-04`, `VG-05`, `VG-13`.
 - [x] Include local LLM model manifest detection in `mos init` onboarding output.
 - [x] Stabilize `mos` run artifact schemas: task, handoff, run state, verification, memory drafts, final report.
 - [x] Add canonical `.runs` protocol spec for the MemoryOS Core kernel.
+- [x] Add human-readable `transcript.md` for Codex-style run logs.
 - [x] Add event taxonomy and validation for `.runs/*/events.jsonl`.
 - [x] Normalize provider invocation artifacts for Claude, Codex, Gemini, and local workers.
 - [x] Add local worker route table with schema validation, confidence, and escalation fields.
@@ -49,6 +50,7 @@ Sources: `VG-03`, `VG-04`, `VG-13`.
 - [x] Add interactive slash-command shell for `mos` inspired by OpenClaude/Open Codex.
 - [x] Add `.memoryos/checks/*.md` markdown-as-agent-check policy files inspired by Continue.
 - [x] Add git-first diff/check/commit summary loop inspired by Aider.
+- [x] Add unified prompt input via `mos prompt` and slash shell `/prompt`.
 - [x] Add adapter registry stubs for opencode, goose, OpenClaude-compatible runtimes.
 - [ ] Harden provider result validation for all prepared/executed adapters.
 

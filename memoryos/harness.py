@@ -63,6 +63,10 @@ class RunPaths:
         return self.run_dir / "final_report.md"
 
     @property
+    def transcript(self) -> Path:
+        return self.run_dir / "transcript.md"
+
+    @property
     def artifacts(self) -> Path:
         return self.run_dir / "artifacts"
 
@@ -255,6 +259,7 @@ def create_run(root: Path, user_request: str, project: str = "MemoryOS", task_ty
             "verification": (paths.run_dir / "verification.yaml").relative_to(root).as_posix(),
             "memory_drafts": (paths.run_dir / "memory_drafts.json").relative_to(root).as_posix(),
             "final_report": paths.final_report.relative_to(root).as_posix(),
+            "transcript": paths.transcript.relative_to(root).as_posix(),
         },
     }
     write_json(paths.state, state)
@@ -265,6 +270,7 @@ def create_run(root: Path, user_request: str, project: str = "MemoryOS", task_ty
     write_json(paths.run_dir / "memory_drafts.json", {"memory_drafts": []})
     paths.final_report.write_text(default_final_report(state), encoding="utf-8")
     append_event(paths, "run_created", {"task": user_request})
+    append_transcript(paths, "Run", f'Created `{run_id}` for task: {user_request}')
     set_current(root, run_id)
     return paths
 
@@ -766,6 +772,7 @@ def run_checks(root: Path, run_id: str | None = None) -> dict[str, Any]:
     }
     out_path = paths.run_dir / "checks_report.json"
     write_json(out_path, out)
+    append_transcript(paths, "Ran", f"`mos check run` -> `{out_path.relative_to(root).as_posix()}` verdict={verdict}")
     append_event(paths, "checks_report_created", {"artifact": out_path.relative_to(root).as_posix(), "verdict": verdict})
     return out
 
@@ -787,6 +794,7 @@ def git_diff_report(root: Path, run_id: str | None = None) -> dict[str, Any]:
     }
     out_path = paths.run_dir / "git_diff_report.json"
     write_json(out_path, report)
+    append_transcript(paths, "Ran", f"`git diff --stat` and `git diff --name-only` -> `{out_path.relative_to(root).as_posix()}`")
     append_event(paths, "git_diff_report_created", {"artifact": out_path.relative_to(root).as_posix(), "changed": len(report["changed_files"])})
     return report
 
@@ -811,6 +819,7 @@ def review_diff(root: Path, run_id: str | None = None) -> Path:
     diff_path = paths.artifacts / "git_diff.patch"
     diff_path.parent.mkdir(parents=True, exist_ok=True)
     diff_path.write_text(diff[:120000], encoding="utf-8")
+    append_transcript(paths, "Ran", f"`git diff -- .` -> `{diff_path.relative_to(root).as_posix()}`")
     paths.context_pack.write_text(
         paths.context_pack.read_text(encoding="utf-8")
         + "\n\n## Git Diff For Review\n"
@@ -838,6 +847,7 @@ def commit_summary(root: Path, run_id: str | None = None) -> Path:
     lines.extend(["", "## Proposed Commit Message", "", proposed_commit_message(state, report)])
     out_path = paths.run_dir / "commit_summary.md"
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    append_transcript(paths, "Edited", f"`{out_path.relative_to(root).as_posix()}` proposed commit summary")
     append_event(paths, "commit_summary_created", {"artifact": out_path.relative_to(root).as_posix()})
     return out_path
 
@@ -990,6 +1000,7 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
     }
     router_path = paths.local_dir / "intent_router.json"
     write_json(router_path, result)
+    append_transcript(paths, "Ran", f"`mos ask` routed prompt via {route_source} -> `{router_path.relative_to(root).as_posix()}`")
     set_agent_status(paths, "local-intent-router", "completed" if router_status in {"completed", "fallback"} else "failed")
     append_event(paths, "intent_routed", {"agent": "local", "role": "intent-router", "artifact": router_path.relative_to(root).as_posix(), "source": route_source})
 
@@ -1025,6 +1036,7 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
             "open_questions": parsed.get("open_questions", []),
         },
     )
+    append_transcript(paths, "Edited", f"`{plan_path.relative_to(root).as_posix()}` with {len(actions)} route actions")
     append_event(paths, "routing_plan_created", {"artifact": plan_path.relative_to(root).as_posix(), "prepared": len(prepared)})
     update_state(paths, phase="routing", status="ready")
     return plan_path
@@ -1200,6 +1212,35 @@ def append_event(paths: RunPaths, event_type: str, payload: dict[str, Any] | Non
     with paths.events.open("a", encoding="utf-8") as f:
         f.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
     update_state(paths, latest_event=event_type)
+    append_transcript(paths, "Event", f"{event_type} {json.dumps(payload, ensure_ascii=False, sort_keys=True)}")
+
+
+def append_transcript(paths: RunPaths, title: str, body: str) -> None:
+    if not paths.transcript.exists():
+        paths.transcript.write_text(f"# Transcript: {paths.run_id}\n\n", encoding="utf-8")
+    with paths.transcript.open("a", encoding="utf-8") as f:
+        f.write(f"## {now_iso()} - {title}\n")
+        f.write(body.rstrip() + "\n\n")
+
+
+def read_transcript(root: Path, run_id: str | None = None, tail: int = 80) -> str:
+    paths, _ = load_run(root, run_id)
+    ensure_transcript(paths)
+    if not paths.transcript.exists():
+        return f"No transcript yet: {paths.transcript}"
+    lines = paths.transcript.read_text(encoding="utf-8").splitlines()
+    return "\n".join(lines[-tail:]) + "\n"
+
+
+def ensure_transcript(paths: RunPaths) -> None:
+    if paths.transcript.exists():
+        return
+    paths.transcript.write_text(
+        f"# Transcript: {paths.run_id}\n\n"
+        f"## {now_iso()} - Transcript\n"
+        "Created transcript for existing run.\n\n",
+        encoding="utf-8",
+    )
 
 
 def read_events(paths: RunPaths, limit: int = 20) -> list[dict[str, Any]]:
@@ -1289,6 +1330,7 @@ def invoke_local(root: Path, role: str, run_id: str | None = None, complexity: s
         run_status = "needs_attention"
     out_path = paths.local_dir / f"{role.replace('-', '_')}.json"
     write_json(out_path, result)
+    append_transcript(paths, "Ran", f"`mos invoke local --role {role}` -> `{out_path.relative_to(root).as_posix()}` status={agent_status}")
     set_agent_status(paths, agent_name, agent_status)
     append_event(
         paths,
@@ -1314,6 +1356,7 @@ def invoke_external_agent(
     agent_name = f"{agent}-{role}"
     prompt_path = agent_dir / f"{role}_prompt.md"
     prompt_path.write_text(build_external_prompt(paths, state, agent, role), encoding="utf-8")
+    append_transcript(paths, "Edited", f"`{prompt_path.relative_to(root).as_posix()}` for {agent}/{role}")
     set_agent_status(paths, agent_name, "ready")
     append_event(
         paths,
@@ -1339,6 +1382,7 @@ def invoke_external_agent(
             "execute": False,
         }
         result_path.write_text(format_simple_yaml(result), encoding="utf-8")
+        append_transcript(paths, "Prepared", f"{agent}/{role} -> `{result_path.relative_to(root).as_posix()}`")
         set_agent_status(paths, agent_name, "prepared")
         append_event(paths, "agent_prepared", {"agent": agent, "role": role, "artifact": result_path.relative_to(root).as_posix()})
         return result_path
@@ -1360,6 +1404,7 @@ def invoke_external_agent(
             "execute": False,
         }
         result_path.write_text(format_simple_yaml(result), encoding="utf-8")
+        append_transcript(paths, "Prepared", f"{agent}/{role} blocked as prepare-only -> `{result_path.relative_to(root).as_posix()}`")
         set_agent_status(paths, agent_name, "failed")
         append_event(paths, "agent_failed", {"agent": agent, "role": role, "artifact": result_path.relative_to(root).as_posix()})
         update_state(paths, phase="handoff", status="needs_attention")
@@ -1376,6 +1421,7 @@ def invoke_external_agent(
             "reason": f"{agent} binary not found",
         }
         result_path.write_text(format_simple_yaml(result), encoding="utf-8")
+        append_transcript(paths, "Prepared", f"{agent}/{role} unavailable -> `{result_path.relative_to(root).as_posix()}`")
         set_agent_status(paths, agent_name, "failed")
         append_event(paths, "agent_failed", {"agent": agent, "role": role, "artifact": result_path.relative_to(root).as_posix()})
         update_state(paths, phase="handoff", status="needs_attention")
@@ -1398,6 +1444,7 @@ def invoke_external_agent(
         "output": output_path.relative_to(root).as_posix(),
     }
     result_path.write_text(format_simple_yaml(result), encoding="utf-8")
+    append_transcript(paths, "Ran", f"{agent}/{role} execute -> `{result_path.relative_to(root).as_posix()}` status={status}")
     set_agent_status(paths, agent_name, status)
     append_event(paths, f"agent_{status}", {"agent": agent, "role": role, "artifact": result_path.relative_to(root).as_posix()})
     update_state(paths, phase="handoff", status="in_progress" if status == "completed" else "needs_attention")
@@ -1406,9 +1453,11 @@ def invoke_external_agent(
 
 def build_verification(root: Path, run_id: str | None = None) -> Path:
     paths, _ = load_run(root, run_id)
+    ensure_transcript(paths)
     report = validate_run_artifacts(paths.run_dir, root)
     out_path = paths.run_dir / "verification.yaml"
     out_path.write_text(format_simple_yaml(report), encoding="utf-8")
+    append_transcript(paths, "Ran", f"`mos verify` -> `{out_path.relative_to(root).as_posix()}` verdict={report.get('verdict')}")
     append_event(paths, "verification_created", {"artifact": out_path.relative_to(root).as_posix()})
     set_agent_status(paths, "verifier", "completed")
     update_state(paths, phase="verification", status="needs_review")
@@ -1428,6 +1477,7 @@ def build_memory_draft(root: Path, run_id: str | None = None) -> Path:
     }
     out_path = paths.run_dir / "memory_drafts.json"
     write_json(out_path, {"memory_drafts": [draft]})
+    append_transcript(paths, "Edited", f"`{out_path.relative_to(root).as_posix()}` with 1 memory draft")
     append_event(paths, "memory_drafts_created", {"count": 1, "artifact": out_path.relative_to(root).as_posix()})
     return out_path
 
@@ -1451,6 +1501,7 @@ def build_summary(root: Path, run_id: str | None = None) -> Path:
     for event in events:
         lines.append(f"- {event.get('ts')} `{event.get('type')}`")
     paths.final_report.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    append_transcript(paths, "Edited", f"`{paths.final_report.relative_to(root).as_posix()}` summary")
     append_event(paths, "summary_created", {"artifact": paths.final_report.relative_to(root).as_posix()})
     return paths.final_report
 

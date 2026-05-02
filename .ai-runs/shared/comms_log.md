@@ -223,3 +223,10 @@
 - Decision: Froze `.runs` as the canonical kernel protocol, added `MemoryObject` and `Hyperedge` schemas, tightened memory draft validation, and added provider `*_result.yaml` validation to `mos verify`.
 - Evidence: Added `docs/RUN_ARTIFACT_PROTOCOL.md`, schema dataclasses in `memoryos/schema.py`, stricter validation in `memoryos/run_validation.py`, and tests for invalid memory drafts, invalid provider results, and MemoryObject/Hyperedge constructors. Verified py_compile, unit tests, and `mos verify` on the current run.
 - Next: Keep CapabilityOS deferred; next hardening should add more malformed run fixtures and provider result schema coverage.
+
+## 2026-05-02 10:43 KST - Codex
+
+- Context: User asked for a unified prompt input and Codex-like visible logs showing which agent/action is doing what, including file edits and commands.
+- Decision: Added `transcript.md` as the human-readable run log, `mos log`, `mos prompt`, shell `/prompt`, and shell `/log`. Existing `events.jsonl` remains the machine log; transcript mirrors key events plus `Ran`, `Edited`, and `Prepared` entries.
+- Evidence: `mos prompt` routed stdin and slash-shell multiline prompts; `mos log` shows `run_created`, local router, local context, Claude/Codex prompt creation, prepared result artifacts, and verification entries. Updated run protocol and tests so transcript is required.
+- Next: TUI should surface transcript tail alongside agent status.

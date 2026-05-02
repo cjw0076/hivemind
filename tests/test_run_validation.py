@@ -17,6 +17,7 @@ class RunValidationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             paths = create_run(root, "test run validation", project="MemoryOS")
+            self.assertTrue(paths.transcript.exists())
             build_verification(root, paths.run_id)
             report = validate_run_artifacts(paths.run_dir, root)
             self.assertEqual(report["verdict"], "pass", report["issues"])

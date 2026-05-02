@@ -14,6 +14,7 @@ This is the canonical `.runs/<run_id>/` contract for the current MemoryOS Core l
   verification.yaml
   memory_drafts.json
   final_report.md
+  transcript.md
   agents/
     local/
     claude/
@@ -101,5 +102,24 @@ draft, reviewed, accepted, rejected, speculative, stale
 - event taxonomy and run id consistency;
 - run state artifact references;
 - provider result schemas.
+
+## Transcript
+
+`transcript.md` is the human-readable execution log. `events.jsonl` remains the machine log; transcript entries summarize the same work in a Codex-style format:
+
+```text
+## <timestamp> - Ran
+`mos verify` -> `.runs/<run>/verification.yaml` verdict=pass
+
+## <timestamp> - Edited
+`.runs/<run>/agents/codex/executor_prompt.md` for codex/executor
+```
+
+Use:
+
+```bash
+mos log
+mos log --tail 120
+```
 
 This protocol is the kernel consumed by CLI, TUI, future Desktop, future API, and future MCP.

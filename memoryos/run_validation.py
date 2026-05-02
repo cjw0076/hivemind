@@ -38,6 +38,7 @@ RUN_ARTIFACT_SPEC = {
     "verification": "verification.yaml",
     "memory_drafts": "memory_drafts.json",
     "final_report": "final_report.md",
+    "transcript": "transcript.md",
 }
 
 REQUIRED_RUN_STATE_KEYS = {

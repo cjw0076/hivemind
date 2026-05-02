@@ -17,6 +17,8 @@ mos diff
 mos review-diff
 mos commit-summary
 mos agents detect --json
+mos prompt
+mos log
 mos tui
 mos completion zsh
 ```
@@ -53,6 +55,7 @@ If installed as a package, `mos` points to the same command.
 Bare `mos` opens the slash-command shell. Use `mos tui` for the curses status board.
 
 `mos check run` evaluates markdown policy files under `.memoryos/checks/`. `mos diff`, `mos review-diff`, and `mos commit-summary` provide the first git-aware loop without committing automatically.
+`mos prompt` reads a multiline/stdin prompt and routes it through the local intent router. `mos log` shows the current run `transcript.md`.
 
 For a fast local workbench loop:
 

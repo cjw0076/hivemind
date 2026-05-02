@@ -26,6 +26,7 @@ from .harness import (
     local_runtime_report,
     load_run,
     open_run_folder,
+    read_transcript,
     format_onboarding,
     format_settings,
     format_settings_shell,
@@ -69,6 +70,8 @@ COMMANDS = {
     "diff",
     "review-diff",
     "commit-summary",
+    "log",
+    "prompt",
 }
 
 
@@ -200,6 +203,11 @@ def main(argv: list[str] | None = None) -> None:
     review_diff_cmd.add_argument("--run-id")
     commit_summary_cmd = sub.add_parser("commit-summary", help="write proposed commit summary without committing")
     commit_summary_cmd.add_argument("--run-id")
+    log_cmd = sub.add_parser("log", help="show current run transcript")
+    log_cmd.add_argument("--run-id")
+    log_cmd.add_argument("--tail", type=int, default=80)
+    prompt_cmd = sub.add_parser("prompt", help="read a prompt from stdin or multiline input and route it")
+    prompt_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="default")
 
     args = parser.parse_args(argv)
     root = Path(args.root).resolve()
@@ -381,6 +389,15 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "commit-summary":
         print(commit_summary(root, args.run_id))
         return
+    if args.cmd == "log":
+        print(read_transcript(root, args.run_id, tail=args.tail), end="")
+        return
+    if args.cmd == "prompt":
+        prompt = read_prompt_from_stdin()
+        if not prompt.strip():
+            parser.error("prompt is empty")
+        print(ask_router(root, prompt, complexity=args.complexity))
+        return
 
 
 def print_completion(shell: str) -> None:
@@ -427,7 +444,7 @@ def run_shell(root: Path) -> None:
         if line in {"/quit", "/exit", "quit", "exit"}:
             return
         if line == "/help":
-            print("/new <task>  /status  /route  /verify  /summary  /memory  /check  /diff  /commit  /open  /quit")
+            print("/new <task>  /prompt  /status  /route  /log  /verify  /summary  /memory  /check  /diff  /commit  /open  /quit")
             continue
         if line.startswith("/new "):
             main(["--root", root.as_posix(), "ask", line.split(" ", 1)[1]])
@@ -435,8 +452,16 @@ def run_shell(root: Path) -> None:
         if line == "/status":
             main(["--root", root.as_posix(), "status"])
             continue
+        if line == "/prompt":
+            prompt = read_multiline_prompt()
+            if prompt.strip():
+                main(["--root", root.as_posix(), "ask", prompt])
+            continue
         if line == "/route":
             main(["--root", root.as_posix(), "plan"])
+            continue
+        if line == "/log":
+            main(["--root", root.as_posix(), "log"])
             continue
         if line == "/verify":
             main(["--root", root.as_posix(), "verify"])
@@ -470,6 +495,27 @@ def run_shell(root: Path) -> None:
             print("unknown slash command")
             continue
         main(["--root", root.as_posix(), "ask", line])
+
+
+def read_prompt_from_stdin() -> str:
+    if not sys.stdin.isatty():
+        return sys.stdin.read()
+    return read_multiline_prompt()
+
+
+def read_multiline_prompt() -> str:
+    print("Enter prompt. Finish with a single '.' line.")
+    lines: list[str] = []
+    while True:
+        try:
+            line = input("> ")
+        except (EOFError, KeyboardInterrupt):
+            print("")
+            break
+        if line == ".":
+            break
+        lines.append(line)
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@
     "handoff": "minimal_valid/handoff.yaml",
     "memory_drafts": "minimal_valid/memory_drafts.json",
     "task": "minimal_valid/task.yaml",
+    "transcript": "minimal_valid/transcript.md",
     "verification": "minimal_valid/verification.yaml"
   },
   "context": {
