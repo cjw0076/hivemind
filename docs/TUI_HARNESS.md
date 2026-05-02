@@ -315,6 +315,8 @@ Large terminals render the dashboard as a control plane: run/health summary, pip
 
 Prompt submission runs in the background so slow local/provider routing does not freeze the console. The status line reports active submissions and then replaces it with the completed run or error message.
 
+Normal TUI prompts use the fast heuristic router first. This keeps the operator console responsive; explicit CLI or slash-command workflows can still run local/provider workers when deeper routing is needed.
+
 The TUI does not try to be the final desktop UI. It is an operational control surface for driving agent work through run artifacts: pipeline first, agent aware, artifact driven, audit friendly.
 
 ## Run Folder

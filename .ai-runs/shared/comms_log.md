@@ -446,3 +446,10 @@ Naming note as of 2026-05-02 12:24 KST:
 - Decision: Accepted the decomposition as product architecture, but framed it as a layered chair runtime rather than a monolithic header LLM. Added `VG-15 Layered Chair Runtime` and a TODO section for L0 dispatcher, L1 verifier, L2 working agents, L3 referee, L4 North-Star auditor, and L5 conflict reviewer.
 - Evidence: `docs/HIVE_MIND_GAPS.md` and `../memoryOS/docs/shared/HIVE_MIND_GAPS.md` are both 798 lines with no diff; the new section is a synchronized shared source. Updated `docs/VISION_GRAPH.md` and `docs/TODO.md`.
 - Next: Implement the L0/L1 slice first: code-first dispatcher state, verifier checks, provider-family metadata, and monolithic-header prevention tests.
+
+## 2026-05-02 17:00 KST - Codex
+
+- Context: User asked Codex to run the TUI directly and inspect why the experience still felt rough.
+- Decision: Reproduced the roughness in a PTY and fixed the main causes: current-run changes invalidated the controller lock, killed TUI processes left active locks until TTL, and TUI prompt routing still waited on the local LLM before falling back.
+- Evidence: Direct TUI run showed `controller lock lost` after prompt submission; later run showed `run already has an active controller` from a dead PID. Added dynamic lock transfer when following `.runs/current`, stale-lock PID checks, and fast heuristic routing for TUI prompts. Direct retest with `codex smooth abc123` produced immediate `heuristic_fast` routing and no local LLM wait.
+- Next: Improve terminal input edge cases and exit ergonomics after the L0/L1 chair-runtime work; keep TUI normal prompts on the fast path unless the operator explicitly asks for local-LLM routing.

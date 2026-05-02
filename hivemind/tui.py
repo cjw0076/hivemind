@@ -65,21 +65,15 @@ def run_tui(root: Path, run_id: str | None = None, view: str = "board", control:
     if view not in TUI_VIEWS:
         raise SystemExit(f"unknown TUI view: {view}")
     locale.setlocale(locale.LC_ALL, "")
-    lock: dict[str, Any] | None = None
-    if control:
-        lock = acquire_control_lock(root, run_id)
     try:
-        curses.wrapper(lambda screen: draw_loop(screen, root, run_id, view, control, lock.get("session_id") if lock else None))
+        curses.wrapper(lambda screen: draw_loop(screen, root, run_id, view, control))
     except KeyboardInterrupt:
         return
     except curses.error as exc:
         raise SystemExit(f"hive tui requires an interactive terminal: {exc}") from exc
-    finally:
-        if lock:
-            release_control_lock(root, run_id, str(lock.get("session_id")))
 
 
-def draw_loop(screen, root: Path, run_id: str | None, initial_view: str, control: bool, lock_session_id: str | None) -> None:
+def draw_loop(screen, root: Path, run_id: str | None, initial_view: str, control: bool) -> None:
     curses.raw()
     curses.curs_set(0)
     init_theme()
@@ -90,68 +84,84 @@ def draw_loop(screen, root: Path, run_id: str | None, initial_view: str, control
     composer = ComposerState()
     submit_results: queue.Queue[str] = queue.Queue()
     active_submits = 0
-    while True:
+    lock_run_id: str | None = None
+    lock_session_id: str | None = None
+    try:
         while True:
+            while True:
+                try:
+                    message = submit_results.get_nowait()
+                    active_submits = max(0, active_submits - 1)
+                except queue.Empty:
+                    break
+            screen.erase()
+            height, width = screen.getmaxyx()
             try:
-                message = submit_results.get_nowait()
-                active_submits = max(0, active_submits - 1)
-            except queue.Empty:
-                break
-        screen.erase()
-        height, width = screen.getmaxyx()
-        try:
-            if lock_session_id:
-                heartbeat_control_lock(root, run_id, lock_session_id)
-            paths, state = load_run(root, run_id)
-            event_limit = 80 if view == "events" else 12
-            transcript_limit = 160 if view == "transcript" else 24
-            events = read_events(paths, limit=event_limit)
-            activities = read_hive_activity(paths, limit=event_limit) or events
-            transcript_lines = [line for line in read_transcript(root, paths.run_id, tail=transcript_limit).splitlines() if line.strip()]
-            health = collect_run_health(root, paths, state, events)
-            board = run_board(root, paths.run_id)
-            draw_view(screen, height, width, root, paths, state, activities, transcript_lines, health, board, view, control)
-        except Exception as exc:  # TUI should show recoverable state instead of crashing.
-            add_line(screen, 1, 2, "Hive Mind Harness", curses.A_BOLD)
-            add_wrapped(screen, 3, 2, width - 4, str(exc))
-        draw_global_composer(screen, height, width, message, view, control, composer)
-        screen.refresh()
-        for key in read_input_events(screen):
-            if not composer.text:
-                key_code = ord(key) if isinstance(key, str) and len(key) == 1 else key
-                next_view = view_for_key(key_code) if isinstance(key_code, int) else None
-                if next_view:
-                    view = next_view
-                    message = f"view -> {view}"
-                    continue
-                if key_code == key_f(10):
-                    message = handle_key(screen, root, run_id, ord("?"), control)
-                    continue
-            composer_action, composer = update_composer(composer, key)
-            if composer_action == "submit":
-                local_action = handle_local_composer_command(composer.text)
-                if local_action.get("action") == "quit":
+                paths, state = load_run(root, run_id)
+                if control:
+                    lock_run_id, lock_session_id = sync_tui_control_lock(root, paths.run_id, lock_run_id, lock_session_id)
+                event_limit = 80 if view == "events" else 12
+                transcript_limit = 160 if view == "transcript" else 24
+                events = read_events(paths, limit=event_limit)
+                activities = read_hive_activity(paths, limit=event_limit) or events
+                transcript_lines = [line for line in read_transcript(root, paths.run_id, tail=transcript_limit).splitlines() if line.strip()]
+                health = collect_run_health(root, paths, state, events)
+                board = run_board(root, paths.run_id)
+                draw_view(screen, height, width, root, paths, state, activities, transcript_lines, health, board, view, control)
+            except Exception as exc:  # TUI should show recoverable state instead of crashing.
+                add_line(screen, 1, 2, "Hive Mind Harness", curses.A_BOLD)
+                add_wrapped(screen, 3, 2, width - 4, str(exc))
+            draw_global_composer(screen, height, width, message, view, control, composer)
+            screen.refresh()
+            for key in read_input_events(screen):
+                if not composer.text:
+                    key_code = ord(key) if isinstance(key, str) and len(key) == 1 else key
+                    next_view = view_for_key(key_code) if isinstance(key_code, int) else None
+                    if next_view:
+                        view = next_view
+                        message = f"view -> {view}"
+                        continue
+                    if key_code == key_f(10):
+                        message = handle_key(screen, root, run_id, ord("?"), control)
+                        continue
+                composer_action, composer = update_composer(composer, key)
+                if composer_action == "submit":
+                    local_action = handle_local_composer_command(composer.text)
+                    if local_action.get("action") == "quit":
+                        return
+                    if local_action.get("action") == "view":
+                        view = str(local_action["view"])
+                        message = f"view -> {view}"
+                    else:
+                        active_submits += 1
+                        start_submit_job(root, run_id, composer.text, control, submit_results)
+                        message = f"submitted in background ({active_submits} active)"
+                    composer = ComposerState()
+                elif composer_action == "cancel":
+                    message = "composer cancelled"
+                elif composer_action == "quit":
                     return
-                if local_action.get("action") == "view":
-                    view = str(local_action["view"])
-                    message = f"view -> {view}"
+                elif composer_action == "clipboard_unavailable":
+                    message = "clipboard unavailable; use terminal paste or install wl-paste/xclip/xsel"
+                elif composer_action == "editing":
+                    message = "typing prompt; Enter submits, Ctrl+C cancels, Ctrl+V pastes"
                 else:
-                    active_submits += 1
-                    start_submit_job(root, run_id, composer.text, control, submit_results)
-                    message = f"submitted in background ({active_submits} active)"
-                composer = ComposerState()
-            elif composer_action == "cancel":
-                message = "composer cancelled"
-            elif composer_action == "quit":
-                return
-            elif composer_action == "clipboard_unavailable":
-                message = "clipboard unavailable; use terminal paste or install wl-paste/xclip/xsel"
-            elif composer_action == "editing":
-                message = "typing prompt; Enter submits, Ctrl+C cancels, Ctrl+V pastes"
-            else:
-                key_code = ord(key) if isinstance(key, str) and len(key) == 1 else key
-                message = handle_key(screen, root, run_id, key_code if isinstance(key_code, int) else -1, control)
-        time.sleep(0.05)
+                    key_code = ord(key) if isinstance(key, str) and len(key) == 1 else key
+                    message = handle_key(screen, root, run_id, key_code if isinstance(key_code, int) else -1, control)
+            time.sleep(0.05)
+    finally:
+        if lock_run_id and lock_session_id:
+            release_control_lock(root, lock_run_id, lock_session_id)
+
+
+def sync_tui_control_lock(root: Path, active_run_id: str, lock_run_id: str | None, lock_session_id: str | None) -> tuple[str, str]:
+    if lock_run_id == active_run_id and lock_session_id:
+        heartbeat_control_lock(root, active_run_id, lock_session_id)
+        return lock_run_id, lock_session_id
+    if lock_run_id and lock_session_id:
+        release_control_lock(root, lock_run_id, lock_session_id)
+    lock = acquire_control_lock(root, active_run_id)
+    return active_run_id, str(lock.get("session_id"))
 
 
 def read_input_events(screen, limit: int = 512) -> list[int | str]:
@@ -272,7 +282,7 @@ def submit_composer(root: Path, run_id: str | None, prompt: str, control: bool =
     try:
         if prompt.startswith("/"):
             return handle_tui_command(root, run_id, prompt)
-        report = orchestrate_prompt(root, prompt, run_id=None, complexity="default")
+        report = orchestrate_prompt(root, prompt, run_id=None, complexity="fast")
         return f"society plan -> {report.get('run_id')} ({len(report.get('members') or [])} members)"
     except Exception as exc:
         return f"error: {exc}"

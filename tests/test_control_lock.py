@@ -61,6 +61,28 @@ class ControlLockTest(unittest.TestCase):
 
             self.assertNotEqual(lock["session_id"], "old")
 
+    def test_dead_pid_lock_can_be_replaced_before_ttl(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "dead pid lock smoke", project="Hive Mind")
+            write_json(
+                paths.control_lock,
+                {
+                    "schema_version": 1,
+                    "session_id": "dead",
+                    "role": "controller",
+                    "pid": 999999999,
+                    "started_at": "old",
+                    "last_heartbeat": "old",
+                    "last_heartbeat_epoch": time.time(),
+                    "ttl_seconds": 120,
+                },
+            )
+
+            lock = acquire_control_lock(root, paths.run_id, ttl_seconds=120)
+
+            self.assertNotEqual(lock["session_id"], "dead")
+
 
 if __name__ == "__main__":
     unittest.main()

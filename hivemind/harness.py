@@ -383,10 +383,23 @@ def read_control_lock(paths: RunPaths) -> dict[str, Any] | None:
 
 
 def is_control_lock_stale(lock: dict[str, Any], now: float | None = None, ttl_seconds: int = 120) -> bool:
+    pid = lock.get("pid")
+    if isinstance(pid, int) and pid > 0 and not process_is_alive(pid):
+        return True
     heartbeat = lock.get("last_heartbeat_epoch")
     if not isinstance(heartbeat, (int, float)):
         return True
     return (now or time.time()) - float(heartbeat) > ttl_seconds
+
+
+def process_is_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 def list_runs(root: Path) -> list[dict[str, Any]]:
@@ -2864,36 +2877,52 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
         "- codex/executor: implementation prompt artifact\n"
         "- gemini/reviewer: alternate/multimodal review prompt artifact\n"
     )
-    set_agent_status(paths, "local-intent-router", "running")
-    append_event(paths, "agent_started", {"agent": "local", "role": "intent-router", "worker": "intent_router"})
     model = choose_model("intent_router", complexity)
-    local_runtime = local_runtime_report(root, write=True).get("active_backend", "none")
-    try:
-        worker_output = run_worker("intent_router", router_input, model=model, runtime=local_runtime, source_ref="user_prompt")
-        parsed = worker_output.get("parsed") if isinstance(worker_output.get("parsed"), dict) else {}
-        validation = validate_worker_result("intent_router", worker_output)
-        if validation["valid"]:
-            router_status = "completed"
-            route_source = "local_llm"
-            actions = normalize_router_actions(parsed.get("actions"))
-        else:
-            parsed = heuristic_route_prompt(prompt)
-            router_status = "fallback"
-            route_source = "invalid_local_fallback"
-            actions = normalize_router_actions(parsed.get("actions"))
-    except Exception as exc:
+    local_runtime = "none"
+    use_fast_heuristic = complexity == "fast" or os.environ.get("HIVE_ROUTER_MODE") == "heuristic"
+    if use_fast_heuristic:
         parsed = heuristic_route_prompt(prompt)
         validation = {
-            "valid": False,
-            "issues": [str(exc)],
+            "valid": True,
+            "issues": [],
             "confidence": parsed.get("confidence"),
-            "should_escalate": True,
-            "escalation_reason": f"local intent router failed; used heuristic fallback: {exc}",
+            "should_escalate": parsed.get("should_escalate", False),
+            "escalation_reason": parsed.get("escalation_reason", ""),
         }
-        worker_output = {"runtime": local_runtime, "model": model, "parsed": parsed, "raw": "", "error": str(exc)}
-        router_status = "fallback"
-        route_source = "heuristic_fallback"
+        worker_output = {"runtime": "heuristic", "model": "code", "parsed": parsed, "raw": ""}
+        router_status = "completed"
+        route_source = "heuristic_fast"
         actions = normalize_router_actions(parsed.get("actions"))
+    else:
+        set_agent_status(paths, "local-intent-router", "running")
+        append_event(paths, "agent_started", {"agent": "local", "role": "intent-router", "worker": "intent_router"})
+        local_runtime = local_runtime_report(root, write=True).get("active_backend", "none")
+        try:
+            worker_output = run_worker("intent_router", router_input, model=model, runtime=local_runtime, source_ref="user_prompt")
+            parsed = worker_output.get("parsed") if isinstance(worker_output.get("parsed"), dict) else {}
+            validation = validate_worker_result("intent_router", worker_output)
+            if validation["valid"]:
+                router_status = "completed"
+                route_source = "local_llm"
+                actions = normalize_router_actions(parsed.get("actions"))
+            else:
+                parsed = heuristic_route_prompt(prompt)
+                router_status = "fallback"
+                route_source = "invalid_local_fallback"
+                actions = normalize_router_actions(parsed.get("actions"))
+        except Exception as exc:
+            parsed = heuristic_route_prompt(prompt)
+            validation = {
+                "valid": False,
+                "issues": [str(exc)],
+                "confidence": parsed.get("confidence"),
+                "should_escalate": True,
+                "escalation_reason": f"local intent router failed; used heuristic fallback: {exc}",
+            }
+            worker_output = {"runtime": local_runtime, "model": model, "parsed": parsed, "raw": "", "error": str(exc)}
+            router_status = "fallback"
+            route_source = "heuristic_fallback"
+            actions = normalize_router_actions(parsed.get("actions"))
 
     result = {
         "schema_version": 1,

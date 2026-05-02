@@ -150,6 +150,9 @@ Sources: `VG-03`, `VG-04`, `VG-13`.
 - [x] Add interactive slash-command shell for `hive` inspired by OpenClaude/Open Codex.
 - [x] Add UTF-8/Hangul-capable TUI composer with cursor movement, Ctrl+C cancel, Ctrl+V paste, Ctrl+D quit, and provider-style line editing.
 - [x] Make TUI prompt submission non-blocking so slow local/provider routing cannot freeze the console.
+- [x] Make TUI current-run lock handling dynamic so new prompt runs do not break controller heartbeat.
+- [x] Treat dead controller-lock PIDs as stale before TTL so killed TUI sessions do not block restart.
+- [x] Use fast heuristic routing for normal TUI prompts so local LLM router latency does not make the console feel stuck.
 - [x] Add `.hivemind/checks/*.md` markdown-as-agent-check policy files inspired by Continue.
 - [x] Add git-first diff/check/commit summary loop inspired by Aider.
 - [x] Add unified prompt input via `hive prompt` and slash shell `/prompt`.

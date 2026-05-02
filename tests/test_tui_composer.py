@@ -1,14 +1,17 @@
 import curses
 import queue
+import tempfile
 import unittest
 from pathlib import Path
 
+from hivemind.harness import create_run, read_control_lock, release_control_lock
 from hivemind.tui import (
     ComposerState,
     handle_local_composer_command,
     key_f,
     normalize_paste_text,
     start_submit_job,
+    sync_tui_control_lock,
     update_composer,
     view_for_key,
 )
@@ -113,6 +116,21 @@ class TuiComposerTest(unittest.TestCase):
         results: queue.Queue[str] = queue.Queue()
         start_submit_job(root=Path("."), run_id=None, prompt="", control=True, results=results)
         self.assertEqual(results.get(timeout=1), "empty prompt")
+
+    def test_control_lock_moves_when_tui_follows_current_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = create_run(root, "first")
+            lock_run_id, session_id = sync_tui_control_lock(root, first.run_id, None, None)
+            self.assertEqual(lock_run_id, first.run_id)
+            self.assertIsNotNone(read_control_lock(first))
+
+            second = create_run(root, "second")
+            lock_run_id, session_id = sync_tui_control_lock(root, second.run_id, lock_run_id, session_id)
+            self.assertEqual(lock_run_id, second.run_id)
+            self.assertIsNone(read_control_lock(first))
+            self.assertIsNotNone(read_control_lock(second))
+            release_control_lock(root, lock_run_id, session_id)
 
 
 if __name__ == "__main__":
