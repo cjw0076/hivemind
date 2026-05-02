@@ -1,7 +1,17 @@
 import curses
+import queue
 import unittest
+from pathlib import Path
 
-from hivemind.tui import ComposerState, handle_local_composer_command, key_f, normalize_paste_text, update_composer, view_for_key
+from hivemind.tui import (
+    ComposerState,
+    handle_local_composer_command,
+    key_f,
+    normalize_paste_text,
+    start_submit_job,
+    update_composer,
+    view_for_key,
+)
 
 
 class TuiComposerTest(unittest.TestCase):
@@ -98,6 +108,11 @@ class TuiComposerTest(unittest.TestCase):
 
     def test_paste_normalization_flattens_multiline_text(self) -> None:
         self.assertEqual(normalize_paste_text("a\nb\r\nc"), "a b c")
+
+    def test_start_submit_job_returns_immediately_for_background_work(self) -> None:
+        results: queue.Queue[str] = queue.Queue()
+        start_submit_job(root=Path("."), run_id=None, prompt="", control=True, results=results)
+        self.assertEqual(results.get(timeout=1), "empty prompt")
 
 
 if __name__ == "__main__":

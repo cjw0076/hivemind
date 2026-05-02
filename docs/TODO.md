@@ -133,6 +133,7 @@ Sources: `VG-03`, `VG-04`, `VG-13`.
 - [x] Add `hive run -q --json` and shell completion script generation for bash/zsh/fish.
 - [x] Add interactive slash-command shell for `hive` inspired by OpenClaude/Open Codex.
 - [x] Add UTF-8/Hangul-capable TUI composer with cursor movement, Ctrl+C cancel, Ctrl+V paste, Ctrl+D quit, and provider-style line editing.
+- [x] Make TUI prompt submission non-blocking so slow local/provider routing cannot freeze the console.
 - [x] Add `.hivemind/checks/*.md` markdown-as-agent-check policy files inspired by Continue.
 - [x] Add git-first diff/check/commit summary loop inspired by Aider.
 - [x] Add unified prompt input via `hive prompt` and slash shell `/prompt`.

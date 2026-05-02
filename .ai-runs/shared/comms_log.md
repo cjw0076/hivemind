@@ -432,3 +432,10 @@ Naming note as of 2026-05-02 12:24 KST:
 - Decision: Upgraded the TUI composer to a UTF-8 wide-character line editor and moved printable keys to prompt text first, with F1-F8 and slash commands handling view changes.
 - Evidence: Added cursor-aware `ComposerState`, `get_wch()` input draining, Ctrl+A/E/U/K/W/C/D/V, clipboard adapter support, `/view`, `/quit`, and tests for Hangul, q/digit prompt starts, paste, cursor editing, and function-key views. `diff -u docs/HIVE_MIND_GAPS.md ../memoryOS/docs/shared/HIVE_MIND_GAPS.md` returned no differences.
 - Next: Implement the new P18 adversarial-research gaps as runtime artifacts: pre-commit table, front state machine, turn arbitration, source-read registry, frame-anchor checks, run supervisor, and git guard.
+
+## 2026-05-02 16:19 KST - Codex
+
+- Context: User observed the TUI appearing frozen after submitting `hey` and asked whether a local LLM was running.
+- Decision: Confirmed the active TUI process was blocked inside an Ollama-backed local intent-router call, then made TUI submissions run in a background thread and moved the default intent router model from `qwen3:8b` to `qwen3:1.7b` with a 30s timeout.
+- Evidence: `curl /api/ps` showed `qwen3:8b` loaded and `.runs/run_20260502_161613_a038a0/events.jsonl` had only `agent_started` for `intent-router`. Added tests for background submit dispatch and intent-router default/timeout.
+- Next: Restart any already-running TUI session to pick up the non-blocking submit loop; existing sessions cannot be hot-patched.

@@ -26,14 +26,15 @@ class WorkerSpec:
     strong_model: str
     system: str
     output_schema: dict[str, Any]
+    timeout_seconds: int = 120
 
 
 WORKERS: dict[str, WorkerSpec] = {
     "intent_router": WorkerSpec(
         name="intent_router",
         purpose="Decompose a user prompt into local/provider roles and ordered harness actions.",
-        default_model="qwen3:8b",
-        fast_model="qwen3:8b",
+        default_model="qwen3:1.7b",
+        fast_model="qwen3:1.7b",
         strong_model="deepseek-coder-v2:16b",
         system=(
             "You are LocalIntentRouter for Hive Mind. Decompose the user's prompt into a small, "
@@ -58,6 +59,7 @@ WORKERS: dict[str, WorkerSpec] = {
             "should_escalate": False,
             "escalation_reason": "",
         },
+        timeout_seconds=30,
     ),
     "classifier": WorkerSpec(
         name="classifier",
@@ -352,7 +354,7 @@ def run_worker(
     spec = get_worker(worker_name)
     chosen_model = model or spec.default_model
     prompt = render_prompt(worker_name, input_text, source_ref=source_ref)
-    return call_ollama_generate(base_url=base_url, model=chosen_model, prompt=prompt)
+    return call_ollama_generate(base_url=base_url, model=chosen_model, prompt=prompt, timeout=spec.timeout_seconds)
 
 
 def resolve_local_runtime(runtime: str = "auto") -> str:
@@ -386,7 +388,8 @@ def local_runtime_status() -> dict[str, Any]:
     }
 
 
-def call_ollama_generate(base_url: str, model: str, prompt: str) -> dict[str, Any]:
+def call_ollama_generate(base_url: str, model: str, prompt: str, timeout: int | None = None) -> dict[str, Any]:
+    timeout_seconds = int(os.environ.get("HIVE_LOCAL_WORKER_TIMEOUT", str(timeout or 120)))
     url = base_url.rstrip("/") + "/api/generate"
     payload = {
         "model": model,
@@ -402,11 +405,12 @@ def call_ollama_generate(base_url: str, model: str, prompt: str) -> dict[str, An
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=180) as response:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             body = json.loads(response.read().decode("utf-8"))
-    except urllib.error.URLError as exc:
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise RuntimeError(
-            f"Could not reach the Ollama adapter at {base_url}. Start that adapter or set HIVE_LOCAL_BACKEND to another supported runtime."
+            f"Could not complete Ollama request at {base_url} within {timeout_seconds}s. "
+            "Start or tune that adapter, use a smaller model, or set HIVE_LOCAL_BACKEND to another supported runtime."
         ) from exc
 
     raw = body.get("response", "")

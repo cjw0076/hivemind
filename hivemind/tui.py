@@ -6,8 +6,10 @@ import curses
 import json
 import locale
 import os
+import queue
 import shutil
 import subprocess
+import threading
 import textwrap
 import time
 import unicodedata
@@ -86,7 +88,15 @@ def draw_loop(screen, root: Path, run_id: str | None, initial_view: str, control
     message = "ready"
     view = initial_view
     composer = ComposerState()
+    submit_results: queue.Queue[str] = queue.Queue()
+    active_submits = 0
     while True:
+        while True:
+            try:
+                message = submit_results.get_nowait()
+                active_submits = max(0, active_submits - 1)
+            except queue.Empty:
+                break
         screen.erase()
         height, width = screen.getmaxyx()
         try:
@@ -126,7 +136,9 @@ def draw_loop(screen, root: Path, run_id: str | None, initial_view: str, control
                     view = str(local_action["view"])
                     message = f"view -> {view}"
                 else:
-                    message = submit_composer(root, run_id, composer.text, control)
+                    active_submits += 1
+                    start_submit_job(root, run_id, composer.text, control, submit_results)
+                    message = f"submitted in background ({active_submits} active)"
                 composer = ComposerState()
             elif composer_action == "cancel":
                 message = "composer cancelled"
@@ -138,10 +150,7 @@ def draw_loop(screen, root: Path, run_id: str | None, initial_view: str, control
                 message = "typing prompt; Enter submits, Ctrl+C cancels, Ctrl+V pastes"
             else:
                 key_code = ord(key) if isinstance(key, str) and len(key) == 1 else key
-                if key_code in {10, 13, curses.KEY_ENTER}:
-                    message = prompt_and_route(screen, root, run_id=run_id)
-                else:
-                    message = handle_key(screen, root, run_id, key_code if isinstance(key_code, int) else -1, control)
+                message = handle_key(screen, root, run_id, key_code if isinstance(key_code, int) else -1, control)
         time.sleep(0.05)
 
 
@@ -267,6 +276,14 @@ def submit_composer(root: Path, run_id: str | None, prompt: str, control: bool =
         return f"society plan -> {report.get('run_id')} ({len(report.get('members') or [])} members)"
     except Exception as exc:
         return f"error: {exc}"
+
+
+def start_submit_job(root: Path, run_id: str | None, prompt: str, control: bool, results: queue.Queue[str]) -> None:
+    def run() -> None:
+        results.put(submit_composer(root, run_id, prompt, control))
+
+    thread = threading.Thread(target=run, name="hive-tui-submit", daemon=True)
+    thread.start()
 
 
 def view_for_key(key: int) -> str | None:
