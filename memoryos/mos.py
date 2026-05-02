@@ -44,6 +44,7 @@ from .harness import (
     format_checks_report,
     format_checks_run,
     format_git_diff_report,
+    format_hive_activity,
     load_routing_plan,
     git_diff_report,
     review_diff,
@@ -83,6 +84,7 @@ COMMANDS = {
     "log",
     "prompt",
     "next",
+    "hive",
 }
 
 
@@ -107,7 +109,7 @@ def normalize_argv(argv: list[str]) -> list[str]:
 
 def main(argv: list[str] | None = None) -> None:
     argv = normalize_argv(list(sys.argv[1:] if argv is None else argv))
-    parser = argparse.ArgumentParser(prog="mos", description="MemoryOS harness CLI/TUI")
+    parser = argparse.ArgumentParser(prog="mos", description="Hive Mind control plane for MemoryOS provider harnessing")
     parser.add_argument("--root", default=".", help="workspace root")
     parser.add_argument("--version", action="version", version="mos 0.1.0")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -235,6 +237,11 @@ def main(argv: list[str] | None = None) -> None:
     log_cmd.add_argument("--tail", type=int, default=80)
     prompt_cmd = sub.add_parser("prompt", help="read a prompt from stdin or multiline input and route it")
     prompt_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="default")
+    hive_cmd = sub.add_parser("hive", help="Hive Mind activity and orchestration helpers")
+    hive_sub = hive_cmd.add_subparsers(dest="hive_cmd", required=True)
+    hive_activity_cmd = hive_sub.add_parser("activity", help="show human-readable hive activity feed")
+    hive_activity_cmd.add_argument("--run-id")
+    hive_activity_cmd.add_argument("--tail", type=int, default=30)
 
     args = parser.parse_args(argv)
     root = Path(args.root).resolve()
@@ -472,6 +479,9 @@ def main(argv: list[str] | None = None) -> None:
             parser.error("prompt is empty")
         print(format_orchestration_report(orchestrate_prompt(root, prompt, complexity=args.complexity)))
         return
+    if args.cmd == "hive" and args.hive_cmd == "activity":
+        print(format_hive_activity(root, args.run_id, limit=args.tail))
+        return
 
 
 def print_completion(shell: str) -> None:
@@ -575,7 +585,7 @@ def run_shell(root: Path) -> None:
 
 
 def run_chat(root: Path) -> None:
-    print("MemoryOS operator shell. Type a task, or /help.")
+    print("Hive Mind operator shell. Type a task, or /help.")
     while True:
         try:
             line = input("mos> ").strip()
@@ -603,6 +613,9 @@ def run_chat(root: Path) -> None:
             continue
         if line == "/log":
             main(["--root", root.as_posix(), "log", "--tail", "30"])
+            continue
+        if line == "/hive":
+            main(["--root", root.as_posix(), "hive", "activity"])
             continue
         if line == "/memory":
             main(["--root", root.as_posix(), "memory", "list"])
@@ -648,7 +661,7 @@ def print_chat_help() -> None:
     print(
         "\n".join(
             [
-                "Type a normal task to create/route a MemoryOS run.",
+                "Type a normal task to create a Hive Mind society run.",
                 "",
                 "Commands:",
                 "  /status        show run board",
@@ -656,6 +669,7 @@ def print_chat_help() -> None:
                 "  /agents        show provider/agent status",
                 "  /plan          show routing plan",
                 "  /log           show recent transcript",
+                "  /hive          show hive activity",
                 "  /memory        list memory drafts",
                 "  /draft-memory  create memory draft",
                 "  /verify        validate run artifacts",
@@ -670,10 +684,10 @@ def print_chat_help() -> None:
 
 
 def handle_chat_task(root: Path, prompt: str) -> None:
-    print("MemoryOS: 새 작업을 받았습니다.")
-    print("MemoryOS: local router가 의도를 분해하고, Claude/Codex/Gemini/local 역할을 배정합니다.")
+    print("Hive Mind: 새 작업을 받았습니다.")
+    print("Hive Mind: local router가 의도를 분해하고, Claude/Codex/Gemini/local 역할을 배정합니다.")
     report = orchestrate_prompt(root, prompt, complexity="default")
-    print("MemoryOS: society plan 준비 완료.")
+    print("Hive Mind: society plan 준비 완료.")
     for member in report.get("members") or []:
         print(f"  - {member.get('provider')}/{member.get('role')}: {member.get('status') or 'planned'}")
     print_chat_run_update(root)
@@ -683,7 +697,7 @@ def print_chat_run_update(root: Path) -> None:
     try:
         board = run_board(root)
     except Exception as exc:
-        print(f"MemoryOS: 상태를 읽지 못했습니다: {exc}")
+        print(f"Hive Mind: 상태를 읽지 못했습니다: {exc}")
         return
     print("")
     print(format_chat_board(board))

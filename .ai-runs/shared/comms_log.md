@@ -252,6 +252,13 @@
 - Evidence: Updated `memoryos/harness.py`, `memoryos/mos.py`, `memoryos/tui.py`, `docs/TUI_HARNESS.md`, and `docs/TODO.md`. Verified `npm test`, `bin/mos --root . orchestrate "orchestrate identity smoke" --json`, and pseudo-terminal TUI smoke with visible composer.
 - Next: Add execution policies for each society member and aggregate provider outputs into a single synthesis artifact.
 
+## 2026-05-02 11:24 KST - Codex
+
+- Context: User named the project `Hive Mind` and clarified the distinction from API-first harnesses: Hive Mind should combine already-registered provider CLIs and local LLMs while preserving native provider CLI capabilities.
+- Decision: Added Hive Mind product framing, `hive_events.jsonl` as a human activity feed, `mos hive activity`, and TUI latest-events rendering from hive activity instead of only machine artifact events.
+- Evidence: Added `docs/HIVE_MIND.md`; updated `README.md`, `docs/TUI_HARNESS.md`, `docs/ROADMAP.md`, `docs/TODO.md`, `memoryos/harness.py`, `memoryos/mos.py`, `memoryos/tui.py`, `memoryos/run_validation.py`, and `package.json`. Verified `npm test`, `mos orchestrate "hive activity smoke" --json`, `mos hive activity`, and TUI activity smoke.
+- Next: Add synthesis artifact that merges member outputs into a single hive response.
+
 ## 2026-05-02 10:43 KST - Codex
 
 - Context: User asked for a unified prompt input and Codex-like visible logs showing which agent/action is doing what, including file edits and commands.

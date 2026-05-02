@@ -22,6 +22,7 @@ ALLOWED_EVENT_TYPES = {
     "context_edited",
     "intent_routed",
     "routing_plan_created",
+    "society_plan_created",
     "route_action_failed",
     "checks_report_created",
     "git_diff_report_created",

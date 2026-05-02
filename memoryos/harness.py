@@ -79,6 +79,10 @@ class RunPaths:
         return self.run_dir / "transcript.md"
 
     @property
+    def hive_events(self) -> Path:
+        return self.run_dir / "hive_events.jsonl"
+
+    @property
     def artifacts(self) -> Path:
         return self.run_dir / "artifacts"
 
@@ -272,6 +276,7 @@ def create_run(root: Path, user_request: str, project: str = "MemoryOS", task_ty
             "memory_drafts": (paths.run_dir / "memory_drafts.json").relative_to(root).as_posix(),
             "final_report": paths.final_report.relative_to(root).as_posix(),
             "transcript": paths.transcript.relative_to(root).as_posix(),
+            "hive_events": paths.hive_events.relative_to(root).as_posix(),
         },
     }
     write_json(paths.state, state)
@@ -283,6 +288,7 @@ def create_run(root: Path, user_request: str, project: str = "MemoryOS", task_ty
     paths.final_report.write_text(default_final_report(state), encoding="utf-8")
     append_event(paths, "run_created", {"task": user_request})
     append_transcript(paths, "Run", f'Created `{run_id}` for task: {user_request}')
+    append_hive_activity(paths, "user", "task_received", f"Task received: {user_request}", {"task": user_request})
     set_current(root, run_id)
     return paths
 
@@ -337,6 +343,7 @@ def artifact_status(paths: RunPaths, state: dict[str, Any]) -> list[dict[str, An
     extra = {
         "routing_plan": paths.run_dir / "routing_plan.json",
         "society_plan": paths.run_dir / "society_plan.json",
+        "hive_events": paths.hive_events,
         "checks_report": paths.run_dir / "checks_report.json",
         "git_diff_report": paths.run_dir / "git_diff_report.json",
         "commit_summary": paths.run_dir / "commit_summary.md",
@@ -1215,6 +1222,13 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
     append_transcript(paths, "Ran", f"`mos ask` routed prompt via {route_source} -> `{router_path.relative_to(root).as_posix()}`")
     set_agent_status(paths, "local-intent-router", "completed" if router_status in {"completed", "fallback"} else "failed")
     append_event(paths, "intent_routed", {"agent": "local", "role": "intent-router", "artifact": router_path.relative_to(root).as_posix(), "source": route_source})
+    append_hive_activity(
+        paths,
+        "local/intent-router",
+        "decomposed_prompt",
+        f"Intent `{parsed.get('intent', 'unknown')}` via {route_source}; {len(actions)} member actions proposed.",
+        {"intent": parsed.get("intent", "unknown"), "route_source": route_source, "actions": actions},
+    )
 
     prepared: list[str] = []
     for action in actions:
@@ -1229,8 +1243,22 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
             elif provider in {"claude", "codex", "gemini"}:
                 out = invoke_external_agent(root, provider, role, run_id=paths.run_id, execute=False)
                 prepared.append(out.relative_to(root).as_posix())
+            append_hive_activity(
+                paths,
+                f"{provider}/{role}",
+                "prepared_member",
+                action.get("reason") or f"{provider}/{role} prepared for hive work.",
+                {"provider": provider, "role": role},
+            )
         except Exception as exc:
             append_event(paths, "route_action_failed", {"provider": provider, "role": role, "error": str(exc)})
+            append_hive_activity(
+                paths,
+                f"{provider}/{role}",
+                "member_prepare_failed",
+                str(exc),
+                {"provider": provider, "role": role},
+            )
 
     plan_path = paths.run_dir / "routing_plan.json"
     write_json(
@@ -1307,13 +1335,20 @@ def orchestrate_prompt(
     write_json(society_path, report)
     append_transcript(paths, "Prepared", f"`{society_path.relative_to(root).as_posix()}` with {len(members)} society members")
     append_event(paths, "society_plan_created", {"artifact": society_path.relative_to(root).as_posix(), "members": len(members)})
+    append_hive_activity(
+        paths,
+        "hive-mind",
+        "society_plan_ready",
+        f"{len(members)} provider/local members assigned; next: {(report.get('next') or {}).get('command')}",
+        {"members": members, "next": report.get("next")},
+    )
     update_state(paths, phase="orchestration", status="ready")
     return report
 
 
 def format_orchestration_report(report: dict[str, Any]) -> str:
     lines = [
-        f"MemoryOS Society: {report.get('run_id')}",
+        f"Hive Mind Society: {report.get('run_id')}",
         f"Intent: {report.get('intent')} via {report.get('route_source')}",
         f"Summary: {report.get('summary')}",
         "",
@@ -1505,6 +1540,27 @@ def append_event(paths: RunPaths, event_type: str, payload: dict[str, Any] | Non
     append_transcript(paths, "Event", f"{event_type} {json.dumps(payload, ensure_ascii=False, sort_keys=True)}")
 
 
+def append_hive_activity(
+    paths: RunPaths,
+    actor: str,
+    action: str,
+    summary: str,
+    payload: dict[str, Any] | None = None,
+) -> None:
+    payload = payload or {}
+    event = {
+        "ts": now_iso(),
+        "run_id": paths.run_id,
+        "actor": actor,
+        "action": action,
+        "summary": summary,
+        "payload": payload,
+    }
+    with paths.hive_events.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
+    append_transcript(paths, "Hive", f"{actor} {action}: {summary}")
+
+
 def append_transcript(paths: RunPaths, title: str, body: str) -> None:
     if not paths.transcript.exists():
         paths.transcript.write_text(f"# Transcript: {paths.run_id}\n\n", encoding="utf-8")
@@ -1545,6 +1601,42 @@ def read_events(paths: RunPaths, limit: int = 20) -> list[dict[str, Any]]:
         except json.JSONDecodeError:
             rows.append({"type": "malformed_event", "raw": line})
     return rows[-limit:]
+
+
+def read_hive_activity(paths: RunPaths, limit: int = 20) -> list[dict[str, Any]]:
+    if not paths.hive_events.exists():
+        return []
+    rows = []
+    for line in paths.hive_events.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            rows.append({"actor": "system", "action": "malformed_activity", "summary": line})
+    return rows[-limit:]
+
+
+def format_hive_activity(root: Path, run_id: str | None = None, limit: int = 30) -> str:
+    paths, _ = load_run(root, run_id)
+    rows = read_hive_activity(paths, limit=limit)
+    lines = [f"Hive Mind Activity: {paths.run_id}", ""]
+    if not rows:
+        lines.append("No hive activity yet.")
+        return "\n".join(lines)
+    for row in rows:
+        ts = short_timestamp(str(row.get("ts", "")))
+        actor = row.get("actor", "system")
+        action = row.get("action", "event")
+        summary = row.get("summary", "")
+        lines.append(f"{ts}  {actor:<18} {action:<20} {summary}")
+    return "\n".join(lines)
+
+
+def short_timestamp(ts: str) -> str:
+    if "T" in ts:
+        return ts.split("T", 1)[1].split("+", 1)[0]
+    return ts
 
 
 def invoke_local(root: Path, role: str, run_id: str | None = None, complexity: str = "default") -> Path:

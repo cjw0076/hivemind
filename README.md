@@ -1,6 +1,8 @@
-# MyWorld Agent System
+# MyWorld Agent System / Hive Mind
 
 Purpose: implement the user's broader agent / ontology system separately from the `universe/quantum` paper workspace.
+
+`mos` is now the Hive Mind CLI: a local control plane that combines installed provider CLIs such as Claude, Codex, Gemini, and local LLM workers into one shared run state.
 
 Current boundary:
 
@@ -61,6 +63,7 @@ scripts/install-mos-cli.sh
 mos init
 mos
 mos "your task"
+mos hive activity
 mos plan
 mos check run
 mos tui

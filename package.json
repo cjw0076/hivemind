@@ -2,7 +2,7 @@
   "name": "@memoryos/mos",
   "version": "0.1.0",
   "private": true,
-  "description": "MemoryOS harness control-plane CLI",
+  "description": "Hive Mind control-plane CLI for MemoryOS provider harnessing",
   "bin": {
     "mos": "bin/mos"
   },

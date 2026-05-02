@@ -1,6 +1,6 @@
-# MemoryOS Harness TUI
+# Hive Mind / MemoryOS Harness TUI
 
-`mos` is the first wrapper CLI/TUI for the structured agent blackboard described in `docs/tui.md`.
+`mos` is the Hive Mind control plane for the structured agent blackboard described in `docs/tui.md`. It combines already-installed provider CLIs and local LLM workers instead of replacing their native interfaces.
 
 ## Commands
 
@@ -23,6 +23,7 @@ mos orchestrate "Build parser and review risks"
 mos next
 mos prompt
 mos log
+mos hive activity
 mos memory list
 mos tui
 mos completion zsh
@@ -63,6 +64,8 @@ If installed as a package, `mos` points to the same command.
 Bare `mos` opens the conversational operator shell. Use `mos chat` explicitly for the same shell, or `mos shell` for the older thin slash-command shell. Use `mos tui` for the curses status board.
 
 `mos orchestrate` is the default prompt path. It asks the local router to split the request into a small agent society, prepares each provider/local worker artifact, writes `society_plan.json`, and reports which member owns which role. `mos ask` remains available for route-only debugging.
+
+Hive Mind keeps `events.jsonl` as a machine/audit log and `hive_events.jsonl` as the human activity feed. The TUI latest-events panel prefers `hive_events.jsonl`, so it shows role assignment and swarm decisions instead of only file-created events.
 
 `mos status` prints the run board: pipeline, agent status, artifact status, and the next recommended command. `mos next` prints only the next action for fast terminal loops.
 

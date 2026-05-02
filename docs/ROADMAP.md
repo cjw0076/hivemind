@@ -34,7 +34,7 @@ Exit criteria:
 
 Status: started.
 
-Goal: make `mos` the first operational wrapper around MemoryOS, local workers, and provider CLIs.
+Goal: make `mos` the first operational Hive Mind wrapper around MemoryOS, local workers, and provider CLIs.
 
 Deliverables:
 
@@ -47,6 +47,7 @@ Deliverables:
 - Recoverable failure artifacts when a provider or local model is unavailable.
 - CLI/TUI run board that reads run files without requiring a DB and shows pipeline, agents, artifacts, and next action.
 - Production wrappers through `scripts/install-mos-cli.sh`, `bin/mos`, and the private npm `production` script.
+- Hive Mind activity feed through `hive_events.jsonl` and `mos hive activity`, separate from machine-oriented `events.jsonl`.
 
 Exit criteria:
 

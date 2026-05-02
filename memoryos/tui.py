@@ -24,6 +24,7 @@ from .harness import (
     invoke_local,
     load_run,
     read_events,
+    read_hive_activity,
     run_board,
     orchestrate_prompt,
 )
@@ -44,9 +45,10 @@ def draw_loop(screen, root: Path, run_id: str | None) -> None:
         try:
             paths, state = load_run(root, run_id)
             events = read_events(paths, limit=8)
+            activities = read_hive_activity(paths, limit=8) or events
             health = collect_run_health(root, paths, state, events)
             board = run_board(root, paths.run_id)
-            draw_state(screen, height, width, state, events, health, board)
+            draw_state(screen, height, width, state, activities, health, board)
         except Exception as exc:  # TUI should show recoverable state instead of crashing.
             add_line(screen, 1, 2, "MemoryOS Harness", curses.A_BOLD)
             add_wrapped(screen, 3, 2, width - 4, str(exc))
@@ -300,7 +302,7 @@ def draw_dashboard(
     content_width = width - 4
     composer_top = height - 3
     add_line(screen, 0, margin, "mos", color(1, curses.A_BOLD))
-    add_line(screen, 0, margin + 5, "MemoryOS Harness", curses.A_BOLD)
+    add_line(screen, 0, margin + 5, "Hive Mind Harness", curses.A_BOLD)
     clock = time.strftime("%H:%M:%S")
     top_right = f"Local {health.get('providers_available')}/{health.get('providers_total')}   Safe Mode workspace-write   {clock}"
     add_line(screen, 0, max(margin + 24, width - len(top_right) - 2), truncate(top_right, max(10, width - 28)), curses.A_DIM)
@@ -588,6 +590,12 @@ def draw_events(screen, y: int, x: int, height: int, width: int, events: list[di
         return
     for index, event in enumerate(events[-height:]):
         ts = short_time(str(event.get("ts", "")))
+        if "summary" in event:
+            actor = str(event.get("actor", "hive"))
+            action = str(event.get("action", "activity"))
+            summary = str(event.get("summary", ""))
+            add_line(screen, y + index, x, truncate(f"{ts}  {actor}  {action}  {summary}", width))
+            continue
         event_type = str(event.get("type", ""))
         artifact = event.get("artifact")
         suffix = f"  {artifact}" if artifact else ""

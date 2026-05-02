@@ -34,6 +34,7 @@ Sources: `VG-03`, `VG-04`, `VG-05`, `VG-13`.
 - [x] Add local production wrappers: `bin/mos`, `scripts/install-mos-cli.sh`, and private npm `production` script.
 - [x] Make bare `mos` enter a conversational operator shell instead of only a thin command shell.
 - [x] Make prompt input default to `mos orchestrate`, creating a multi-agent `society_plan.json`.
+- [x] Name the provider-CLI harness product `Hive Mind` and document the API-first harness distinction.
 
 ## Harness Runtime
 
@@ -59,6 +60,7 @@ Sources: `VG-03`, `VG-04`, `VG-13`.
 - [x] Add `mos next`, `mos agents status`, and `mos memory list` for fast operator loops.
 - [x] Make `mos tui` interactive with prompt input, slash command input, and dashboard layout.
 - [x] Add always-visible TUI `mos>` composer so prompt entry is discoverable.
+- [x] Add `hive_events.jsonl` and `mos hive activity` so human activity shows role assignment, not only artifact creation.
 - [ ] Harden provider result validation for all prepared/executed adapters.
 
 ## Parser Work
