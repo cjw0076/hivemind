@@ -33,6 +33,8 @@ Use these when changing code:
 - `hive_mind2.md` - production-readiness gap analysis for `hive` hardening.
 - `HIVE_MIND_GAPS.md` - MemoryOS-side shared reference for closing Hive Mind's learning operator loop.
 - `GAP_CLOSURE_IMPLEMENTATION.md` - implemented gap-closure artifacts and remaining limits.
+- `PUBLISHING_GATE.md` - release/tag/package/announcement gate tied to the Hive Mind North Star.
+- `security/PUBLIC_ALPHA_SECURITY_REVIEW.md` - preserved Claude security-review evidence.
 - `HIVE_WORKING_METHOD.md` - user/Claude/Codex/local-LLM working method as Hive Mind product protocol.
 - `THIRD_PARTY_INTEGRATIONS.md` - optional adapter and license boundary notes.
 

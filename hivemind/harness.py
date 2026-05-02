@@ -22,7 +22,7 @@ import yaml
 
 from .local_workers import choose_model, read_input, run_worker, validate_worker_result, worker_route_table
 from .run_validation import validate_run_artifacts
-from .utils import now_iso, stable_id
+from .utils import ensure_valid_run_id, is_valid_run_id, now_iso, stable_id
 
 
 RUNS_DIR = ".runs"
@@ -56,6 +56,9 @@ PIPELINE_SPEC = [
 class RunPaths:
     root: Path
     run_id: str
+
+    def __post_init__(self) -> None:
+        ensure_valid_run_id(self.run_id)
 
     @property
     def run_dir(self) -> Path:
@@ -314,6 +317,7 @@ def load_run(root: Path, run_id: str | None = None) -> tuple[RunPaths, dict[str,
     actual_run_id = run_id or get_current(root)
     if not actual_run_id:
         raise FileNotFoundError("No current run. Create one with: hive run \"task\"")
+    actual_run_id = ensure_valid_run_id(actual_run_id)
     paths = RunPaths(root=root, run_id=actual_run_id)
     if not paths.state.exists():
         raise FileNotFoundError(f"Run state not found: {paths.state}")
@@ -390,7 +394,9 @@ def list_runs(root: Path) -> list[dict[str, Any]]:
     if not runs_dir.exists():
         return []
     runs = []
-    for state_path in sorted(runs_dir.glob("run_*/run_state.json"), reverse=True):
+    for state_path in sorted(runs_dir.glob("*/run_state.json"), reverse=True):
+        if not is_valid_run_id(state_path.parent.name):
+            continue
         try:
             runs.append(json.loads(state_path.read_text(encoding="utf-8")))
         except json.JSONDecodeError:
@@ -653,6 +659,7 @@ def format_memory_drafts(report: dict[str, Any]) -> str:
 
 
 def set_current(root: Path, run_id: str) -> None:
+    run_id = ensure_valid_run_id(run_id)
     runs_dir = init_harness(root)
     (runs_dir / CURRENT_FILE).write_text(run_id + "\n", encoding="utf-8")
 
@@ -662,7 +669,7 @@ def get_current(root: Path) -> str | None:
     if not current.exists():
         return None
     value = current.read_text(encoding="utf-8").strip()
-    return value or None
+    return ensure_valid_run_id(value) if value else None
 
 
 def detect_agents(root: Path, write: bool = True) -> dict[str, Any]:

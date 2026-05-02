@@ -1054,4 +1054,7 @@ def read_multiline_prompt() -> str:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except ValueError as exc:
+        raise SystemExit(f"hive: {exc}") from None

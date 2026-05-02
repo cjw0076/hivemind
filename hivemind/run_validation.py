@@ -8,6 +8,8 @@ from typing import Any
 
 import yaml
 
+from .utils import is_valid_run_id
+
 
 ALLOWED_EVENT_TYPES = {
     "run_created",
@@ -110,6 +112,10 @@ def validate_run_artifacts(run_dir: Path, root: Path) -> dict[str, Any]:
 
     run_id = run_dir.name
     paths = {name: run_dir / filename for name, filename in RUN_ARTIFACT_SPEC.items()}
+
+    checks["run_id_format_valid"] = is_valid_run_id(run_id)
+    if not checks["run_id_format_valid"]:
+        issues.append(f"invalid run_id format: {run_id}")
 
     for name, path in paths.items():
         checks[f"{name}_exists"] = path.exists()

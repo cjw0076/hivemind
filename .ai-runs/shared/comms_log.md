@@ -411,3 +411,10 @@ Naming note as of 2026-05-02 12:24 KST:
 - Decision: Marked `HIVE_MIND_GAPS.md` as a MemoryOS shared mirror, added `VG-14 Learning Operator Loop`, documented the chair model, and implemented `hive gaps` plus an upgraded `hive next` that builds gap-closure artifacts before choosing the next operator action.
 - Evidence: Added `docs/GAP_CLOSURE_IMPLEMENTATION.md`; `hive gaps` writes `memory_context.json`, `semantic_verification.json`, `handoff_quality.json`, `routing_evidence.json`, `conflict_set.json`, `operator_decisions.json`, and `gap_closure.json`. Smoke verified `hive gaps --json` and `hive next --json`; tests now pass at 26. Claude re-review returned GO for public alpha after security fixes.
 - Next: Replace the placeholder MemoryOS context command with the sibling repo's canonical context builder, then add real disagreement extraction and convergence scoring.
+
+## 2026-05-02 15:50 KST - Codex
+
+- Context: User asked to do the next two hardening tasks: preserve Claude security review evidence and add `run_id` validation, then defer publish until Hive Mind is closer to the North Star.
+- Decision: Added tracked public-alpha security review evidence, defined publish as release/tag/package/announcement rather than current GitHub visibility, and hardened `run_id` format validation across run construction, current-run reads, explicit load, listing, and current-run writes.
+- Evidence: Added `docs/security/PUBLIC_ALPHA_SECURITY_REVIEW.md`, `docs/PUBLISHING_GATE.md`, `tests/test_run_id_validation.py`, and central `is_valid_run_id` / `ensure_valid_run_id` utilities. Claude follow-up returned GO after verifying the security doc, run_id validation call sites, and public-alpha-not-production README language. `npm test` passed with 32 tests; invalid `--run-id ../outside` now exits as `hive: invalid run_id: '../outside'`.
+- Next: Do not create a release tag/package/announcement until structured disagreement extraction, canonical MemoryOS context integration, and high-risk semantic verification are materially working.

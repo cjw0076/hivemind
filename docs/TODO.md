@@ -280,9 +280,20 @@ Sources: `VG-12`, `VG-13`.
 - [ ] Add private project exclusion.
 - [ ] Draft privacy principles: no training on user uploads, export/delete always available.
 - [ ] Design optional encrypted backup.
-- [ ] Add `run_id` format validation as post-alpha hardening.
+- [x] Add `run_id` format validation as post-alpha hardening.
 - [ ] Redact env var names from public status JSON where practical.
 - [ ] Add secret scrubbing for captured subprocess output artifacts.
+
+## Publishing Gate
+
+Sources: `VG-00`, `VG-03`, `VG-06`, `VG-12`, `VG-14`.
+
+- [x] Preserve Claude public-alpha security review evidence in `docs/security/PUBLIC_ALPHA_SECURITY_REVIEW.md`.
+- [x] Define publish as release/tag/package/announcement, separate from current public-alpha GitHub visibility.
+- [ ] Add structured disagreement extraction to `hive debate`.
+- [ ] Connect `hive gaps` to canonical MemoryOS context builder.
+- [ ] Add semantic verifier review for high-risk runs.
+- [ ] Publish release/tag/package/announcement only after the North Star gate is materially met.
 
 ## Documentation
 
