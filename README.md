@@ -78,4 +78,12 @@ python -m hivemind.hive init
 scripts/hive-workbench.sh "your task"
 ```
 
+Memory graph import/audit code has moved to the sibling `memoryOS` repo:
+
+```bash
+cd ../memoryOS
+python -m memoryos.cli stats
+python -m memoryos.cli import-run --root ../hivemind current --dry-run
+```
+
 Onboarding persists detected provider/runtime settings to `.hivemind/settings_profile.json` and `~/.hivemind/settings_profile.json`. Use `eval "$(python -m hivemind.hive settings shell)"` when launching provider CLIs from custom scripts.

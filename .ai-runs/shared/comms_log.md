@@ -293,3 +293,10 @@
 - Decision: Kept `hive`/`hivemind` as the canonical product commands and restored `mos` as a deprecated compatibility alias that points to `hivemind.hive`; added umbrella-root detection so commands launched from `myworld/` resolve the child Hive Mind repo; made TUI interruption/non-interactive terminal failures exit cleanly.
 - Evidence: Updated `pyproject.toml`, `bin/mos`, `hivemind/hive.py`, `hivemind/tui.py`, install/docs references, reinstalled the editable package, and verified `hive`, `hivemind`, and `mos` from the umbrella workspace.
 - Next: Extract MemoryOS-specific schemas/importers from Hive Mind into the `memoryOS` repo while keeping Hive Mind focused on orchestration.
+
+## 2026-05-02 12:04 KST - Codex
+
+- Context: User asked to extract the MemoryOS work into the `memoryOS` repo after confirming the prior work is really Hive Mind.
+- Decision: Moved the local memory graph substrate into `myworld/memoryOS` as an independent `memoryos` Python package, and removed import/audit/store CLI ownership from Hive Mind.
+- Evidence: Added `memoryos/schema.py`, `store.py`, `importers.py`, `extract.py`, `audit.py`, `cli.py`, package metadata, and tests to `memoryOS`; removed `hivemind/audit.py`, `cli.py`, `extract.py`, `importers.py`, `store.py`, and their import tests from Hive Mind. Verified both repos with py_compile/unit tests and MemoryOS CLI smoke.
+- Next: Replace Hive Mind's remaining temporary schema helper with a small internal utility or an explicit `memoryos` package dependency.

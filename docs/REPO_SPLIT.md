@@ -51,3 +51,18 @@ Past work sessions remain in the Hive Mind repo at `myworld/hivemind/`:
 
 MemoryOS should later ingest these artifacts as structured memory objects, but
 Hive Mind owns the working run history for now.
+
+## Code Ownership
+
+MemoryOS now owns the local memory graph substrate:
+
+- `memoryos/schema.py`
+- `memoryos/store.py`
+- `memoryos/importers.py`
+- `memoryos/extract.py`
+- `memoryos/audit.py`
+- `memoryos/cli.py`
+
+Hive Mind no longer owns import/audit graph code. It keeps run artifact
+generation, provider orchestration, TUI/CLI control-plane behavior, and
+temporary run validation helpers.
