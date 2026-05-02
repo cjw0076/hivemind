@@ -384,3 +384,10 @@ Naming note as of 2026-05-02 12:24 KST:
 - Decision: Verified remote `origin/main` is at `06dc5ef`, confirmed policy/doctor/context/multi-view commands are present, fixed duplicate TODO drift, and added first-party `hive local benchmark` with JSON-validity and latency smoke prompts. Kept `llm-checker` as optional cross-checker only.
 - Evidence: Added `local_benchmark_report`, `benchmark_ollama_model`, `hive local benchmark`, docs updates, and test coverage. Verified `npm test` and `hive local benchmark --model qwen3:1.7b`; current server has no loaded models, so the benchmark reports `skipped_model_not_loaded` with a workspace-server hint instead of a raw HTTP 404.
 - Next: For a true measured score on this machine, start the workspace Ollama server with `scripts/start-ollama-local.sh` or load/pull models into the active Ollama server, then rerun `hive local benchmark`.
+
+## 2026-05-02 13:43 KST - Codex
+
+- Context: User asked to wire benchmark setup through shell scripts and asked whether Hive Mind guides Ollama through Docker.
+- Decision: Added a one-command benchmark script and an optional Docker Ollama launcher. Default remains workspace-local Ollama; Docker is available through `HIVE_OLLAMA_MODE=docker`.
+- Evidence: Added `scripts/hive-local-benchmark.sh`, `scripts/start-ollama-docker.sh`, npm scripts `benchmark:local` and `ollama:docker`, and docs. Verified shell syntax, `npm test`, and `scripts/hive-local-benchmark.sh qwen3:1.7b`; the script pulled `qwen3:1.7b` and benchmarked it. Result: latency around 524 ms after load, but JSON-validity failed because the model returned `{}` for the strict JSON smoke prompt.
+- Next: Benchmark `qwen3:8b` and coder models, then use measured JSON validity/latency to adjust route defaults instead of assuming small models are schema-safe.

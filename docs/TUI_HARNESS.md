@@ -65,6 +65,8 @@ python -m hivemind.hive local setup
 python -m hivemind.hive local setup --auto
 python -m hivemind.hive local benchmark --limit 1
 python -m hivemind.hive local checker
+scripts/hive-local-benchmark.sh qwen3:1.7b
+HIVE_OLLAMA_MODE=docker scripts/hive-local-benchmark.sh qwen3:1.7b
 python -m hivemind.hive agents detect
 python -m hivemind.hive agents roles
 python -m hivemind.hive settings detect
@@ -175,6 +177,8 @@ hive local setup --auto
 hive local benchmark
 hive local checker
 hive local checker --execute
+npm run ollama:docker
+npm run benchmark:local
 hive audit
 hive workspace --layout dev
 ```
@@ -184,6 +188,18 @@ hive workspace --layout dev
 user/Claude/Codex/local-LLM loop as a reusable protocol. The quiet internal
 thread is `evolution of Single Human Intelligence`; treat it as product
 identity, not a scientific claim.
+
+Local benchmark setup can use either the workspace-local Ollama binary or Docker:
+
+```bash
+scripts/hive-local-benchmark.sh qwen3:1.7b
+HIVE_OLLAMA_MODE=docker scripts/hive-local-benchmark.sh qwen3:1.7b
+```
+
+The Docker path runs `ollama/ollama:latest` as `hivemind-ollama`, binds
+`127.0.0.1:11434`, mounts `.local/ollama/models`, and adds `--gpus all` when
+`nvidia-smi` is available. It is an optional path; the default remains the
+workspace-local wrapper.
 
 `hive orchestrate` is the default prompt path. It asks the local router to split the request into a small agent society, prepares each provider/local worker artifact, writes `society_plan.json`, and reports which member owns which role. `hive ask` remains available for route-only debugging.
 

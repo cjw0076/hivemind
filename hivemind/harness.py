@@ -1192,7 +1192,12 @@ def benchmark_ollama_model(model: str, timeout: int = 90) -> dict[str, Any]:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = json.loads(response.read().decode("utf-8"))
         raw = str(body.get("response") or "")
-        parsed = json.loads(raw)
+        parse_error = ""
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            parsed = {}
+            parse_error = str(exc)
         json_valid = isinstance(parsed, dict) and parsed.get("ok") is True and "confidence" in parsed
         return {
             "model": model,
@@ -1200,7 +1205,9 @@ def benchmark_ollama_model(model: str, timeout: int = 90) -> dict[str, Any]:
             "latency_ms": int((time.monotonic() - started) * 1000),
             "json_valid": json_valid,
             "parsed": parsed,
-            "error": "",
+            "raw_response": raw[:2000],
+            "parse_error": parse_error,
+            "error": parse_error,
         }
     except Exception as exc:
         return {
@@ -1209,6 +1216,8 @@ def benchmark_ollama_model(model: str, timeout: int = 90) -> dict[str, Any]:
             "latency_ms": int((time.monotonic() - started) * 1000),
             "json_valid": False,
             "parsed": {},
+            "raw_response": "",
+            "parse_error": "",
             "error": str(exc),
         }
 

@@ -8,6 +8,8 @@
   },
   "scripts": {
     "doctor": "python -m hivemind.hive doctor",
+    "ollama:docker": "bash scripts/start-ollama-docker.sh",
+    "benchmark:local": "bash scripts/hive-local-benchmark.sh",
     "install:python": "python -m pip install --user -e .",
     "production": "bash scripts/install-hive-cli.sh",
     "test": "python -m py_compile hivemind/*.py && python -m unittest discover -s tests -p 'test_*.py'"

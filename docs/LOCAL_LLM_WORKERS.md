@@ -25,6 +25,8 @@ Use the workspace-local wrappers so model paths stay inside this repo:
 ```bash
 scripts/start-ollama-local.sh
 scripts/ollama-local.sh list
+scripts/hive-local-benchmark.sh qwen3:1.7b
+HIVE_OLLAMA_MODE=docker scripts/hive-local-benchmark.sh qwen3:1.7b
 ```
 
 ## Worker Roles
