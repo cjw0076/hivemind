@@ -4,7 +4,6 @@ import unittest
 
 from hivemind.harness import build_verification, create_run
 from hivemind.run_validation import validate_run_artifacts
-from hivemind.schema import make_hyperedge, make_memory_object
 
 
 class RunValidationTest(unittest.TestCase):
@@ -43,15 +42,6 @@ class RunValidationTest(unittest.TestCase):
             report = validate_run_artifacts(paths.run_dir, root)
             self.assertEqual(report["verdict"], "needs_review")
             self.assertFalse(report["checks"]["provider_results_schema_valid"])
-
-    def test_memory_object_and_hyperedge_schema(self) -> None:
-        memory = make_memory_object("decision", "Keep hive run protocol canonical.", "user", "MemoryOS", ["docs/TODO.md"], 0.9)
-        self.assertEqual(memory.status, "draft")
-        self.assertEqual(memory.type, "decision")
-        hyperedge = make_hyperedge("supports", [memory.id, "node_spec"], "test", confidence=0.8)
-        self.assertEqual(hyperedge.members[0], memory.id)
-        self.assertEqual(hyperedge.confidence, 0.8)
-
 
 if __name__ == "__main__":
     unittest.main()

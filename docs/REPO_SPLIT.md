@@ -63,6 +63,6 @@ MemoryOS now owns the local memory graph substrate:
 - `memoryos/audit.py`
 - `memoryos/cli.py`
 
-Hive Mind no longer owns import/audit graph code. It keeps run artifact
-generation, provider orchestration, TUI/CLI control-plane behavior, and
-temporary run validation helpers.
+Hive Mind no longer owns import/audit graph code or MemoryObject/Hyperedge
+dataclasses. It keeps run artifact generation, provider orchestration, TUI/CLI
+control-plane behavior, and run validation helpers.

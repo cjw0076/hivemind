@@ -299,4 +299,4 @@
 - Context: User asked to extract the MemoryOS work into the `memoryOS` repo after confirming the prior work is really Hive Mind.
 - Decision: Moved the local memory graph substrate into `myworld/memoryOS` as an independent `memoryos` Python package, and removed import/audit/store CLI ownership from Hive Mind.
 - Evidence: Added `memoryos/schema.py`, `store.py`, `importers.py`, `extract.py`, `audit.py`, `cli.py`, package metadata, and tests to `memoryOS`; removed `hivemind/audit.py`, `cli.py`, `extract.py`, `importers.py`, `store.py`, and their import tests from Hive Mind. Verified both repos with py_compile/unit tests and MemoryOS CLI smoke.
-- Next: Replace Hive Mind's remaining temporary schema helper with a small internal utility or an explicit `memoryos` package dependency.
+- Next: Keep Hive Mind focused on production orchestration: live agent logs, provider execution UX, packaging, and release checks.

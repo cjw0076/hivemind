@@ -17,7 +17,7 @@ from typing import Any
 
 from .local_workers import choose_model, read_input, run_worker, validate_worker_result, worker_route_table
 from .run_validation import validate_run_artifacts
-from .schema import now_iso, stable_id
+from .utils import now_iso, stable_id
 
 
 RUNS_DIR = ".runs"
