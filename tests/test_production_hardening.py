@@ -8,10 +8,12 @@ from hivemind.harness import (
     create_run,
     invoke_external_agent,
     llm_checker_report,
+    local_benchmark_report,
     local_model_profile,
     policy_report,
 )
 from hivemind.run_validation import validate_run_artifacts
+from unittest.mock import patch
 
 
 class ProductionHardeningTest(unittest.TestCase):
@@ -75,6 +77,26 @@ class ProductionHardeningTest(unittest.TestCase):
             self.assertTrue((root / ".hivemind" / "llm_checker_report.json").exists())
             self.assertIn("github.com/Pavelevich/llm-checker", report["source"]["repo"])
             self.assertIn("recommend", report["commands"])
+
+    def test_local_benchmark_writes_results_and_profile_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch(
+                "hivemind.harness.benchmark_ollama_model",
+                return_value={
+                    "model": "qwen3:1.7b",
+                    "status": "completed",
+                    "latency_ms": 123,
+                    "json_valid": True,
+                    "parsed": {"ok": True, "confidence": 0.75},
+                    "error": "",
+                },
+            ):
+                report = local_benchmark_report(root, models=["qwen3:1.7b"], write=True)
+
+            self.assertTrue((root / ".hivemind" / "local_benchmark.json").exists())
+            self.assertEqual(report["json_validity"], 1.0)
+            self.assertEqual(report["results"][0]["latency_ms"], 123)
 
 
 if __name__ == "__main__":

@@ -35,3 +35,7 @@ For a public free GitHub release, an optional adapter plus attribution is enough
 For any paid Hive Mind distribution, hosted service, bundled installer, or
 commercial package that includes or depends on `llm-checker`, contact the
 maintainer first and get explicit permission or a commercial license.
+
+Hive Mind still owns its built-in `hive local benchmark` command. The optional
+`llm-checker` adapter can enrich or cross-check recommendations, but it is not
+required for the local JSON-validity and latency smoke benchmark.

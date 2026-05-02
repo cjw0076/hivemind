@@ -63,6 +63,7 @@ python -m hivemind.hive doctor hardware
 python -m hivemind.hive local status
 python -m hivemind.hive local setup
 python -m hivemind.hive local setup --auto
+python -m hivemind.hive local benchmark --limit 1
 python -m hivemind.hive local checker
 python -m hivemind.hive agents detect
 python -m hivemind.hive agents roles
@@ -171,6 +172,7 @@ hive agents roles
 hive agents explain claude.planner
 hive context build --for codex.executor
 hive local setup --auto
+hive local benchmark
 hive local checker
 hive local checker --execute
 hive audit

@@ -61,6 +61,7 @@ Onboarding checks local LLM state:
 ```bash
 python -m hivemind.hive init
 python -m hivemind.hive local status
+python -m hivemind.hive local benchmark --limit 1
 ```
 
 DeepSeek and Qwen local open-weight models through Ollama do not need API keys. Hosted API providers need `DEEPSEEK_API_KEY` or `QWEN_API_KEY`.

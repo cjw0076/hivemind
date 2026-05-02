@@ -57,7 +57,7 @@ Work order: finish the `hive` operator loop before deeper MemoryOS/CapabilityOS 
 - [x] Add production context builder/budgeter/validator and `hive context build --for <agent-role>`.
 - [x] Add multi-session workspace layout hints with `hive workspace --layout dev|dual`.
 - [x] Add run audit/observability command for provider failures, stale artifacts, unverified outputs, and policy drift.
-- [ ] Add real local model benchmark prompts with measured JSON validity and latency.
+- [x] Add real local model benchmark prompts with measured JSON validity and latency.
 - [x] Add optional `llm-checker` adapter plan without vendoring upstream code.
 - [x] Add test coverage for expanded provider results, policy gates, context packs, and local model profiles.
 - [ ] Add expanded on-disk fixtures for invalid provider results, policy gates, local model profiles, and complete minimal runs.
@@ -87,7 +87,7 @@ Sources: `VG-03`, `VG-04`, `VG-13`.
 - [x] Make `hive tui` interactive with prompt input, slash command input, and dashboard layout.
 - [x] Add always-visible TUI `hive>` composer so prompt entry is discoverable.
 - [x] Add `hive_events.jsonl` and `hive hive activity` so human activity shows role assignment, not only artifact creation.
-- [ ] Harden provider result validation for all prepared/executed adapters.
+- [x] Harden provider result validation for all prepared/executed adapters.
 
 ## Parser Work
 

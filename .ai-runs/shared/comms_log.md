@@ -377,3 +377,10 @@ Naming note as of 2026-05-02 12:24 KST:
 - Decision: Treat `llm-checker` as an optional external adapter, not vendored source or a required dependency, because its current license forbids paid distribution/hosted monetized delivery without separate commercial permission.
 - Evidence: Added `hive local checker`, `.hivemind/llm_checker_report.json`, `docs/THIRD_PARTY_INTEGRATIONS.md`, and test coverage. Verified `npm test`, `hive local checker`, `hive local checker --json`, and `hive verify` for `run_20260502_130026_0975a7`.
 - Next: If Hive Mind becomes paid/hosted or bundles `llm-checker`, contact the upstream maintainer for explicit permission/commercial licensing first.
+
+## 2026-05-02 13:34 KST - Codex
+
+- Context: User pasted a production-readiness review noting GitHub/TODO drift, missing `hive local benchmark`, and concern that completed TODO items were not visible in the command surface.
+- Decision: Verified remote `origin/main` is at `06dc5ef`, confirmed policy/doctor/context/multi-view commands are present, fixed duplicate TODO drift, and added first-party `hive local benchmark` with JSON-validity and latency smoke prompts. Kept `llm-checker` as optional cross-checker only.
+- Evidence: Added `local_benchmark_report`, `benchmark_ollama_model`, `hive local benchmark`, docs updates, and test coverage. Verified `npm test` and `hive local benchmark --model qwen3:1.7b`; current server has no loaded models, so the benchmark reports `skipped_model_not_loaded` with a workspace-server hint instead of a raw HTTP 404.
+- Next: For a true measured score on this machine, start the workspace Ollama server with `scripts/start-ollama-local.sh` or load/pull models into the active Ollama server, then rerun `hive local benchmark`.

@@ -1115,6 +1115,132 @@ def format_llm_checker_report(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def local_benchmark_report(
+    root: Path,
+    models: list[str] | None = None,
+    limit: int = 4,
+    timeout: int = 90,
+    write: bool = True,
+) -> dict[str, Any]:
+    runtime = local_runtime_report(root, write=True)
+    ollama = runtime.get("ollama") or {}
+    available = list(ollama.get("models") or [])
+    selected = models or available[:limit]
+    results = []
+    for model in selected:
+        results.append(benchmark_ollama_model(model, timeout=timeout))
+    valid = [item for item in results if item.get("json_valid")]
+    report = {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "runtime": "ollama",
+        "server": ollama.get("server"),
+        "status": "completed" if results else "needs_setup",
+        "models_tested": selected,
+        "json_validity": (len(valid) / len(results)) if results else 0.0,
+        "results": results,
+        "working_method": WORKING_METHOD_PHRASE,
+    }
+    if write:
+        project_dir = root / PROJECT_DIR
+        project_dir.mkdir(parents=True, exist_ok=True)
+        write_json(project_dir / "local_benchmark.json", report)
+        profile = local_model_profile(root, write=False)
+        for result in results:
+            model_entry = (profile.get("models") or {}).get(result.get("model"))
+            if model_entry is not None:
+                model_entry["json_validity"] = 1.0 if result.get("json_valid") else 0.0
+                model_entry["latency_ms"] = result.get("latency_ms")
+                model_entry["benchmark_status"] = result.get("status")
+        write_json(project_dir / "local_model_profile.json", profile)
+    return report
+
+
+def benchmark_ollama_model(model: str, timeout: int = 90) -> dict[str, Any]:
+    server_models = ollama_server_models()
+    if server_models is not None and model not in server_models:
+        return {
+            "model": model,
+            "status": "skipped_model_not_loaded",
+            "latency_ms": 0,
+            "json_valid": False,
+            "parsed": {},
+            "error": (
+                f"{model} is not loaded in the running Ollama server. "
+                "Start the workspace server with scripts/start-ollama-local.sh or pull/load the model first."
+            ),
+        }
+    prompt = (
+        "Return valid JSON only. No markdown. "
+        'Use exactly this shape: {"ok": true, "task": "json_validity_smoke", "confidence": 0.75}.'
+    )
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "format": "json",
+        "options": {"temperature": 0.0, "num_predict": 80},
+    }
+    started = time.monotonic()
+    try:
+        request = urllib.request.Request(
+            "http://127.0.0.1:11434/api/generate",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = json.loads(response.read().decode("utf-8"))
+        raw = str(body.get("response") or "")
+        parsed = json.loads(raw)
+        json_valid = isinstance(parsed, dict) and parsed.get("ok") is True and "confidence" in parsed
+        return {
+            "model": model,
+            "status": "completed",
+            "latency_ms": int((time.monotonic() - started) * 1000),
+            "json_valid": json_valid,
+            "parsed": parsed,
+            "error": "",
+        }
+    except Exception as exc:
+        return {
+            "model": model,
+            "status": "failed",
+            "latency_ms": int((time.monotonic() - started) * 1000),
+            "json_valid": False,
+            "parsed": {},
+            "error": str(exc),
+        }
+
+
+def ollama_server_models() -> list[str] | None:
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=2) as response:
+            body = json.loads(response.read().decode("utf-8"))
+        return [item.get("name", "") for item in body.get("models", []) if item.get("name")]
+    except Exception:
+        return None
+
+
+def format_local_benchmark(report: dict[str, Any]) -> str:
+    lines = [
+        "Hive Mind Local Benchmark",
+        "",
+        f"Runtime: {report.get('runtime')} server={report.get('server')}",
+        f"Status: {report.get('status')}",
+        f"JSON validity: {report.get('json_validity')}",
+        "",
+        "Results:",
+    ]
+    for item in report.get("results") or []:
+        marker = "✓" if item.get("json_valid") else "!"
+        lines.append(f"{marker} {item.get('model')}: {item.get('status')} latency_ms={item.get('latency_ms')} json_valid={item.get('json_valid')}")
+        if item.get("error"):
+            lines.append(f"  error: {item.get('error')}")
+    lines.extend(["", f"Thread: {report.get('working_method')}"])
+    return "\n".join(lines)
+
+
 def build_context_pack_for_role(root: Path, role: str, run_id: str | None = None) -> dict[str, Any]:
     paths, state = load_run(root, run_id)
     context_dir = paths.run_dir / "context"

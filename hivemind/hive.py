@@ -27,12 +27,14 @@ from .harness import (
     format_memory_drafts,
     format_local_runtime,
     format_local_model_profile,
+    format_local_benchmark,
     format_llm_checker_report,
     format_policy_explain,
     format_policy_report,
     format_run_audit,
     format_workspace_layout,
     local_routes_report,
+    local_benchmark_report,
     local_model_profile,
     llm_checker_report,
     get_current,
@@ -204,6 +206,11 @@ def main(argv: list[str] | None = None) -> None:
     local_setup_cmd.add_argument("--json", action="store_true")
     local_routes_cmd = local_sub.add_parser("routes", help="show local worker route table")
     local_routes_cmd.add_argument("--json", action="store_true")
+    local_benchmark_cmd = local_sub.add_parser("benchmark", help="run local model JSON-validity and latency smoke benchmarks")
+    local_benchmark_cmd.add_argument("--model", action="append", dest="models", help="model to benchmark; repeatable")
+    local_benchmark_cmd.add_argument("--limit", type=int, default=4)
+    local_benchmark_cmd.add_argument("--timeout", type=int, default=90)
+    local_benchmark_cmd.add_argument("--json", action="store_true")
     local_checker_cmd = local_sub.add_parser("checker", help="optional llm-checker adapter report")
     local_checker_cmd.add_argument("--category", default="coding")
     local_checker_cmd.add_argument("--use-npx", action="store_true", help="allow npx --yes llm-checker when not installed")
@@ -477,6 +484,17 @@ def main(argv: list[str] | None = None) -> None:
                 print(format_llm_checker_report(report))
                 print("")
                 print(f"Wrote {root / '.hivemind' / 'llm_checker_report.json'}")
+            return
+        if args.local_cmd == "benchmark":
+            report = local_benchmark_report(root, models=args.models, limit=args.limit, timeout=args.timeout, write=True)
+            if args.json:
+                import json
+
+                print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(format_local_benchmark(report))
+                print("")
+                print(f"Wrote {root / '.hivemind' / 'local_benchmark.json'}")
             return
         if args.local_cmd == "setup" and args.auto:
             report = local_model_profile(root, write=True)
