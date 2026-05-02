@@ -1561,6 +1561,22 @@ def append_hive_activity(
     append_transcript(paths, "Hive", f"{actor} {action}: {summary}")
 
 
+def append_agent_log(paths: RunPaths, agent: str, role: str, message: str) -> Path:
+    agent_dir = paths.run_dir / "agents" / agent
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    log_path = agent_dir / f"{role.replace('-', '_')}.log"
+    with log_path.open("a", encoding="utf-8") as f:
+        f.write(f"{now_iso()} {message.rstrip()}\n")
+    append_hive_activity(
+        paths,
+        f"{agent}/{role}",
+        "log",
+        message.strip()[:240],
+        {"log": log_path.relative_to(paths.root).as_posix() if log_path.is_relative_to(paths.root) else log_path.as_posix()},
+    )
+    return log_path
+
+
 def append_transcript(paths: RunPaths, title: str, body: str) -> None:
     if not paths.transcript.exists():
         paths.transcript.write_text(f"# Transcript: {paths.run_id}\n\n", encoding="utf-8")
@@ -1664,6 +1680,7 @@ def invoke_local(root: Path, role: str, run_id: str | None = None, complexity: s
     agent_name = local_agent_name(role)
     model = choose_model(worker, complexity)
     set_agent_status(paths, agent_name, "running")
+    append_agent_log(paths, "local", role, f"started worker={worker} model={model} source={source_ref}")
     append_event(paths, "agent_started", {"agent": "local", "role": role, "worker": worker})
     try:
         worker_output = run_worker(worker, input_text, model=model, source_ref=source_ref)
@@ -1712,6 +1729,7 @@ def invoke_local(root: Path, role: str, run_id: str | None = None, complexity: s
         run_status = "needs_attention"
     out_path = paths.local_dir / f"{role.replace('-', '_')}.json"
     write_json(out_path, result)
+    append_agent_log(paths, "local", role, f"{agent_status} artifact={out_path.relative_to(root).as_posix()}")
     append_transcript(paths, "Ran", f"`hive invoke local --role {role}` -> `{out_path.relative_to(root).as_posix()}` status={agent_status}")
     set_agent_status(paths, agent_name, agent_status)
     append_event(
@@ -1738,6 +1756,7 @@ def invoke_external_agent(
     agent_name = f"{agent}-{role}"
     prompt_path = agent_dir / f"{role}_prompt.md"
     prompt_path.write_text(build_external_prompt(paths, state, agent, role), encoding="utf-8")
+    append_agent_log(paths, agent, role, f"prompt_created artifact={prompt_path.relative_to(root).as_posix()}")
     append_transcript(paths, "Edited", f"`{prompt_path.relative_to(root).as_posix()}` for {agent}/{role}")
     set_agent_status(paths, agent_name, "ready")
     append_event(
@@ -1764,6 +1783,7 @@ def invoke_external_agent(
             "execute": False,
         }
         result_path.write_text(format_simple_yaml(result), encoding="utf-8")
+        append_agent_log(paths, agent, role, f"prepared result={result_path.relative_to(root).as_posix()} mode={result['provider_mode']}")
         append_transcript(paths, "Prepared", f"{agent}/{role} -> `{result_path.relative_to(root).as_posix()}`")
         set_agent_status(paths, agent_name, "prepared")
         append_event(paths, "agent_prepared", {"agent": agent, "role": role, "artifact": result_path.relative_to(root).as_posix()})
@@ -1786,6 +1806,7 @@ def invoke_external_agent(
             "execute": False,
         }
         result_path.write_text(format_simple_yaml(result), encoding="utf-8")
+        append_agent_log(paths, agent, role, f"blocked prepare_only result={result_path.relative_to(root).as_posix()}")
         append_transcript(paths, "Prepared", f"{agent}/{role} blocked as prepare-only -> `{result_path.relative_to(root).as_posix()}`")
         set_agent_status(paths, agent_name, "failed")
         append_event(paths, "agent_failed", {"agent": agent, "role": role, "artifact": result_path.relative_to(root).as_posix()})
@@ -1803,6 +1824,7 @@ def invoke_external_agent(
             "reason": f"{agent} binary not found",
         }
         result_path.write_text(format_simple_yaml(result), encoding="utf-8")
+        append_agent_log(paths, agent, role, f"failed unavailable result={result_path.relative_to(root).as_posix()}")
         append_transcript(paths, "Prepared", f"{agent}/{role} unavailable -> `{result_path.relative_to(root).as_posix()}`")
         set_agent_status(paths, agent_name, "failed")
         append_event(paths, "agent_failed", {"agent": agent, "role": role, "artifact": result_path.relative_to(root).as_posix()})
@@ -1810,18 +1832,24 @@ def invoke_external_agent(
         return result_path
 
     set_agent_status(paths, agent_name, "running")
+    append_agent_log(paths, agent, role, f"started execute binary={agent_bin}")
     append_event(paths, "agent_started", {"agent": agent, "role": role})
     command = external_command(agent, agent_bin, prompt_path.read_text(encoding="utf-8"))
-    completed = subprocess.run(command, cwd=root, text=True, capture_output=True, timeout=600)
-    output_path.write_text(completed.stdout or completed.stderr, encoding="utf-8")
-    status = "completed" if completed.returncode == 0 else "failed"
+    returncode = run_provider_with_live_log(paths, root, agent, role, command, output_path, timeout=600)
+    append_agent_log(
+        paths,
+        agent,
+        role,
+        f"{'completed' if returncode == 0 else 'failed'} returncode={returncode} output={output_path.relative_to(root).as_posix()}",
+    )
+    status = "completed" if returncode == 0 else "failed"
     result = {
         "schema_version": 1,
         "agent": agent,
         "role": role,
         "status": status,
         "provider_mode": "execute_supported",
-        "returncode": completed.returncode,
+        "returncode": returncode,
         "prompt": prompt_path.relative_to(root).as_posix(),
         "output": output_path.relative_to(root).as_posix(),
     }
@@ -1831,6 +1859,43 @@ def invoke_external_agent(
     append_event(paths, f"agent_{status}", {"agent": agent, "role": role, "artifact": result_path.relative_to(root).as_posix()})
     update_state(paths, phase="handoff", status="in_progress" if status == "completed" else "needs_attention")
     return result_path
+
+
+def run_provider_with_live_log(
+    paths: RunPaths,
+    root: Path,
+    agent: str,
+    role: str,
+    command: list[str],
+    output_path: Path,
+    timeout: int,
+) -> int:
+    deadline = time.monotonic() + timeout
+    with output_path.open("w", encoding="utf-8") as output:
+        process = subprocess.Popen(
+            command,
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+        )
+        assert process.stdout is not None
+        try:
+            for line in process.stdout:
+                output.write(line)
+                output.flush()
+                clean = line.strip()
+                if clean:
+                    append_agent_log(paths, agent, role, f"stdout {clean[:220]}")
+                if time.monotonic() > deadline:
+                    process.kill()
+                    append_agent_log(paths, agent, role, f"timeout after {timeout}s")
+                    return process.wait()
+            return process.wait()
+        finally:
+            if process.poll() is None:
+                process.kill()
 
 
 def build_verification(root: Path, run_id: str | None = None) -> Path:

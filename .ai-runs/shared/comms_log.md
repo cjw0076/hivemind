@@ -300,3 +300,10 @@
 - Decision: Moved the local memory graph substrate into `myworld/memoryOS` as an independent `memoryos` Python package, and removed import/audit/store CLI ownership from Hive Mind.
 - Evidence: Added `memoryos/schema.py`, `store.py`, `importers.py`, `extract.py`, `audit.py`, `cli.py`, package metadata, and tests to `memoryOS`; removed `hivemind/audit.py`, `cli.py`, `extract.py`, `importers.py`, `store.py`, and their import tests from Hive Mind. Verified both repos with py_compile/unit tests and MemoryOS CLI smoke.
 - Next: Keep Hive Mind focused on production orchestration: live agent logs, provider execution UX, packaging, and release checks.
+
+## 2026-05-02 12:10 KST - Codex
+
+- Context: User asked whether real-time per-agent work logs can be shown while productionizing Hive Mind.
+- Decision: Added per-agent `agents/<provider>/<role>.log` files, mirrored agent log messages into `hive_events.jsonl` and `transcript.md`, added a TUI `Live Transcript` panel, and changed executed provider calls to stream stdout into logs while running.
+- Evidence: Updated `hivemind/harness.py`, `hivemind/tui.py`, and `docs/TUI_HARNESS.md`; smoke-tested `hive invoke claude`, `hive invoke codex`, `hive invoke local`, `hive log`, `hive hive activity`, and generated agent log files.
+- Next: Finish release checks and package/install smoke for the `hive` production CLI.

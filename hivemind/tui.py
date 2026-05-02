@@ -25,6 +25,7 @@ from .harness import (
     load_run,
     read_events,
     read_hive_activity,
+    read_transcript,
     run_board,
     orchestrate_prompt,
 )
@@ -51,9 +52,10 @@ def draw_loop(screen, root: Path, run_id: str | None) -> None:
             paths, state = load_run(root, run_id)
             events = read_events(paths, limit=8)
             activities = read_hive_activity(paths, limit=8) or events
+            transcript_lines = [line for line in read_transcript(root, paths.run_id, tail=18).splitlines() if line.strip()]
             health = collect_run_health(root, paths, state, events)
             board = run_board(root, paths.run_id)
-            draw_state(screen, height, width, state, activities, health, board)
+            draw_state(screen, height, width, state, activities, transcript_lines, health, board)
         except Exception as exc:  # TUI should show recoverable state instead of crashing.
             add_line(screen, 1, 2, "Hive Mind Harness", curses.A_BOLD)
             add_wrapped(screen, 3, 2, width - 4, str(exc))
@@ -196,6 +198,7 @@ def draw_state(
     width: int,
     state: dict[str, Any],
     events: list[dict[str, Any]],
+    transcript_lines: list[str],
     health: dict[str, Any],
     board: dict[str, Any],
 ) -> None:
@@ -203,7 +206,7 @@ def draw_state(
         draw_compact(screen, height, width, state, events, health)
         return
     if width >= 110 and height >= 28:
-        draw_dashboard(screen, height, width, state, events, health, board)
+        draw_dashboard(screen, height, width, state, events, transcript_lines, health, board)
         return
 
     content_width = max(40, width - 4)
@@ -300,6 +303,7 @@ def draw_dashboard(
     width: int,
     state: dict[str, Any],
     events: list[dict[str, Any]],
+    transcript_lines: list[str],
     health: dict[str, Any],
     board: dict[str, Any],
 ) -> None:
@@ -339,12 +343,22 @@ def draw_dashboard(
     draw_artifact_table(screen, middle_top + 1, artifacts_x + 2, middle_h - 2, artifacts_w - 4, board.get("artifacts", []))
 
     bottom_top = middle_top + middle_h + 1
-    events_w = max(58, content_width // 2 + 10)
-    next_w = content_width - events_w - 2
+    events_w = max(40, content_width // 3)
+    logs_w = max(44, content_width // 3)
+    next_w = content_width - events_w - logs_w - 4
+    if next_w < 28:
+        events_w = max(44, content_width // 2)
+        logs_w = content_width - events_w - 2
+        next_w = 0
     draw_box(screen, bottom_top, margin, bottom_h, events_w, "Latest Events")
     draw_events(screen, bottom_top + 1, margin + 2, bottom_h - 2, events_w - 4, events)
-    draw_box(screen, bottom_top, margin + events_w + 2, bottom_h, next_w, "Next Recommended Actions")
-    draw_next_actions(screen, bottom_top + 1, margin + events_w + 4, bottom_h - 2, next_w - 4, board)
+    logs_x = margin + events_w + 2
+    draw_box(screen, bottom_top, logs_x, bottom_h, logs_w, "Live Transcript")
+    draw_log_lines(screen, bottom_top + 1, logs_x + 2, bottom_h - 2, logs_w - 4, transcript_lines)
+    if next_w >= 28:
+        next_x = logs_x + logs_w + 2
+        draw_box(screen, bottom_top, next_x, bottom_h, next_w, "Next")
+        draw_next_actions(screen, bottom_top + 1, next_x + 2, bottom_h - 2, next_w - 4, board)
 
     keys = "Keys: enter talk  / command  n new  a route  c claude  x codex  g gemini  v verify  m memory  d diff  q quit"
     add_line(screen, composer_top - 1, margin, truncate(keys, content_width), curses.A_DIM)
@@ -605,6 +619,15 @@ def draw_events(screen, y: int, x: int, height: int, width: int, events: list[di
         artifact = event.get("artifact")
         suffix = f"  {artifact}" if artifact else ""
         add_line(screen, y + index, x, truncate(f"{ts}  {event_type}{suffix}", width))
+
+
+def draw_log_lines(screen, y: int, x: int, height: int, width: int, lines: list[str]) -> None:
+    if not lines:
+        add_line(screen, y, x, "No transcript yet.", curses.A_DIM)
+        return
+    compact = [line.strip("# ").strip() for line in lines if line.strip()]
+    for index, line in enumerate(compact[-height:]):
+        add_line(screen, y + index, x, truncate(line, width))
 
 
 def draw_box(screen, y: int, x: int, height: int, width: int, title: str) -> None:

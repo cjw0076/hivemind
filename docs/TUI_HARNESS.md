@@ -74,6 +74,12 @@ Hive Mind keeps `events.jsonl` as a machine/audit log and `hive_events.jsonl` as
 `hive check run` evaluates markdown policy files under `.hivemind/checks/`. `hive diff`, `hive review-diff`, and `hive commit-summary` provide the first git-aware loop without committing automatically.
 `hive prompt` reads a multiline/stdin prompt and routes it through the local intent router. `hive log` shows the current run `transcript.md`.
 
+Provider and local worker activity is mirrored into per-agent log files under
+`agents/<provider>/<role>.log`, the human activity feed, and `transcript.md`.
+When a provider supports execution, stdout lines are streamed into those logs
+while the process is running. The TUI dashboard tails `transcript.md` in the
+`Live Transcript` panel.
+
 Production wrappers:
 
 ```bash
