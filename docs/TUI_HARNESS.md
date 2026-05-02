@@ -16,6 +16,7 @@ mos check run
 mos diff
 mos review-diff
 mos commit-summary
+mos agents detect --json
 mos tui
 mos completion zsh
 ```

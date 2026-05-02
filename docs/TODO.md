@@ -46,7 +46,8 @@ Sources: `VG-03`, `VG-04`, `VG-13`.
 - [x] Add interactive slash-command shell for `mos` inspired by OpenClaude/Open Codex.
 - [x] Add `.memoryos/checks/*.md` markdown-as-agent-check policy files inspired by Continue.
 - [x] Add git-first diff/check/commit summary loop inspired by Aider.
-- [ ] Add adapter registry stubs for opencode, goose, OpenClaude-compatible runtimes.
+- [x] Add adapter registry stubs for opencode, goose, OpenClaude-compatible runtimes.
+- [ ] Harden provider result validation for all prepared/executed adapters.
 
 ## Parser Work
 

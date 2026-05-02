@@ -209,3 +209,10 @@
 - Decision: Added Continue-style markdown checks, a thin slash-command shell, and an Aider-inspired git loop. Bare `mos` now opens the shell; `mos check list/run`, `mos diff`, `mos review-diff`, and `mos commit-summary` use the same run artifact protocol.
 - Evidence: Verified `mos check list/run`, `/help` and `/status` through `mos shell`, `mos diff`, `mos commit-summary`, `mos review-diff`, `mos verify`, shell completion, py_compile, and unit tests. Leader subagent recommended prioritizing run contract, slash shell, adapter registry, checks, and git loop before Desktop/API/MCP.
 - Next: Add normalized provider adapter registry stubs for opencode, goose, OpenClaude-compatible runtimes, and harden provider result validation.
+
+## 2026-05-02 10:31 KST - Codex
+
+- Context: Continued leader-directed production CLI hardening.
+- Decision: Extended provider detection into a normalized adapter registry with stubs for `opencode`, `goose`, and `openclaude`, plus normalized `id`, `kind`, `roles`, `mode`, and `risks` for Claude, Codex, Gemini, Ollama, DeepSeek API, and Qwen API.
+- Evidence: `mos agents detect --json` now reports available provider CLIs, unconfigured hosted APIs, unavailable adapter stubs, base URLs, and policy risks. Verified py_compile and unit tests.
+- Next: Harden provider result validation and add malformed provider artifact fixtures.

@@ -314,6 +314,9 @@ def detect_agents(root: Path, write: bool = True) -> dict[str, Any]:
         "ollama": probe_ollama(root),
         "deepseek_api": probe_env_provider("deepseek_api", "DEEPSEEK_API_KEY", roles=["cheap-critic", "batch-summarizer", "code-review-draft"]),
         "qwen_api": probe_env_provider("qwen_api", "QWEN_API_KEY", roles=["open-coder-reviewer", "cheap-planner", "capability-extractor"]),
+        "opencode": probe_optional_cli("opencode", roles=["executor", "reviewer", "github-runner"]),
+        "goose": probe_optional_cli("goose", roles=["agent-runtime", "desktop-bridge", "mcp-extension-runtime"]),
+        "openclaude": probe_optional_cli("openclaude", roles=["multi-provider-shell", "mcp-tool-runner"]),
     }
     result = {
         "generated_at": now_iso(),
@@ -475,7 +478,16 @@ def format_doctor(report: dict[str, Any]) -> str:
 def probe_command(name: str, version_args: list[str], roles: list[str], mode: str | None = None) -> dict[str, Any]:
     candidates = command_candidates(name)
     if not candidates:
-        return {"status": "unavailable", "command": name, "roles": roles, "reason": "not found on PATH"}
+        return {
+            "status": "unavailable",
+            "id": name,
+            "kind": "provider_cli",
+            "command": name,
+            "roles": roles,
+            "mode": "prepare_only",
+            "risks": ["not_installed"],
+            "reason": "not found on PATH",
+        }
     gated_probe: dict[str, Any] | None = None
     try:
         for path in candidates:
@@ -484,34 +496,52 @@ def probe_command(name: str, version_args: list[str], roles: list[str], mode: st
             if completed.returncode != 0 or "접근 거부" in raw or "틀렸습니다" in raw:
                 gated_probe = {
                     "status": "gated",
+                    "id": name,
+                    "kind": "provider_cli",
                     "command": name,
                     "path": path,
                     "version": "",
                     "roles": roles,
                     "mode": "prepare_only",
+                    "risks": ["access_gate", "execution_not_available"],
                     "reason": raw.splitlines()[0] if raw else f"{name} probe exited {completed.returncode}",
                 }
                 continue
             version = raw.splitlines()[0] if raw else ""
             return {
                 "status": "available",
+                "id": name,
+                "kind": "provider_cli",
                 "command": name,
                 "path": path,
                 "version": version,
                 "roles": roles,
                 "mode": mode or ("execute_supported" if name in {"claude", "gemini"} else "prepare_only"),
+                "risks": provider_risks(name),
             }
     except Exception as exc:
         return {
             "status": "gated",
+            "id": name,
+            "kind": "provider_cli",
             "command": name,
             "path": candidates[0],
             "version": "",
             "roles": roles,
             "mode": "prepare_only",
+            "risks": ["probe_failed"],
             "reason": f"version probe failed: {exc}",
         }
-    return gated_probe or {"status": "unavailable", "command": name, "roles": roles, "reason": "no usable candidate"}
+    return gated_probe or {
+        "status": "unavailable",
+        "id": name,
+        "kind": "provider_cli",
+        "command": name,
+        "roles": roles,
+        "mode": "prepare_only",
+        "risks": ["not_installed"],
+        "reason": "no usable candidate",
+    }
 
 
 def command_candidates(name: str) -> list[str]:
@@ -532,15 +562,73 @@ def command_candidates(name: str) -> list[str]:
     return unique
 
 
+def provider_risks(name: str) -> list[str]:
+    return {
+        "claude": ["can_edit_when_permissions_allow", "dangerous_bypass_forbidden"],
+        "codex": ["repo_write_modes_require_explicit_approval", "local_path_wrapper_possible"],
+        "gemini": ["yolo_mode_forbidden", "trust_bypass_requires_root_policy"],
+    }.get(name, [])
+
+
 def probe_env_provider(name: str, env_var: str, roles: list[str]) -> dict[str, Any]:
     return {
+        "id": name,
+        "kind": "http_api",
         "status": "configured" if os.environ.get(env_var) else "unconfigured",
         "command": None,
+        "base_url": provider_base_url(name),
         "env_var": env_var,
         "roles": roles,
         "mode": "http",
+        "risks": ["hosted_cost", "secret_required", "network_dependency"],
         "reason": "" if os.environ.get(env_var) else f"{env_var} is not set",
     }
+
+
+def probe_optional_cli(name: str, roles: list[str]) -> dict[str, Any]:
+    path = shutil.which(name)
+    if not path:
+        return {
+            "id": name,
+            "kind": "provider_cli",
+            "status": "unavailable",
+            "command": name,
+            "path": None,
+            "version": "",
+            "roles": roles,
+            "mode": "prepare_only",
+            "risks": ["not_installed", "adapter_stub"],
+            "reason": "not found on PATH",
+        }
+    version = ""
+    for args in (["--version"], ["version"]):
+        try:
+            completed = subprocess.run([path, *args], text=True, capture_output=True, timeout=5)
+            raw = (completed.stdout or completed.stderr).strip()
+            if completed.returncode == 0 and raw:
+                version = raw.splitlines()[0]
+                break
+        except Exception:
+            continue
+    return {
+        "id": name,
+        "kind": "provider_cli",
+        "status": "available",
+        "command": name,
+        "path": path,
+        "version": version,
+        "roles": roles,
+        "mode": "prepare_only",
+        "risks": ["adapter_stub", "execution_not_integrated"],
+        "reason": "",
+    }
+
+
+def provider_base_url(name: str) -> str | None:
+    return {
+        "deepseek_api": "https://api.deepseek.com",
+        "qwen_api": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    }.get(name)
 
 
 def probe_ollama(root: Path) -> dict[str, Any]:
@@ -557,6 +645,8 @@ def probe_ollama(root: Path) -> dict[str, Any]:
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
         server = "unreachable"
     return {
+        "id": "ollama",
+        "kind": "local_runtime",
         "status": status,
         "command": wrapper.as_posix() if wrapper.exists() else "ollama",
         "path": wrapper.as_posix() if wrapper.exists() else None,
@@ -566,6 +656,7 @@ def probe_ollama(root: Path) -> dict[str, Any]:
         "model_source": "server" if server_models else "manifest",
         "roles": ["classifier", "context-compressor", "memory-extractor", "log-summarizer"],
         "mode": "local_runtime",
+        "risks": ["local_resource_pressure", "model_load_failures_possible"],
     }
 
 

@@ -28,12 +28,19 @@ mos tui
 mos completion zsh
 ```
 
+`mos agents detect --json` now returns normalized provider records for:
+
+```text
+claude, codex, gemini, ollama, deepseek_api, qwen_api,
+opencode, goose, openclaude
+```
+
 Reference-driven next CLI targets:
 
 ```text
 - slash commands / REPL shell inspired by OpenClaude and Open Codex
 - installer flags: mos init --no-tui --skills=yes --mcp=yes
-- provider adapter registry beyond claude/codex/gemini/local
+- provider adapter execution paths beyond claude/codex/gemini/local
 - markdown rules/checks under .memoryos/checks/
 - git-first diff/check/commit summary loop inspired by Aider and Continue
 - GitHub issue/PR runner later, after local run artifacts stabilize
