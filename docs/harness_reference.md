@@ -19,6 +19,11 @@ mos "task"
 mos ask "task"
 mos run -q --json "task"
 mos plan
+mos check list
+mos check run
+mos diff
+mos review-diff
+mos commit-summary
 mos tui
 mos completion zsh
 ```
@@ -32,6 +37,14 @@ Reference-driven next CLI targets:
 - markdown rules/checks under .memoryos/checks/
 - git-first diff/check/commit summary loop inspired by Aider and Continue
 - GitHub issue/PR runner later, after local run artifacts stabilize
+```
+
+Implemented checks:
+
+```text
+.memoryos/checks/memory-policy.md
+.memoryos/checks/no-raw-export-leak.md
+.memoryos/checks/implementation-handoff.md
 ```
 
 아래 프로젝트들을 우선순위로 보면 좋아.

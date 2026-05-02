@@ -59,8 +59,10 @@ See:
 ```bash
 scripts/install-mos-cli.sh
 mos init
+mos
 mos "your task"
 mos plan
+mos check run
 mos tui
 ```
 

@@ -7,9 +7,15 @@
 ```bash
 python -m memoryos.mos init
 scripts/install-mos-cli.sh
+mos
 mos "Build Draft Review screen"
 mos run -q --json "Build Draft Review screen"
 mos plan
+mos check list
+mos check run
+mos diff
+mos review-diff
+mos commit-summary
 mos tui
 mos completion zsh
 ```
@@ -43,6 +49,9 @@ python -m memoryos.mos memory draft
 If installed as a package, `mos` points to the same command.
 
 `mos "your task"` is shorthand for `mos ask "your task"`.
+Bare `mos` opens the slash-command shell. Use `mos tui` for the curses status board.
+
+`mos check run` evaluates markdown policy files under `.memoryos/checks/`. `mos diff`, `mos review-diff`, and `mos commit-summary` provide the first git-aware loop without committing automatically.
 
 For a fast local workbench loop:
 

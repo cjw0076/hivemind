@@ -26,6 +26,7 @@ PROVIDER_CAPABILITIES = "provider_capabilities.json"
 GLOBAL_DIR = ".memoryos"
 PROJECT_DIR = ".memoryos"
 SETTINGS_PROFILE = "settings_profile.json"
+CHECKS_DIR = "checks"
 
 
 @dataclass(frozen=True)
@@ -117,6 +118,7 @@ def init_onboarding(root: Path) -> dict[str, Any]:
         project_dir / "runs",
         project_dir / "context",
         project_dir / "skills",
+        project_dir / CHECKS_DIR,
     ]:
         if directory.exists():
             existing.append(directory.as_posix())
@@ -131,6 +133,9 @@ def init_onboarding(root: Path) -> dict[str, Any]:
         project_dir / "project.yaml": default_project_yaml(root),
         project_dir / "routing.yaml": default_routing_yaml(),
         project_dir / "README.md": default_project_readme(),
+        project_dir / CHECKS_DIR / "memory-policy.md": default_check_memory_policy(),
+        project_dir / CHECKS_DIR / "no-raw-export-leak.md": default_check_no_raw_export_leak(),
+        project_dir / CHECKS_DIR / "implementation-handoff.md": default_check_implementation_handoff(),
     }
     for path, content in files.items():
         if path.exists():
@@ -628,6 +633,202 @@ def local_routes_report() -> dict[str, Any]:
         "schema_version": 1,
         "routes": worker_route_table(),
     }
+
+
+def checks_report(root: Path) -> dict[str, Any]:
+    check_dir = root / PROJECT_DIR / CHECKS_DIR
+    checks = []
+    if check_dir.exists():
+        for path in sorted(check_dir.glob("*.md")):
+            checks.append(parse_check_file(path, root))
+    return {"schema_version": 1, "checks_dir": check_dir.as_posix(), "checks": checks}
+
+
+def format_checks_report(report: dict[str, Any]) -> str:
+    lines = [f"MemoryOS Checks: {report.get('checks_dir')}", ""]
+    checks = report.get("checks") or []
+    if not checks:
+        lines.append("No checks found. Run: mos init")
+        return "\n".join(lines)
+    for check in checks:
+        lines.append(f"- {check.get('id')} [{check.get('severity')}] {check.get('title')}")
+    return "\n".join(lines)
+
+
+def run_checks(root: Path, run_id: str | None = None) -> dict[str, Any]:
+    paths, state = load_run(root, run_id)
+    report = checks_report(root)
+    results = []
+    for check in report["checks"]:
+        result = evaluate_check(root, paths, state, check)
+        results.append(result)
+    verdict = "pass"
+    if any(item["status"] == "fail" for item in results):
+        verdict = "fail"
+    elif any(item["status"] == "warn" for item in results):
+        verdict = "warn"
+    out = {
+        "schema_version": 1,
+        "run_id": paths.run_id,
+        "verdict": verdict,
+        "results": results,
+    }
+    out_path = paths.run_dir / "checks_report.json"
+    write_json(out_path, out)
+    append_event(paths, "checks_report_created", {"artifact": out_path.relative_to(root).as_posix(), "verdict": verdict})
+    return out
+
+
+def git_diff_report(root: Path, run_id: str | None = None) -> dict[str, Any]:
+    paths, _ = load_run(root, run_id)
+    status = run_git(root, ["status", "--short"])
+    diff_stat = run_git(root, ["diff", "--stat"])
+    diff_name = run_git(root, ["diff", "--name-only"])
+    staged_name = run_git(root, ["diff", "--cached", "--name-only"])
+    report = {
+        "schema_version": 1,
+        "run_id": paths.run_id,
+        "status_short": status["stdout"].splitlines(),
+        "changed_files": [line for line in diff_name["stdout"].splitlines() if line.strip()],
+        "staged_files": [line for line in staged_name["stdout"].splitlines() if line.strip()],
+        "diff_stat": diff_stat["stdout"].splitlines(),
+        "git_available": status["returncode"] == 0,
+    }
+    out_path = paths.run_dir / "git_diff_report.json"
+    write_json(out_path, report)
+    append_event(paths, "git_diff_report_created", {"artifact": out_path.relative_to(root).as_posix(), "changed": len(report["changed_files"])})
+    return report
+
+
+def format_git_diff_report(report: dict[str, Any]) -> str:
+    lines = [f"Git Diff: {report.get('run_id')}", ""]
+    lines.append("Changed files:")
+    for path in report.get("changed_files") or []:
+        lines.append(f"- {path}")
+    if not report.get("changed_files"):
+        lines.append("- none")
+    if report.get("diff_stat"):
+        lines.extend(["", "Diff stat:"])
+        lines.extend(str(line) for line in report["diff_stat"])
+    return "\n".join(lines)
+
+
+def review_diff(root: Path, run_id: str | None = None) -> Path:
+    paths, _ = load_run(root, run_id)
+    ensure_ollama_server(root)
+    diff = run_git(root, ["diff", "--", "."])["stdout"]
+    diff_path = paths.artifacts / "git_diff.patch"
+    diff_path.parent.mkdir(parents=True, exist_ok=True)
+    diff_path.write_text(diff[:120000], encoding="utf-8")
+    paths.context_pack.write_text(
+        paths.context_pack.read_text(encoding="utf-8")
+        + "\n\n## Git Diff For Review\n"
+        + f"Diff artifact: `{diff_path.relative_to(root).as_posix()}`\n",
+        encoding="utf-8",
+    )
+    append_event(paths, "git_diff_captured", {"artifact": diff_path.relative_to(root).as_posix()})
+    return invoke_local(root, "review", run_id=paths.run_id, complexity="fast")
+
+
+def commit_summary(root: Path, run_id: str | None = None) -> Path:
+    paths, state = load_run(root, run_id)
+    report = git_diff_report(root, paths.run_id)
+    lines = [
+        f"# Commit Summary Proposal: {paths.run_id}",
+        "",
+        f"Task: {state.get('user_request')}",
+        "",
+        "## Changed Files",
+    ]
+    for path in report.get("changed_files") or []:
+        lines.append(f"- {path}")
+    if not report.get("changed_files"):
+        lines.append("- none")
+    lines.extend(["", "## Proposed Commit Message", "", proposed_commit_message(state, report)])
+    out_path = paths.run_dir / "commit_summary.md"
+    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    append_event(paths, "commit_summary_created", {"artifact": out_path.relative_to(root).as_posix()})
+    return out_path
+
+
+def run_git(root: Path, args: list[str]) -> dict[str, Any]:
+    completed = subprocess.run(["git", *args], cwd=root, text=True, capture_output=True, timeout=30)
+    return {"returncode": completed.returncode, "stdout": completed.stdout, "stderr": completed.stderr}
+
+
+def proposed_commit_message(state: dict[str, Any], report: dict[str, Any]) -> str:
+    request = str(state.get("user_request") or "Update MemoryOS")
+    first = request.strip().splitlines()[0][:72]
+    if first:
+        return first[0].upper() + first[1:]
+    changed = report.get("changed_files") or []
+    if changed:
+        return f"Update {changed[0]}"
+    return "Update MemoryOS"
+
+
+def format_checks_run(report: dict[str, Any]) -> str:
+    lines = [f"Checks: {report.get('run_id')} verdict={report.get('verdict')}", ""]
+    for result in report.get("results") or []:
+        lines.append(f"- {result.get('status')} {result.get('id')}: {result.get('message')}")
+    return "\n".join(lines)
+
+
+def parse_check_file(path: Path, root: Path) -> dict[str, Any]:
+    text = path.read_text(encoding="utf-8")
+    meta: dict[str, str] = {}
+    body = text
+    if text.startswith("---\n"):
+        _, raw_meta, body = text.split("---", 2)
+        for line in raw_meta.splitlines():
+            if ":" in line:
+                key, value = line.split(":", 1)
+                meta[key.strip()] = value.strip().strip('"')
+    return {
+        "id": meta.get("id") or path.stem,
+        "title": meta.get("title") or first_heading(body) or path.stem,
+        "severity": meta.get("severity", "medium"),
+        "type": meta.get("type", "manual"),
+        "path": path.relative_to(root).as_posix(),
+        "body": body.strip(),
+    }
+
+
+def evaluate_check(root: Path, paths: RunPaths, state: dict[str, Any], check: dict[str, Any]) -> dict[str, Any]:
+    check_id = check.get("id")
+    severity = check.get("severity", "medium")
+    if check_id == "no-raw-export-leak":
+        risky = []
+        for rel_path in state.get("artifacts", {}).values():
+            if isinstance(rel_path, str) and ("data/" in rel_path or rel_path.startswith("data")):
+                risky.append(rel_path)
+        status = "fail" if risky else "pass"
+        message = "raw data artifact referenced" if risky else "no raw data artifacts referenced"
+        return {"id": check_id, "severity": severity, "status": status, "message": message, "evidence": risky}
+    if check_id == "implementation-handoff":
+        missing = []
+        for path in [paths.task, paths.context_pack, paths.handoff]:
+            if not path.exists() or not path.read_text(encoding="utf-8").strip():
+                missing.append(path.relative_to(root).as_posix())
+        has_codex = any(agent.get("name") == "codex-executor" and agent.get("status") in {"prepared", "completed"} for agent in state.get("agents", []))
+        if not has_codex:
+            missing.append("codex-executor prepared/completed")
+        status = "warn" if missing else "pass"
+        message = "missing implementation handoff inputs" if missing else "handoff inputs present"
+        return {"id": check_id, "severity": severity, "status": status, "message": message, "evidence": missing}
+    if check_id == "memory-policy":
+        drafts = paths.run_dir / "memory_drafts.json"
+        status = "pass" if drafts.exists() else "warn"
+        message = "memory drafts artifact exists" if drafts.exists() else "memory drafts artifact missing"
+        return {"id": check_id, "severity": severity, "status": status, "message": message, "evidence": [drafts.relative_to(root).as_posix()]}
+    return {"id": check_id, "severity": severity, "status": "manual", "message": "manual check only", "evidence": [check.get("path")]}
+
+
+def first_heading(text: str) -> str | None:
+    for line in text.splitlines():
+        if line.startswith("#"):
+            return line.lstrip("#").strip()
+    return None
 
 
 def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: str = "default") -> Path:
@@ -1224,6 +1425,8 @@ def choose_local_input(paths: RunPaths, role: str) -> Path:
         return paths.context_pack
     if role in {"handoff", "handoff-drafter"}:
         return paths.task
+    if role in {"review", "diff-reviewer"} and (paths.artifacts / "git_diff.patch").exists():
+        return paths.artifacts / "git_diff.patch"
     if role in {"summarize", "log-summarizer", "review", "diff-reviewer"}:
         return paths.events
     return paths.task
@@ -1394,6 +1597,45 @@ def default_project_readme() -> str:
         "mos run \"your task\"\n"
         "mos tui\n"
         "```\n"
+    )
+
+
+def default_check_memory_policy() -> str:
+    return (
+        "---\n"
+        "id: memory-policy\n"
+        "title: Memory Draft Policy\n"
+        "severity: medium\n"
+        "type: run-artifact\n"
+        "---\n\n"
+        "# Memory Draft Policy\n\n"
+        "Runs should keep memory updates as reviewable drafts. No run-derived memory should be accepted without review.\n"
+    )
+
+
+def default_check_no_raw_export_leak() -> str:
+    return (
+        "---\n"
+        "id: no-raw-export-leak\n"
+        "title: No Raw Export Leak\n"
+        "severity: high\n"
+        "type: privacy\n"
+        "---\n\n"
+        "# No Raw Export Leak\n\n"
+        "Prompt, command, event, and result artifacts should not reference raw private exports under `data/`.\n"
+    )
+
+
+def default_check_implementation_handoff() -> str:
+    return (
+        "---\n"
+        "id: implementation-handoff\n"
+        "title: Implementation Handoff Completeness\n"
+        "severity: medium\n"
+        "type: run-artifact\n"
+        "---\n\n"
+        "# Implementation Handoff Completeness\n\n"
+        "Implementation runs should have task, context, handoff, and Codex executor artifacts before execution.\n"
     )
 
 

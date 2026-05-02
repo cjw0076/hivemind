@@ -199,6 +199,13 @@
 ## 2026-05-02 10:20 KST - Codex
 
 - Context: User provided harness/CLI references: OpenClaude, OpenCode, oh-my-opencode, Open Codex, Codex CLI, Aider, Goose, Continue, rules repos, and CLI-Anything.
-- Decision: Added the reference-driven CLI backlog and implemented the smallest ergonomics directly: `mos` no-arg TUI entry, `mos run -q --json`, `mos completion bash|zsh|fish`, and installer-compatible `mos init --no-tui --skills=yes --mcp=yes` flags.
+- Decision: Added the reference-driven CLI backlog and implemented the smallest ergonomics directly: `mos` no-arg entry, `mos run -q --json`, `mos completion bash|zsh|fish`, and installer-compatible `mos init --no-tui --skills=yes --mcp=yes` flags.
 - Evidence: Verified `mos run -q --json "CLI quiet json smoke"`, `mos completion zsh`, `mos init --no-tui --skills=yes --mcp=yes --json`, py_compile, and unit tests.
 - Next: Implement slash-command shell, markdown checks, git diff/check/commit loop, and provider adapter registry stubs.
+
+## 2026-05-02 10:29 KST - Codex
+
+- Context: User asked to continue pushing production CLI while a leader subagent reads docs and guides direction.
+- Decision: Added Continue-style markdown checks, a thin slash-command shell, and an Aider-inspired git loop. Bare `mos` now opens the shell; `mos check list/run`, `mos diff`, `mos review-diff`, and `mos commit-summary` use the same run artifact protocol.
+- Evidence: Verified `mos check list/run`, `/help` and `/status` through `mos shell`, `mos diff`, `mos commit-summary`, `mos review-diff`, `mos verify`, shell completion, py_compile, and unit tests. Leader subagent recommended prioritizing run contract, slash shell, adapter registry, checks, and git loop before Desktop/API/MCP.
+- Next: Add normalized provider adapter registry stubs for opencode, goose, OpenClaude-compatible runtimes, and harden provider result validation.

@@ -43,9 +43,9 @@ Sources: `VG-03`, `VG-04`, `VG-13`.
 - [x] Add `mos settings detect/shell` and `scripts/mos-workbench.sh` for context editing plus fast provider artifact preparation.
 - [x] Add TUI prompt routing controls: `n` for new prompt and `a` for auto-routing the current run.
 - [x] Add `mos run -q --json` and shell completion script generation for bash/zsh/fish.
-- [ ] Add interactive slash-command shell for `mos` inspired by OpenClaude/Open Codex.
-- [ ] Add `.memoryos/checks/*.md` markdown-as-agent-check policy files inspired by Continue.
-- [ ] Add git-first diff/check/commit summary loop inspired by Aider.
+- [x] Add interactive slash-command shell for `mos` inspired by OpenClaude/Open Codex.
+- [x] Add `.memoryos/checks/*.md` markdown-as-agent-check policy files inspired by Continue.
+- [x] Add git-first diff/check/commit summary loop inspired by Aider.
 - [ ] Add adapter registry stubs for opencode, goose, OpenClaude-compatible runtimes.
 
 ## Parser Work

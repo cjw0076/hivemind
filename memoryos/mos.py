@@ -11,6 +11,7 @@ from .harness import (
     build_summary,
     build_verification,
     create_run,
+    commit_summary,
     detect_agents,
     doctor_report,
     format_doctor,
@@ -30,8 +31,15 @@ from .harness import (
     format_settings_shell,
     settings_report,
     ask_router,
+    checks_report,
     format_routing_plan,
+    format_checks_report,
+    format_checks_run,
+    format_git_diff_report,
     load_routing_plan,
+    git_diff_report,
+    review_diff,
+    run_checks,
 )
 from .tui import print_status, run_tui
 
@@ -56,13 +64,18 @@ COMMANDS = {
     "summarize",
     "memory",
     "completion",
+    "check",
+    "shell",
+    "diff",
+    "review-diff",
+    "commit-summary",
 }
 
 
 def normalize_argv(argv: list[str]) -> list[str]:
     """Allow provider-style prompt entry: `mos "build this"` -> `mos ask "build this"`."""
     if not argv:
-        return ["tui"] if sys.stdin.isatty() and sys.stdout.isatty() else ["--help"]
+        return ["shell"] if sys.stdin.isatty() and sys.stdout.isatty() else ["--help"]
     if argv[0] in {"-h", "--help", "--version"}:
         return argv
     if argv[0] == "--root":
@@ -169,6 +182,24 @@ def main(argv: list[str] | None = None) -> None:
 
     completion_cmd = sub.add_parser("completion", help="print shell completion script")
     completion_cmd.add_argument("shell", choices=["bash", "zsh", "fish"])
+
+    check_cmd = sub.add_parser("check", help="list or run markdown agent checks")
+    check_sub = check_cmd.add_subparsers(dest="check_cmd", required=True)
+    check_list_cmd = check_sub.add_parser("list", help="list configured checks")
+    check_list_cmd.add_argument("--json", action="store_true")
+    check_run_cmd = check_sub.add_parser("run", help="run checks against current run")
+    check_run_cmd.add_argument("--run-id")
+    check_run_cmd.add_argument("--json", action="store_true")
+
+    sub.add_parser("shell", help="open a thin slash-command shell")
+
+    diff_cmd = sub.add_parser("diff", help="write/show git diff report for current run")
+    diff_cmd.add_argument("--run-id")
+    diff_cmd.add_argument("--json", action="store_true")
+    review_diff_cmd = sub.add_parser("review-diff", help="capture git diff and run local review")
+    review_diff_cmd.add_argument("--run-id")
+    commit_summary_cmd = sub.add_parser("commit-summary", help="write proposed commit summary without committing")
+    commit_summary_cmd.add_argument("--run-id")
 
     args = parser.parse_args(argv)
     root = Path(args.root).resolve()
@@ -314,6 +345,42 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "completion":
         print_completion(args.shell)
         return
+    if args.cmd == "check":
+        if args.check_cmd == "list":
+            report = checks_report(root)
+            if args.json:
+                import json
+
+                print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(format_checks_report(report))
+            return
+        report = run_checks(root, args.run_id)
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_checks_run(report))
+        return
+    if args.cmd == "shell":
+        run_shell(root)
+        return
+    if args.cmd == "diff":
+        report = git_diff_report(root, args.run_id)
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_git_diff_report(report))
+        return
+    if args.cmd == "review-diff":
+        print(review_diff(root, args.run_id))
+        return
+    if args.cmd == "commit-summary":
+        print(commit_summary(root, args.run_id))
+        return
 
 
 def print_completion(shell: str) -> None:
@@ -345,6 +412,64 @@ compdef _mos mos"""
     if shell == "fish":
         for command in sorted(COMMANDS):
             print(f"complete -c mos -f -n '__fish_use_subcommand' -a {command}")
+
+
+def run_shell(root: Path) -> None:
+    print("MemoryOS shell. Type /help or /quit.")
+    while True:
+        try:
+            line = input("mos> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("")
+            return
+        if not line:
+            continue
+        if line in {"/quit", "/exit", "quit", "exit"}:
+            return
+        if line == "/help":
+            print("/new <task>  /status  /route  /verify  /summary  /memory  /check  /diff  /commit  /open  /quit")
+            continue
+        if line.startswith("/new "):
+            main(["--root", root.as_posix(), "ask", line.split(" ", 1)[1]])
+            continue
+        if line == "/status":
+            main(["--root", root.as_posix(), "status"])
+            continue
+        if line == "/route":
+            main(["--root", root.as_posix(), "plan"])
+            continue
+        if line == "/verify":
+            main(["--root", root.as_posix(), "verify"])
+            continue
+        if line == "/summary":
+            main(["--root", root.as_posix(), "summarize"])
+            continue
+        if line == "/memory":
+            main(["--root", root.as_posix(), "memory", "draft"])
+            continue
+        if line == "/check":
+            main(["--root", root.as_posix(), "check", "run"])
+            continue
+        if line == "/diff":
+            main(["--root", root.as_posix(), "diff"])
+            continue
+        if line == "/commit":
+            main(["--root", root.as_posix(), "commit-summary"])
+            continue
+        if line == "/open":
+            main(["--root", root.as_posix(), "open"])
+            continue
+        if line.startswith("/invoke "):
+            parts = line.split()
+            if len(parts) >= 3:
+                main(["--root", root.as_posix(), "invoke", parts[1], "--role", parts[2]])
+            else:
+                print("usage: /invoke claude|codex|gemini|local role")
+            continue
+        if line.startswith("/"):
+            print("unknown slash command")
+            continue
+        main(["--root", root.as_posix(), "ask", line])
 
 
 if __name__ == "__main__":
