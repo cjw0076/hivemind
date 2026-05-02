@@ -11,14 +11,14 @@ purpose: Preserve progress across context compaction so Claude/Codex/Gemini/loca
 
 <!-- status: active -->
 
-The production target is an installable `mos` CLI that wraps MemoryOS, CapabilityOS, provider CLIs, MCP, local runtime, and Agent Society:
+The production target is an installable `hive` CLI that wraps MemoryOS, CapabilityOS, provider CLIs, MCP, local runtime, and Agent Society:
 
 ```bash
-npm install -g @memoryos/cli
-mos init
-mos doctor
-mos agents detect
-mos run "..."
+npm install -g @hive-mind/hive
+hive init
+hive doctor
+hive agents detect
+hive run "..."
 ```
 
 Read these first after compaction:
@@ -39,8 +39,8 @@ Read these first after compaction:
 
 <!-- owner: Codex; completed_at_kst: 2026-05-02 08:47 KST -->
 
-- `mos` wrapper CLI/TUI exists in `memoryos/mos.py`, `memoryos/tui.py`, and `memoryos/harness.py`.
-- `mos tui` has keybindings:
+- `hive` wrapper CLI/TUI exists in `hivemind/hive.py`, `hivemind/tui.py`, and `hivemind/harness.py`.
+- `hive tui` has keybindings:
   - `l`: local context worker
   - `c`: Claude planner prompt
   - `x`: Codex executor prompt
@@ -51,14 +51,14 @@ Read these first after compaction:
   - `r`: refresh
   - `q`: quit
 - Provider prompt artifacts are written under `.runs/<run_id>/agents/<provider>/`.
-- `mos doctor` checks `.runs`, current run, provider capability artifact, and provider availability.
-- `mos agents detect` writes `.runs/provider_capabilities.json`.
-- `mos local status/setup` reports the Ollama wrapper, server state, local model manifests, missing recommended models, and writes `.memoryos/local_runtime.json`.
-- `mos init` now performs production-minimum onboarding: creates `~/.memoryos/`, project `.memoryos/`, default config/routing/agents files, initializes `.runs/`, runs provider detection, scans local model manifests, writes `.memoryos/local_runtime.json`, and prints next actions.
-- `mos verify` now validates run artifact schemas and event taxonomy through `memoryos/run_validation.py`.
-- `mos invoke <provider> --dry-run` writes prompt, command, and normalized result artifacts. Codex execution is blocked as prepare-only until stable.
-- `mos local routes` exposes local worker route table, model tiers, expected schemas, and escalation fields.
-- `mos status`/`mos tui` now show run health: verification verdict, provider availability, missing artifacts, and recent failures.
+- `hive doctor` checks `.runs`, current run, provider capability artifact, and provider availability.
+- `hive agents detect` writes `.runs/provider_capabilities.json`.
+- `hive local status/setup` reports the Ollama wrapper, server state, local model manifests, missing recommended models, and writes `.hivemind/local_runtime.json`.
+- `hive init` now performs production-minimum onboarding: creates `~/.hivemind/`, project `.hivemind/`, default config/routing/agents files, initializes `.runs/`, runs provider detection, scans local model manifests, writes `.hivemind/local_runtime.json`, and prints next actions.
+- `hive verify` now validates run artifact schemas and event taxonomy through `hivemind/run_validation.py`.
+- `hive invoke <provider> --dry-run` writes prompt, command, and normalized result artifacts. Codex execution is blocked as prepare-only until stable.
+- `hive local routes` exposes local worker route table, model tiers, expected schemas, and escalation fields.
+- `hive status`/`hive tui` now show run health: verification verdict, provider availability, missing artifacts, and recent failures.
 - `memoryos import` now emits recoverable parser warnings for malformed records instead of failing the entire import.
 - `memoryos import-run <run_id|current|path>` now imports run state and memory drafts into draft graph nodes.
 - Docs route cleanup added `docs/ROUTE.md` and `docs/VISION_GRAPH.md`; TODO sections now carry `VG-*` provenance tags.
@@ -71,7 +71,7 @@ Read these first after compaction:
 
 ## Current Provider State
 
-<!-- source: mos doctor + mos local status; checked_at_kst: 2026-05-02 09:00 KST -->
+<!-- source: hive doctor + hive local status; checked_at_kst: 2026-05-02 09:00 KST -->
 
 - Claude: available, `2.1.126 (Claude Code)`.
 - Gemini: available, `0.40.1`.
@@ -126,7 +126,7 @@ Docs/work-item worker updated:
 <!-- safety_policy: active -->
 
 - Keep raw AI export data local-first.
-- Do not build Desktop before `mos` run artifacts/review states are stable.
+- Do not build Desktop before `hive` run artifacts/review states are stable.
 - Local LLM output is draft only.
 - Agent Society may propose routing/prompt/profile updates, but must not auto-apply them without review.
 - Do not modify `/home/user/workspaces/jaewon/universe/quantum` from MyWorld unless explicitly asked.

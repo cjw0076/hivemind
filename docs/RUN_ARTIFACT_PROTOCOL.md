@@ -1,6 +1,6 @@
 # Run Artifact Protocol
 
-This is the canonical `.runs/<run_id>/` contract for the current MemoryOS Core loop.
+This is the canonical `.runs/<run_id>/` contract for the current Hive Mind runtime loop.
 
 ## Required Files
 
@@ -64,7 +64,7 @@ Optional path fields such as `prompt`, `command`, and `output` must point to exi
   "memory_drafts": [
     {
       "type": "decision",
-      "content": "Keep mos run protocol canonical.",
+      "content": "Keep hive run protocol canonical.",
       "origin": "user",
       "project": "MemoryOS",
       "confidence": 0.9,
@@ -95,7 +95,7 @@ draft, reviewed, accepted, rejected, speculative, stale
 
 ## Verification
 
-`mos verify` validates:
+`hive verify` validates:
 
 - required run files;
 - task, handoff, run state, memory draft, final report schemas;
@@ -109,7 +109,7 @@ draft, reviewed, accepted, rejected, speculative, stale
 
 ```text
 ## <timestamp> - Ran
-`mos verify` -> `.runs/<run>/verification.yaml` verdict=pass
+`hive verify` -> `.runs/<run>/verification.yaml` verdict=pass
 
 ## <timestamp> - Edited
 `.runs/<run>/agents/codex/executor_prompt.md` for codex/executor
@@ -118,8 +118,10 @@ draft, reviewed, accepted, rejected, speculative, stale
 Use:
 
 ```bash
-mos log
-mos log --tail 120
+hive log
+hive log --tail 120
 ```
 
 This protocol is the kernel consumed by CLI, TUI, future Desktop, future API, and future MCP.
+
+MemoryOS consumes these run artifacts through `memoryos import-run`; it owns the accepted memory graph after review. Hive Mind owns the run blackboard and draft artifact generation.

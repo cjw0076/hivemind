@@ -1,4 +1,4 @@
-"""MemoryOS local memory graph tools."""
+"""Hive Mind swarm harness for provider CLIs and local workers."""
 
 __all__ = ["__version__"]
 

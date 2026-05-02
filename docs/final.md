@@ -52,6 +52,24 @@ decision               handoff                   run history
 
 > **Hive Mind가 사람의 의도를 받아 MemoryOS의 기억과 CapabilityOS의 능력 지도를 결합하고, 여러 agent/CLI/tool을 조율해 작업을 실행한 뒤, 결과를 다시 기억과 능력 그래프에 환류시킨다.**
 
+Repo 경계는 분리한다:
+
+```text
+hivemind/
+= Hive Mind 실행 런타임
+= hive CLI, provider adapter, TUI, .runs blackboard, live logs
+= memory_drafts.json을 만들 수는 있지만 accepted memory graph를 소유하지 않는다
+
+memoryOS/
+= MemoryOS 기억 substrate
+= importers, schemas, append-only graph store, audit, reviewable memory objects
+= Hive Mind의 .runs 산출물을 import-run으로 받아 기억 그래프에 반영한다
+
+CapabilityOS/
+= CapabilityOS 능력 substrate
+= technology cards, capability graph, workflow recipes, risks, legacy map
+```
+
 ---
 
 # 2. 세 OS의 역할
@@ -82,7 +100,7 @@ MemoryOS의 질문:
 “우리는 과거에 무엇을 말했고, 무엇을 결정했고, 무엇을 아직 모르는가?”
 ```
 
-현재 repo도 이 방향으로 이미 출발했다. `docs/ARCHITECTURE.md`는 input/observation을 claim, evidence, uncertainty, intent로 파싱하고 ontology graph에 붙인 뒤 contradiction, novelty, salience, open branches를 감지하는 core loop를 정의하고 있다. 
+현재 `memoryOS/` sibling repo가 이 방향의 구현을 소유한다. `docs/ARCHITECTURE.md`는 input/observation을 claim, evidence, uncertainty, intent로 파싱하고 ontology graph에 붙인 뒤 contradiction, novelty, salience, open branches를 감지하는 core loop를 정의하고 있다. 
 
 ---
 
@@ -142,7 +160,7 @@ Hive Mind coordinates:
 - provider invocation
 - local worker calls
 - verification
-- memory draft generation
+- memory draft artifact generation
 - next action recommendation
 ```
 
@@ -152,7 +170,7 @@ Hive Mind의 질문:
 “이 작업은 누가 먼저 생각하고, 누가 구현하고, 누가 검증하고, 무엇을 기억해야 하는가?”
 ```
 
-현재 `hive` CLI가 Hive Mind의 초기 구현이다. `docs/TUI_HARNESS.md`는 이 계열을 structured agent blackboard용 wrapper CLI/TUI로 정의하고, `.runs/` 아래에 `task.yaml`, `context_pack.md`, `handoff.yaml`, `events.jsonl`, `verification.yaml`, `memory_drafts.json`, `final_report.md`를 저장하는 run folder 구조를 설명한다. 
+현재 `hive` CLI가 Hive Mind의 초기 구현이다. `docs/TUI_HARNESS.md`는 이 계열을 structured agent blackboard용 wrapper CLI/TUI로 정의하고, `.runs/` 아래에 `task.yaml`, `context_pack.md`, `handoff.yaml`, `events.jsonl`, `verification.yaml`, `memory_drafts.json`, `final_report.md`를 저장하는 run folder 구조를 설명한다. `memory_drafts.json`은 MemoryOS가 가져갈 draft artifact이지, Hive Mind가 accepted memory graph를 직접 소유한다는 뜻은 아니다.
 
 ---
 
@@ -730,10 +748,10 @@ SafetyGate
    tests, diff review, policy checks, peer review
 
 11. Memory Draft
-   결과를 memory_drafts.json으로 생성
+   Hive Mind가 결과를 memory_drafts.json artifact로 생성
 
 12. Review / Commit
-   사용자 또는 policy gate가 승인
+   MemoryOS가 사용자 또는 policy gate 승인 후 accepted memory로 반영
 
 13. Feedback
    MemoryOS와 CapabilityOS 업데이트
@@ -758,7 +776,7 @@ Intake
 → Close
 ```
 
-현재 repo에는 `Synthesize`가 아직 명시적으로 약하다. 지금 pipeline은 `deliberate → handoff`로 바로 넘어간다. 최종 Hive Mind에서는 `synthesize` 단계를 추가하는 게 좋다.
+현재 Hive Mind repo에는 `Synthesize`가 아직 명시적으로 약하다. 지금 pipeline은 `deliberate → handoff`로 바로 넘어간다. 최종 Hive Mind에서는 `synthesize` 단계를 추가하는 게 좋다.
 
 ```text
 deliberate

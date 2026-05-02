@@ -1,5 +1,12 @@
 # MyWorld Shared Comms Log
 
+Naming note as of 2026-05-02 12:24 KST:
+
+- `hive` / Hive Mind is the canonical orchestration runtime and CLI.
+- `memoryos` / MemoryOS is the sibling memory substrate and accepted graph owner.
+- `capabilityos` / CapabilityOS is the sibling capability/workflow substrate.
+- Earlier entries that mention `mos` or `memoryos/mos.py` are historical pre-split records, not current product names or file ownership.
+
 ## 2026-05-01 KST - Codex
 
 - Context: User asked to extract the relevant MyWorld/agent-system ideas from `my_world.md` so Claude and Codex sessions in this project can recover them without reading the full source file.
@@ -307,3 +314,66 @@
 - Decision: Added per-agent `agents/<provider>/<role>.log` files, mirrored agent log messages into `hive_events.jsonl` and `transcript.md`, added a TUI `Live Transcript` panel, and changed executed provider calls to stream stdout into logs while running.
 - Evidence: Updated `hivemind/harness.py`, `hivemind/tui.py`, and `docs/TUI_HARNESS.md`; smoke-tested `hive invoke claude`, `hive invoke codex`, `hive invoke local`, `hive log`, `hive hive activity`, and generated agent log files.
 - Next: Finish release checks and package/install smoke for the `hive` production CLI.
+
+## 2026-05-02 12:15 KST - Codex
+
+- Context: User asked whether the previous session was resumed and noted work had been done from the parent `myworld/` directory.
+- Decision: Confirmed the active run state lives in `myworld/hivemind` and fixed Hive Mind root resolution so parent umbrella execution prefers the `hivemind/` child even if a stale parent `.runs/` exists.
+- Evidence: Updated `hivemind/hive.py`, added `tests/test_root_resolution.py`, and verified `hive status` plus `hive doctor` from `/home/user/workspaces/jaewon/myworld` now resolve to `hivemind/.runs/current`.
+- Next: Continue Hive Mind production CLI hardening from the current run `run_20260502_121018_274f94`.
+
+## 2026-05-02 12:18 KST - Codex
+
+- Context: User asked whether Hive Mind and MemoryOS are separated correctly, pointing to `docs/final.md`.
+- Decision: Confirmed code ownership is separated and clarified docs: Hive Mind owns `hive` runtime, provider adapters, TUI, and `.runs`; MemoryOS owns importers, schemas, graph store, audit, and accepted memory graph. Hive Mind may emit `memory_drafts.json`, but MemoryOS owns acceptance into memory.
+- Evidence: Updated `docs/final.md`, `README.md`, and `hivemind/__init__.py`. Verified Hive Mind `npm test` and MemoryOS unit tests.
+- Next: Continue cleaning stale `mos`/MemoryOS-era docs outside `final.md`, especially source-route docs, when documentation cleanup is prioritized.
+
+## 2026-05-02 12:24 KST - Codex
+
+- Context: User asked to separate all wording so future readers do not confuse Hive Mind with MemoryOS.
+- Decision: Replaced current/canonical docs from `mos`/MemoryOS-harness wording to the split boundary: `hive`/Hive Mind for orchestration, `memoryos`/MemoryOS for memory substrate, and `capabilityos`/CapabilityOS for capability substrate. Removed the `mos` compatibility script and console entrypoint.
+- Evidence: Updated route/vision/product/harness/provider docs, compact handoff, package metadata, installer output, and source graph wording. Verified `npm test`, MemoryOS unit tests, `python -m hivemind.hive doctor`, `scripts/install-hive-cli.sh`, and confirmed no installed `mos` command remains on PATH.
+- Next: Keep raw source-vault docs preserved; future cleanup should distill remaining lowercase source docs into uppercase canonical specs rather than editing raw history.
+
+## 2026-05-02 12:31 KST - Codex
+
+- Context: User asked to read `docs/tui_shift.md` and execute the Hive Mind TUI UI/UX change project.
+- Decision: Shifted Hive Console from a single crowded dashboard toward a multi-view terminal cockpit. Added `hive tui --view ...`, controller/observer modes, board/events/transcript/agents/artifacts/memory/society/diff views, and CLI aliases for the common observer surfaces.
+- Evidence: Updated `hivemind/tui.py`, `hivemind/hive.py`, and `docs/TUI_HARNESS.md`. Verified `npm test`, MemoryOS unit tests, `hive events --json`, and pseudo-terminal smoke for `board`, `events --follow`, `transcript --tui`, `agents view`, `artifacts`, `memory view`, `society`, and `diff --tui`.
+- Next: Add real controller lock files and artifact freshness/producer metadata before allowing multiple write-capable sessions.
+
+## 2026-05-02 12:35 KST - Codex
+
+- Context: Continued the TUI shift after the multi-view cockpit landed; next risk was multiple write-capable controller sessions.
+- Decision: Added `.runs/<run_id>/control.lock` controller locking with session id, pid, role, heartbeat, TTL, stale takeover, and clean release on TUI exit. Observer views remain read-only and do not acquire the lock.
+- Evidence: Added lock helpers in `hivemind/harness.py`, wired controller heartbeat/release in `hivemind/tui.py`, added `tests/test_control_lock.py`, and documented the lock in `docs/TUI_HARNESS.md`. Verified `npm test`, observer TUI smoke, and controller lock release after pseudo-terminal exit.
+- Next: Add artifact freshness/producer metadata so existing files and completed pipeline phases are not conflated.
+
+## 2026-05-02 12:37 KST - Codex
+
+- Context: Continued the TUI shift by addressing artifact/file existence confusion from `docs/tui_shift.md`.
+- Decision: Added artifact metadata for existence, freshness, class, producer, and validation so TUI can distinguish present files from completed/fresh pipeline outputs.
+- Evidence: Updated `artifact_status()` in `hivemind/harness.py`, artifacts view in `hivemind/tui.py`, `tests/test_artifact_metadata.py`, and `docs/TUI_HARNESS.md`. Verified `npm test` and artifacts TUI smoke.
+- Next: Persist richer decisions/open-questions/disagreements as first-class run artifacts instead of hardcoded board hints.
+
+## 2026-05-02 12:45 KST - Codex
+
+- Context: User asked to process `docs/hive_mind2.md` without jumping straight into tasks: decompose it, update TODO, route the doc, then proceed.
+- Decision: Routed `hive_mind2.md` as the production-hardening source for Hive Mind, added a dedicated TODO section, and implemented the first P0 slice: scoped doctor reports plus hardware/runtime profiling.
+- Evidence: Updated `docs/LOWERCASE_SOURCE_GRAPH.md`, `docs/ROUTE.md`, `docs/VISION_GRAPH.md`, `docs/README.md`, `docs/TODO.md`, `docs/TUI_HARNESS.md`, `hivemind/harness.py`, `hivemind/hive.py`, and `tests/test_doctor_scopes.py`. Verified `npm test`, `hive doctor hardware --json`, `hive doctor models`, `hive doctor permissions`, and `hive doctor all --json`.
+- Next: Implement the next production-hardening P0: default `.hivemind/policy.yaml` and `hive policy check/explain`, then expand provider result schemas.
+
+## 2026-05-02 12:57 KST - Codex
+
+- Context: User clarified that `hive_mind2.md` was not complete and asked to push through all remaining work, including encoding our collaboration method as Hive Mind substrate and hiding `evolution of Single Human Intelligence` throughout the product.
+- Decision: Embedded the working method as a project-local Hive skill protocol, added policy/role/context/profile/audit/workspace commands, expanded provider result schemas, and carried the internal phrase as a quiet product thread rather than a scientific claim.
+- Evidence: Added `docs/HIVE_WORKING_METHOD.md`; updated `docs/TODO.md`, `docs/TUI_HARNESS.md`, `docs/PROVIDER_HARNESS_GUIDE.md`, route docs, `hivemind/harness.py`, `hivemind/hive.py`, `hivemind/run_validation.py`, and `tests/test_production_hardening.py`. Verified `npm test`, `hive policy check --write`, `hive agents roles`, `hive agents explain codex.executor`, `hive local setup --auto`, `hive context build --for claude.planner`, `hive context build --for codex.executor`, provider dry-run result schema, `hive verify`, `hive audit`, and `hive workspace --layout dev|dual`.
+- Next: Remaining hardening is real benchmark execution, expanded on-disk fixtures, MemoryOS/CapabilityOS bridge commands in their sibling repos, and proposal-only Agent Society mutation records.
+
+## 2026-05-02 13:03 KST - Codex
+
+- Context: User asked whether a GitHub repo like `llm-checker` can be used for the remaining local-model benchmark/checker work, and how to handle that when publishing Hive Mind on GitHub.
+- Decision: Treat `llm-checker` as an optional external adapter, not vendored source or a required dependency, because its current license forbids paid distribution/hosted monetized delivery without separate commercial permission.
+- Evidence: Added `hive local checker`, `.hivemind/llm_checker_report.json`, `docs/THIRD_PARTY_INTEGRATIONS.md`, and test coverage. Verified `npm test`, `hive local checker`, `hive local checker --json`, and `hive verify` for `run_20260502_130026_0975a7`.
+- Next: If Hive Mind becomes paid/hosted or bundles `llm-checker`, contact the upstream maintainer for explicit permission/commercial licensing first.

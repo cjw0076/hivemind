@@ -2,28 +2,28 @@
 
 우리가 제공해야 하는 건 단순 앱이 아니라:
 
-> **사용자가 자기 컴퓨터에 설치하면 MemoryOS + CapabilityOS + Harness + MCP + local runtime이 한 번에 깔리는 “AI 작업 운영체제”**
+> **사용자가 자기 컴퓨터에 설치하면 Hive Mind가 MemoryOS + CapabilityOS + MCP + local runtime을 연결하는 “AI 작업 운영체제”**
 
 즉, 설치 경험은 이렇게 가야 해.
 
 ```bash
-npm install -g @memoryos/cli
+npm install -g @hive-mind/hive
 ```
 
 또는:
 
 ```bash
-curl -fsSL https://memoryos.dev/install.sh | bash
+curl -fsSL https://hive-mind.dev/install.sh | bash
 ```
 
 그리고 사용자는 이렇게 시작하는 거야.
 
 ```bash
-mos init
-mos doctor
-mos import ./chatgpt-export.zip
-mos mcp start
-mos run "MemoryOS Desktop Draft Review 화면 구현"
+hive init
+hive doctor
+memoryos import ./chatgpt-export.zip
+hive mcp start
+hive run "MemoryOS Desktop Draft Review 화면 구현"
 ```
 
 ---
@@ -33,13 +33,12 @@ mos run "MemoryOS Desktop Draft Review 화면 구현"
 우리가 제공할 것은 여러 개의 패키지로 나누는 게 좋아.
 
 ```text
-@memoryos/cli
+@hive-mind/hive
 @memoryos/mcp
-@memoryos/harness
 @memoryos/desktop
-@memoryos/local-runtime
-@memoryos/skills
-@memoryos/capability-radar
+@hive-mind/local-runtime
+@hive-mind/skills
+@capabilityos/radar
 ```
 
 하지만 사용자는 복잡하게 설치하면 안 돼.
@@ -47,17 +46,17 @@ mos run "MemoryOS Desktop Draft Review 화면 구현"
 그래서 겉으로는 하나:
 
 ```bash
-npm install -g @memoryos/cli
+npm install -g @hive-mind/hive
 ```
 
 안에서 필요한 것들을 관리:
 
 ```bash
-mos install mcp
-mos install desktop
-mos install local-runtime
-mos install skills
-mos install adapters
+hive install mcp
+hive install desktop
+hive install local-runtime
+hive install skills
+hive install adapters
 ```
 
 ---
@@ -69,25 +68,25 @@ mos install adapters
 후보:
 
 ```text
-mos
+hive
 mem
 memoryos
 cog
 ```
 
-나는 **`mos`** 추천.
+나는 **`hive`** 추천.
 
 ```bash
-mos init
-mos run
-mos status
-mos mcp start
-mos desktop
-mos radar scan
-mos society report
+hive init
+hive run
+hive status
+hive mcp start
+hive cockpit
+capabilityos radar scan
+hive society report
 ```
 
-짧고, “Memory Operating System” 느낌도 있어.
+짧고, swarm runtime 정체성이 분명하다. `memoryos`는 기억 substrate CLI 이름으로 남긴다.
 
 ---
 
@@ -96,46 +95,46 @@ mos society report
 사용자가 설치하면 이런 flow가 떠야 해.
 
 ```bash
-mos init
+hive init
 ```
 
 그러면 wizard가 실행됨.
 
 ```text
-Welcome to MemoryOS.
+Welcome to Hive Mind.
 
 ✓ Checking local environment
-✓ Creating ~/.memoryos
-✓ Initializing local database
+✓ Creating ~/.hivemind
+✓ Initializing Hive Mind run blackboard
 ✓ Installing default skills
-✓ Setting up MemoryOS MCP
+✓ Checking MemoryOS MCP connection
 ✓ Detecting available AI CLIs
   - Claude Code: found
   - Codex CLI: found
   - Gemini CLI: found
   - Ollama: found
 ✓ Creating agent registry
-✓ Creating tool registry
+✓ Creating provider/tool registry
 ✓ Creating default routing policy
 
-MemoryOS is ready.
+Hive Mind is ready.
 ```
 
 그 다음:
 
 ```bash
-mos doctor
+hive doctor
 ```
 
 출력:
 
 ```text
-MemoryOS Doctor
+Hive Mind Doctor
 
 Core:
-✓ Local DB running
-✓ Memory API running
-✓ MCP server available
+✓ Run blackboard available
+✓ Provider registry available
+✓ MemoryOS MCP reachable
 
 Agents:
 ✓ Claude Code detected
@@ -164,7 +163,7 @@ Status: Ready
 우리는 Claude, Codex, Gemini, Ollama, LM Studio 등을 감지해야 해.
 
 ```bash
-mos agents detect
+hive agents detect
 ```
 
 예시:
@@ -226,10 +225,10 @@ agents:
 이것도 자동으로 도와줘야 함.
 
 ```bash
-mos mcp install --for claude
-mos mcp install --for codex
-mos mcp install --for cursor
-mos mcp install --for all
+hive mcp install --for claude
+hive mcp install --for codex
+hive mcp install --for cursor
+hive mcp install --for all
 ```
 
 출력:
@@ -245,13 +244,13 @@ Installing MemoryOS MCP for Cursor...
 ✓ MCP config generated
 
 Run:
-mos mcp start
+hive mcp start
 ```
 
 MCP server:
 
 ```bash
-mos mcp start
+hive mcp start
 ```
 
 제공 tools:
@@ -275,7 +274,7 @@ workflow.find
 local LLM은 optional이지만, 비용 절감을 위해 강하게 추천해야 해.
 
 ```bash
-mos local setup
+hive local setup
 ```
 
 동작:
@@ -290,7 +289,7 @@ mos local setup
 예:
 
 ```bash
-mos local pull recommended
+hive local pull recommended
 ```
 
 내부:
@@ -304,7 +303,7 @@ ollama pull deepseek-coder-v2:16b
 그 다음:
 
 ```bash
-mos local benchmark
+hive local benchmark
 ```
 
 해서 사용자 컴퓨터에서 실제 속도를 측정.
@@ -335,69 +334,69 @@ deepseek-coder-v2:16b
 ## Core
 
 ```bash
-mos init
-mos doctor
-mos status
-mos config
+hive init
+hive doctor
+hive status
+hive config
 ```
 
 ## MemoryOS
 
 ```bash
-mos import ./chatgpt-export.zip
-mos extract
-mos index
-mos ask "내가 MemoryOS에서 결정한 것 보여줘"
-mos memory drafts
-mos memory approve
-mos memory search
+memoryos import ./chatgpt-export.zip
+memoryos extract
+memoryos index
+hive ask "내가 MemoryOS에서 결정한 것 보여줘"
+hive memory drafts
+memoryos approve
+memoryos search
 ```
 
 ## MCP
 
 ```bash
-mos mcp start
-mos mcp install --for claude
-mos mcp install --for codex
-mos mcp list-tools
+hive mcp start
+hive mcp install --for claude
+hive mcp install --for codex
+hive mcp list-tools
 ```
 
 ## Harness
 
 ```bash
-mos run "작업 지시"
-mos status
-mos invoke claude
-mos invoke codex
-mos invoke local
-mos verify
-mos summarize
+hive run "작업 지시"
+hive status
+hive invoke claude
+hive invoke codex
+hive invoke local
+hive verify
+hive summarize
 ```
 
 ## CapabilityOS
 
 ```bash
-mos radar scan
-mos capability search "figma design to code"
-mos capability gap "Figma 디자인 React 구현"
-mos workflow recommend "landing page 만들기"
+capabilityos radar scan
+capabilityos capability search "figma design to code"
+capabilityos capability gap "Figma 디자인 React 구현"
+capabilityos workflow recommend "landing page 만들기"
 ```
 
 ## Agent Society
 
 ```bash
-mos society report
-mos society propose-updates
-mos society approve prop_001
-mos society rollback
+hive society report
+hive society propose-updates
+hive society approve prop_001
+hive society rollback
 ```
 
 ## Desktop
 
 ```bash
-mos desktop
-mos desktop install
-mos desktop dev
+hive cockpit
+hive cockpit install
+hive cockpit dev
 ```
 
 ---
@@ -407,30 +406,30 @@ mos desktop dev
 ## 처음 설치
 
 ```bash
-npm install -g @memoryos/cli
-mos init
-mos doctor
+npm install -g @hive-mind/hive
+hive init
+hive doctor
 ```
 
 ## 기존 AI 대화 가져오기
 
 ```bash
-mos import ~/Downloads/chatgpt-export.zip
-mos extract
-mos index
+memoryos import ~/Downloads/chatgpt-export.zip
+memoryos extract
+memoryos index
 ```
 
 ## Claude/Codex에 연결
 
 ```bash
-mos mcp install --for all
-mos mcp start
+hive mcp install --for all
+hive mcp start
 ```
 
 ## 작업 실행
 
 ```bash
-mos run "ChatGPT export parser 구현하고 테스트까지 돌려줘"
+hive run "ChatGPT export parser 구현하고 테스트까지 돌려줘"
 ```
 
 시스템 내부:
@@ -448,9 +447,9 @@ mos run "ChatGPT export parser 구현하고 테스트까지 돌려줘"
 ## 결과 확인
 
 ```bash
-mos status
-mos open current
-mos memory drafts
+hive status
+hive open current
+hive memory drafts
 ```
 
 ---
@@ -460,7 +459,7 @@ mos memory drafts
 `curl | bash` 설치는 이렇게.
 
 ```bash
-curl -fsSL https://memoryos.dev/install.sh | bash
+curl -fsSL https://hive-mind.dev/install.sh | bash
 ```
 
 설치 스크립트가 하는 일:
@@ -469,28 +468,28 @@ curl -fsSL https://memoryos.dev/install.sh | bash
 1. OS 감지
 2. Node.js 확인
 3. pnpm/npm 확인
-4. @memoryos/cli 설치
-5. ~/.memoryos 생성
+4. @hive-mind/hive 설치
+5. ~/.hivemind 생성
 6. 기본 config 생성
-7. mos doctor 실행
+7. hive doctor 실행
 ```
 
 단, 보안상 `curl | bash`는 불신하는 사람도 많으니까, 반드시 대안 제공.
 
 ```bash
-npm install -g @memoryos/cli
+npm install -g @hive-mind/hive
 ```
 
 또는:
 
 ```bash
-brew install memoryos
+brew install hive-mind
 ```
 
 또는:
 
 ```bash
-docker run memoryos/memoryos
+docker run hive-mind/hive
 ```
 
 최종 배포 채널:
@@ -510,19 +509,19 @@ Desktop installer
 처음에는 scoped package가 좋아.
 
 ```bash
-npm install -g @memoryos/cli
+npm install -g @hive-mind/hive
 ```
 
-나중에 유명해지면:
+나중에 유명해지면 Hive Mind 단축 패키지를 별도로 둘 수 있다:
 
 ```bash
-npm install -g memoryos
+npm install -g hive
 ```
 
 패키지 구성:
 
 ```text
-@memoryos/cli
+@hive-mind/hive
 - 사용자가 설치하는 메인 CLI
 
 @memoryos/core
@@ -531,16 +530,16 @@ npm install -g memoryos
 @memoryos/mcp
 - MCP server
 
-@memoryos/harness
-- agent orchestration
+@hive-mind/runtime
+- agent orchestration internals
 
-@memoryos/skills
+@hive-mind/skills
 - default skills
 
-@memoryos/adapters
+@hive-mind/adapters
 - claude/codex/gemini/ollama adapters
 
-@memoryos/capability
+@capabilityos/core
 - CapabilityOS ontology/radar
 
 @memoryos/desktop
@@ -554,7 +553,7 @@ npm install -g memoryos
 사용자 홈:
 
 ```text
-~/.memoryos/
+~/.hivemind/
 ├── config.yaml
 ├── agents.yaml
 ├── routing.yaml
@@ -572,7 +571,7 @@ npm install -g memoryos
 ```text
 project/
 ├── AGENTS.md
-├── .memoryos/
+├── .hivemind/
 │   ├── project.yaml
 │   ├── runs/
 │   ├── context/
@@ -588,7 +587,7 @@ Global MemoryOS:
 개인 전체 기억
 
 Project MemoryOS:
-현재 repo/project 관련 기억
+현재 MemoryOS project 관련 기억
 ```
 
 ---
@@ -629,7 +628,7 @@ MemoryOS CLI
 Claude = reasoning provider
 Codex = coding agent provider
 Gemini = multimodal provider
-MemoryOS = context/capability/harness provider
+Hive Mind = harness provider; MemoryOS = memory provider; CapabilityOS = capability provider
 ```
 
 ---
@@ -639,21 +638,21 @@ MemoryOS = context/capability/harness provider
 이렇게 가면 좋아.
 
 ```md
-# MemoryOS
+# Hive Mind
 
-Install your local memory and capability layer for AI agents.
+Coordinate your local AI agent swarm with MemoryOS and CapabilityOS context.
 
-MemoryOS wraps Claude Code, Codex, Gemini CLI, local LLMs, MCP servers, Skills, and your personal memory graph into one local-first agent operating system.
+Hive Mind wraps Claude Code, Codex, Gemini CLI, local LLMs, MCP servers, skills, and MemoryOS/CapabilityOS context into one local-first swarm runtime.
 ```
 
 한국어로:
 
 ```md
-# MemoryOS
+# Hive Mind
 
-AI agent를 위한 로컬 기억·능력·실행 운영체제.
+AI agent를 위한 로컬 군체지성 실행 런타임.
 
-MemoryOS는 Claude Code, Codex, Gemini CLI, local LLM, MCP, Skill, 개인 memory graph를 하나의 local-first agent harness로 묶어줍니다.
+Hive Mind는 Claude Code, Codex, Gemini CLI, local LLM, MCP, Skill을 MemoryOS 기억과 CapabilityOS 능력 지도 위에서 하나의 local-first agent harness로 묶어줍니다.
 ```
 
 ---
@@ -664,7 +663,7 @@ MemoryOS는 Claude Code, Codex, Gemini CLI, local LLM, MCP, Skill, 개인 memory
 
 ```text
 “이제 Claude, Codex, Gemini, local LLM을 따로따로 켜는 게 아니라,
-mos가 내 작업을 이해하고 적절한 agent에게 넘겨준다.”
+hive가 내 작업을 이해하고 적절한 agent에게 넘겨준다.”
 ```
 
 즉:
@@ -679,7 +678,7 @@ ollama ...
 를 직접 쓰는 대신:
 
 ```bash
-mos run "..."
+hive run "..."
 ```
 
 으로 감싸는 것.
@@ -691,74 +690,75 @@ mos run "..."
 최종 설치 명령:
 
 ```bash
-npm install -g @memoryos/cli
+npm install -g @hive-mind/hive
 ```
 
 또는:
 
 ```bash
-curl -fsSL https://memoryos.dev/install.sh | bash
+curl -fsSL https://hive-mind.dev/install.sh | bash
 ```
 
 초기화:
 
 ```bash
-mos init
+hive init
 ```
 
 AI runtime 연결:
 
 ```bash
-mos agents detect
-mos mcp install --for all
-mos local setup
+hive agents detect
+hive mcp install --for all
+hive local setup
 ```
 
 작업:
 
 ```bash
-mos run "MemoryOS Desktop에 Hypergraph Explorer 구현"
+hive run "MemoryOS Desktop에 Hypergraph Explorer 구현"
 ```
 
 탐색:
 
 ```bash
-mos ask "내가 이 프로젝트에서 결정한 것 정리해줘"
-mos capability gap "Figma 디자인을 React로 구현"
-mos radar scan
+hive ask "내가 이 프로젝트에서 결정한 것 정리해줘"
+capabilityos capability gap "Figma 디자인을 React로 구현"
+capabilityos radar scan
 ```
 
 관리:
 
 ```bash
-mos society report
-mos memory drafts
-mos desktop
+hive society report
+hive memory drafts
+hive cockpit
 ```
 
 ---
 
 # 16. 한 문장으로 정리
 
-> **우리는 Claude Code CLI, Codex CLI, Gemini CLI처럼 provider들이 모델 사용법을 감싼 방식을 모방하되, 모델 하나가 아니라 memory, capability, MCP, skill, local LLM, agent harness 전체를 감싸는 `mos` CLI를 제공해야 한다.**
+> **우리는 Claude Code CLI, Codex CLI, Gemini CLI처럼 provider들이 모델 사용법을 감싼 방식을 모방하되, 모델 하나가 아니라 memory, capability, MCP, skill, local LLM, agent harness 전체를 감싸는 `hive` CLI를 제공해야 한다.**
 
 최종적으로 사용자는 이렇게만 기억하면 돼.
 
 ```bash
-npm install -g @memoryos/cli
-mos init
-mos run "내가 만들고 싶은 것"
+npm install -g @hive-mind/hive
+hive init
+hive run "내가 만들고 싶은 것"
 ```
 
-그 뒤는 MemoryOS가 알아서:
+그 뒤는 Hive Mind가 orchestration을 맡고, MemoryOS/CapabilityOS가 각각 기억과 능력 지도를 제공한다:
 
 ```text
-생각 정제
-맥락 검색
-능력 추천
+의도 정제
+MemoryOS 맥락 검색
+CapabilityOS 능력 추천
 agent 배정
 작업 실행
 결과 검증
+memory draft artifact 생성
 기억 업데이트
 ```
 

@@ -16,8 +16,7 @@ Start here. This directory contains both current implementation docs and large s
 
 ## Current Work
 
-The active build target is the installable `hive` CLI/TUI harness. `mos` remains
-as a deprecated compatibility alias during the rename:
+The active build target is the installable `hive` CLI/TUI harness:
 
 ```text
 hive init
@@ -30,10 +29,13 @@ hive local status
 Relevant docs:
 
 - `TUI_HARNESS.md`
+- `HIVE_WORKING_METHOD.md`
+- `THIRD_PARTY_INTEGRATIONS.md`
 - `PROVIDER_HARNESS_GUIDE.md`
 - `LOCAL_LLM_WORKERS.md`
 - `MEMORYOS_MVP.md`
 - `make_production.md`
+- `hive_mind2.md`
 - `cli_help.md`
 
 ## Important Boundary

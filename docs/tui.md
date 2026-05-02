@@ -23,7 +23,7 @@ memory-os run
 필요한 이름은 이런 식이면 돼.
 
 ```bash
-mos
+hive
 memory-os
 agent-harness
 cog
@@ -32,7 +32,7 @@ cog
 예를 들어:
 
 ```bash
-mos run "MemoryOS Desktop에 Draft Review 화면 구현"
+hive run "MemoryOS Desktop에 Draft Review 화면 구현"
 ```
 
 그러면 내부에서:
@@ -252,25 +252,25 @@ risk_level: low
 처음엔 이 정도면 충분해.
 
 ```bash
-mos init
-mos run "<task>"
-mos status
-mos context
-mos handoff
-mos invoke claude
-mos invoke codex
-mos invoke local
-mos verify
-mos summarize
-mos memory draft
-mos memory commit
-mos open
+hive init
+hive run "<task>"
+hive status
+hive context
+hive handoff
+hive invoke claude
+hive invoke codex
+hive invoke local
+hive verify
+hive summarize
+hive memory draft
+hive memory commit
+hive open
 ```
 
 실제 흐름:
 
 ```bash
-mos run "ChatGPT export parser 구현"
+hive run "ChatGPT export parser 구현"
 ```
 
 자동 생성:
@@ -284,37 +284,37 @@ mos run "ChatGPT export parser 구현"
 Claude에게 계획 요청:
 
 ```bash
-mos invoke claude --role planner
+hive invoke claude --role planner
 ```
 
 Codex에게 구현 요청:
 
 ```bash
-mos invoke codex --role executor
+hive invoke codex --role executor
 ```
 
 local LLM으로 결과 요약:
 
 ```bash
-mos invoke local --role log-summarizer
+hive invoke local --role log-summarizer
 ```
 
 검증:
 
 ```bash
-mos verify
+hive verify
 ```
 
 memory draft 생성:
 
 ```bash
-mos memory draft
+hive memory draft
 ```
 
 최종 리포트:
 
 ```bash
-mos summarize
+hive summarize
 ```
 
 ---
@@ -325,7 +325,7 @@ mos summarize
 
 ```text
 ┌─────────────────────────────────────────────────────┐
-│ MemoryOS Harness                                    │
+│ Hive Mind Harness                                    │
 ├─────────────────────────────────────────────────────┤
 │ Run: run_001                                        │
 │ Task: Draft Review 화면 구현                         │
@@ -504,7 +504,7 @@ Run Folder:
 그리고 CLI에서:
 
 ```bash
-mos open current
+hive open current
 ```
 
 하면 폴더를 열어준다.
@@ -546,7 +546,7 @@ Desktop은 나중에:
 첫 버전은 딱 이 정도.
 
 ```bash
-mos run "작업 내용"
+hive run "작업 내용"
 ```
 
 생성:
@@ -563,11 +563,11 @@ mos run "작업 내용"
 명령:
 
 ```bash
-mos invoke local --role context
-mos invoke claude --role planner
-mos invoke codex --role executor
-mos invoke local --role summarize
-mos status
+hive invoke local --role context
+hive invoke claude --role planner
+hive invoke codex --role executor
+hive invoke local --role summarize
+hive status
 ```
 
 ---
@@ -591,15 +591,15 @@ mos status
 
 # 13. 제일 중요한 설계 원칙
 
-## 1. 사람은 `mos`만 보면 된다
+## 1. 사람은 `hive`만 보면 된다
 
 Claude CLI, Codex CLI를 매번 직접 켜지 않는 방향으로 가야 해.
 
 ```bash
-mos run
-mos status
-mos approve
-mos continue
+hive run
+hive status
+hive approve
+hive continue
 ```
 
 ---
@@ -681,7 +681,7 @@ Manual shared folder
 최종적으로 사람은 이렇게 작업해야 해.
 
 ```bash
-mos run "MemoryOS에 Capability Radar 화면 추가"
+hive run "MemoryOS에 Capability Radar 화면 추가"
 ```
 
 그러면 시스템이 알아서:

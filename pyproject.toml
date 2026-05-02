@@ -8,7 +8,6 @@ dependencies = ["PyYAML>=6.0.3"]
 [project.scripts]
 hivemind = "hivemind.hive:main"
 hive = "hivemind.hive:main"
-mos = "hivemind.hive:main"
 
 [tool.setuptools.packages.find]
 include = ["hivemind*"]

@@ -36,6 +36,32 @@ Sources: `VG-03`, `VG-04`, `VG-05`, `VG-13`.
 - [x] Make prompt input default to `hive orchestrate`, creating a multi-agent `society_plan.json`.
 - [x] Name the provider-CLI harness product `Hive Mind` and document the API-first harness distinction.
 
+## Production Hardening From `hive_mind2.md`
+
+Sources: `VG-03`, `VG-04`, `VG-05`, `VG-06`, `VG-13`.
+
+Work order: finish the `hive` operator loop before deeper MemoryOS/CapabilityOS integration.
+
+- [x] Add multi-view Hive Console routes for board, events, transcript, agents, artifacts, memory, society, and diff.
+- [x] Add observer/controller separation with a durable `.runs/<run_id>/control.lock`.
+- [x] Add artifact freshness, producer, phase class, and validation metadata to run-board/TUI status.
+- [x] Remove current `mos` naming from the Hive Mind CLI boundary so MemoryOS remains a sibling project.
+- [x] Add doctor scopes: `hive doctor hardware|providers|models|permissions|all`.
+- [x] Add hardware profile output: CPU, RAM, GPU/VRAM, disk, Python, Node, Docker, Ollama, provider CLI paths, network, and key ports.
+- [x] Embed the user/Claude/Codex/local-LLM working method as a project skill protocol.
+- [x] Add `evolution of Single Human Intelligence` as a quiet internal product thread, not a scientific claim.
+- [x] Expand provider result schema with command, output, timing, changed files, commands run, tests run, artifacts, risk, policy, and memory/capability refs.
+- [x] Add `.hivemind/policy.yaml` default policy plus `hive policy check/explain`.
+- [x] Add local model profile and role auto-assignment artifacts.
+- [x] Add agent role registry, permission policy, role prompt templates, and `hive agents explain <role>`.
+- [x] Add production context builder/budgeter/validator and `hive context build --for <agent-role>`.
+- [x] Add multi-session workspace layout hints with `hive workspace --layout dev|dual`.
+- [x] Add run audit/observability command for provider failures, stale artifacts, unverified outputs, and policy drift.
+- [ ] Add real local model benchmark prompts with measured JSON validity and latency.
+- [x] Add optional `llm-checker` adapter plan without vendoring upstream code.
+- [x] Add test coverage for expanded provider results, policy gates, context packs, and local model profiles.
+- [ ] Add expanded on-disk fixtures for invalid provider results, policy gates, local model profiles, and complete minimal runs.
+
 ## Harness Runtime
 
 Sources: `VG-03`, `VG-04`, `VG-13`.

@@ -28,6 +28,8 @@ ALLOWED_EVENT_TYPES = {
     "git_diff_report_created",
     "git_diff_captured",
     "commit_summary_created",
+    "control_lock_acquired",
+    "control_lock_released",
 }
 
 RUN_ARTIFACT_SPEC = {
@@ -63,7 +65,32 @@ REQUIRED_MEMORY_DRAFT_KEYS = {"type", "content", "origin", "project", "confidenc
 ALLOWED_MEMORY_TYPES = {"idea", "decision", "action", "question", "constraint", "preference", "artifact", "reflection"}
 ALLOWED_MEMORY_ORIGINS = {"user", "assistant", "mixed", "unknown"}
 ALLOWED_MEMORY_STATUSES = {"draft", "reviewed", "accepted", "rejected", "speculative", "stale"}
-REQUIRED_PROVIDER_RESULT_KEYS = {"schema_version", "agent", "role", "status", "provider_mode"}
+REQUIRED_PROVIDER_RESULT_KEYS = {
+    "schema_version",
+    "provider",
+    "agent",
+    "role",
+    "status",
+    "provider_mode",
+    "permission_mode",
+    "prompt_path",
+    "command_path",
+    "stdout_path",
+    "stderr_path",
+    "output_path",
+    "returncode",
+    "started_at",
+    "finished_at",
+    "duration_ms",
+    "files_changed",
+    "commands_run",
+    "tests_run",
+    "artifacts_created",
+    "risk_level",
+    "policy_violations",
+    "memory_refs_used",
+    "capability_refs_used",
+}
 ALLOWED_PROVIDER_STATUSES = {"prepared", "completed", "failed", "fallback"}
 ALLOWED_PROVIDER_MODES = {"prepare_only", "execute_supported", "unavailable", "local_runtime", "http"}
 
@@ -243,11 +270,18 @@ def validate_provider_results(run_dir: Path, root: Path, issues: list[str]) -> b
         if data.get("provider_mode") not in ALLOWED_PROVIDER_MODES:
             issues.append(f"{path.relative_to(root).as_posix()} has invalid provider_mode: {data.get('provider_mode')}")
             ok = False
-        for ref_key in ["prompt", "command", "output"]:
+        for ref_key in ["prompt_path", "command_path", "stdout_path", "stderr_path", "output_path", "prompt", "command", "output"]:
             ref = data.get(ref_key)
             if isinstance(ref, str) and ref and not (root / ref).exists():
                 issues.append(f"{path.relative_to(root).as_posix()} {ref_key} points to missing file: {ref}")
                 ok = False
+        for list_key in ["files_changed", "commands_run", "tests_run", "artifacts_created", "policy_violations", "memory_refs_used", "capability_refs_used"]:
+            if list_key in data and not isinstance(data.get(list_key), list):
+                issues.append(f"{path.relative_to(root).as_posix()} {list_key} must be a list")
+                ok = False
+        if data.get("risk_level") not in {"low", "medium", "high", "unknown"}:
+            issues.append(f"{path.relative_to(root).as_posix()} has invalid risk_level: {data.get('risk_level')}")
+            ok = False
     return ok
 
 

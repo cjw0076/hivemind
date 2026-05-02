@@ -15,14 +15,16 @@ Initial principle:
 
 > Build the smallest working agent system that can preserve decisions, represent uncertainty, compare multiple interpretations, and update a shared ontology without contaminating paper experiments.
 
-## Planned Modules
+## Current Modules
 
-- `docs/` — design notes, architecture decisions, extracted ontology references.
-- `memory/` — durable local memory format and schemas.
-- `ontology/` — graph / hypergraph representation of concepts, claims, evidence, contradictions, and links.
-- `agents/` — agent roles, prompts, protocols, and coordination rules.
-- `runs/` — local run logs and task traces for this system.
-- `config/` — provider/runtime configuration templates.
+- `hivemind/` — `hive` CLI, provider adapters, TUI, local workers, run validation.
+- `.runs/` — Hive Mind run blackboard and per-agent artifacts.
+- `.hivemind/` — project settings, checks, runtime profile, local logs.
+- `docs/` — shared architecture notes and Hive Mind operating docs.
+
+Memory graph importers, schemas, graph store, and audit code live in the sibling
+`../memoryOS` repo. Capability graph work belongs in the sibling
+`../CapabilityOS` repo.
 
 ## Agent Entry
 

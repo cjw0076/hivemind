@@ -452,7 +452,7 @@ Hive Mind
 “우리는 과거에 무엇을 생각했고, 무엇을 결정했는가?”
 ```
 
-현재 repo의 `.runs` blackboard와 memory draft 흐름은 이미 MemoryOS의 작동 기반이야. `docs/TUI_HARNESS.md`에서도 run folder가 `task.yaml`, `context_pack.md`, `handoff.yaml`, `events.jsonl`, `verification.yaml`, `memory_drafts.json`, `final_report.md`를 가진 structured blackboard로 정의돼 있어. 
+현재 Hive Mind repo의 `.runs` blackboard와 memory draft artifact 흐름은 MemoryOS가 ingest할 실행 증거 기반이야. `docs/TUI_HARNESS.md`에서도 run folder가 `task.yaml`, `context_pack.md`, `handoff.yaml`, `events.jsonl`, `verification.yaml`, `memory_drafts.json`, `final_report.md`를 가진 structured blackboard로 정의돼 있어. 
 
 ---
 
@@ -659,7 +659,7 @@ Hive Mind는 군체를 움직인다.
 
 ---
 
-# 현재 repo 기준으로 다음 이름 변경 방향
+# 현재 Hive Mind repo 기준으로 다음 이름 변경 방향
 
 지금 당장 대규모 rename을 하면 위험하니까, 단계적으로 가는 게 좋다.
 

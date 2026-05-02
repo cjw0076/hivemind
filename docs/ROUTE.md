@@ -14,7 +14,7 @@ Read these first for current implementation work:
 6. `LOWERCASE_SOURCE_GRAPH.md` - graph map for lowercase source-vault docs.
 7. `ROADMAP.md` - phase order.
 8. `TODO.md` - active work queue.
-9. `TUI_HARNESS.md` - current `mos` CLI/TUI harness.
+9. `TUI_HARNESS.md` - current `hive` CLI/TUI harness.
 10. `PROVIDER_HARNESS_GUIDE.md` - Claude/Codex/Gemini/local/provider usage.
 
 ## Current Build Surface
@@ -29,13 +29,18 @@ Use these when changing code:
 - `PROVIDER_MODELS.md` - provider routing policy.
 - `OPEN_MODEL_PROVIDER_SURVEY.md` - external provider candidates.
 - `cli_help.md` - local captured CLI help for Claude, Gemini, Codex.
-- `make_production.md` - installable `mos` target.
+- `make_production.md` - installable `hive` target.
+- `hive_mind2.md` - production-readiness gap analysis for `hive` hardening.
+- `HIVE_WORKING_METHOD.md` - user/Claude/Codex/local-LLM working method as Hive Mind product protocol.
+- `THIRD_PARTY_INTEGRATIONS.md` - optional adapter and license boundary notes.
 
 ## Product Vision
 
 Use these for product planning and UX direction:
 
 - `final.md` - Human-AI-Agent Operating Stack.
+- `HIVE_WORKING_METHOD.md` - working-method skill protocol and hidden product thread.
+- `hive_mind2.md` - hardening source for the production `hive` operator loop.
 - `tui.md` - wrapper CLI/TUI and artifact blackboard direction.
 - `ui_future.md` - future chatbot/agent harness and visual product framing.
 - `image.png` - visual board reference.

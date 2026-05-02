@@ -18,14 +18,38 @@ hive review-diff
 hive commit-summary
 hive agents detect --json
 hive agents status
+hive agents roles
+hive agents policy
+hive agents explain codex.executor
+hive policy check --write
+hive policy explain codex.executor
+hive audit
+hive workspace --layout dev
+hive workspace --layout dual
+hive doctor all
+hive doctor hardware
+hive doctor providers
+hive doctor models
+hive doctor permissions
 hive chat
 hive orchestrate "Build parser and review risks"
 hive next
+hive board
+hive events --tail 60
+hive events --follow
+hive transcript --tail 120
+hive artifacts
+hive agents view
+hive memory view
+hive society
 hive prompt
 hive log
 hive hive activity
 hive memory list
 hive tui
+hive tui --view board
+hive tui --view events --observer
+hive tui --view transcript --observer
 hive completion zsh
 npm run production
 ```
@@ -35,9 +59,13 @@ Without installing:
 ```bash
 python -m hivemind.hive init
 python -m hivemind.hive doctor
+python -m hivemind.hive doctor hardware
 python -m hivemind.hive local status
 python -m hivemind.hive local setup
+python -m hivemind.hive local setup --auto
+python -m hivemind.hive local checker
 python -m hivemind.hive agents detect
+python -m hivemind.hive agents roles
 python -m hivemind.hive settings detect
 eval "$(python -m hivemind.hive settings shell)"
 python -m hivemind.hive run "Build Draft Review screen"
@@ -46,7 +74,12 @@ python -m hivemind.hive plan
 python -m hivemind.hive status
 python -m hivemind.hive next
 python -m hivemind.hive tui
+python -m hivemind.hive tui --view agents --observer
+python -m hivemind.hive events --tail 60
+python -m hivemind.hive transcript --tail 120
 python -m hivemind.hive context
+python -m hivemind.hive context build --for claude.planner
+python -m hivemind.hive context build --for codex.executor
 python -m hivemind.hive handoff
 python -m hivemind.hive invoke local --role context
 python -m hivemind.hive invoke claude --role planner
@@ -59,11 +92,96 @@ python -m hivemind.hive memory list
 ```
 
 If installed as a package, `hive` and `hivemind` point to the same command.
-`mos` is also installed as a deprecated compatibility alias so old shell history
-does not break during the rename.
 
 `hive "your task"` is shorthand for `hive orchestrate "your task"`.
 Bare `hive` opens the conversational operator shell. Use `hive chat` explicitly for the same shell, or `hive shell` for the older thin slash-command shell. Use `hive tui` for the curses status board.
+
+`hive tui` is a multi-view cockpit, not one mega-dashboard. The default `board`
+view focuses on current run, next action, pipeline, agent reasons, missing
+artifact classes, decisions/open questions, and recent events. Longer material
+is split into observer views:
+
+```text
+1 board
+2 events
+3 transcript
+4 agents
+5 artifacts
+6 memory
+7 society
+8 diff
+```
+
+Use multiple terminals or tmux panes for the intended workflow:
+
+```bash
+hive board
+hive events --follow
+hive transcript --tui
+hive agents view
+hive diff --tui
+```
+
+Observer mode blocks action keys and is meant for read-only monitoring.
+Controller mode can still run prompt, route, provider, verify, memory, and diff
+actions.
+
+Only one controller can own a run at a time. Controller sessions create:
+
+```text
+.runs/<run_id>/control.lock
+```
+
+The lock contains a session id, pid, role, start time, heartbeat, and TTL.
+`hive tui` refreshes the heartbeat while open and removes the lock on clean
+exit. Observer views do not acquire this lock. If a controller crashes, a stale
+lock can be replaced after its TTL.
+
+Artifact views distinguish file existence from pipeline completion:
+
+```text
+exists      whether the path is present
+freshness   fresh, stale, empty, initial, or missing
+class       required, phase, post_execution, or optional
+producer    expected producer such as local/intent-router, claude/planner, verifier
+```
+
+For example, `context_pack.md` can exist while `local-context-compressor` is
+still pending; the artifacts view marks that as stale instead of treating the
+context phase as complete.
+
+`hive doctor` keeps the original provider/core health check. Scoped doctor
+commands expose production-readiness slices from `docs/hive_mind2.md`:
+
+```bash
+hive doctor hardware     # CPU, RAM, GPU/VRAM, disk, Python, Node, Docker, Ollama, ports
+hive doctor providers    # provider capability registry and CLI/API availability
+hive doctor models       # Ollama/local model inventory and worker role assignments
+hive doctor permissions  # project policy/check state and provider risk inventory
+hive doctor all          # combined production readiness report
+```
+
+The production policy and role registry turn the current working style into
+runtime structure:
+
+```bash
+hive policy check --write
+hive policy explain codex.executor
+hive agents roles
+hive agents explain claude.planner
+hive context build --for codex.executor
+hive local setup --auto
+hive local checker
+hive local checker --execute
+hive audit
+hive workspace --layout dev
+```
+
+`hive policy check --write` creates `.hivemind/policy.yaml` and the project-local
+`.hivemind/skills/hive-working-method/SKILL.md`. The skill encodes the
+user/Claude/Codex/local-LLM loop as a reusable protocol. The quiet internal
+thread is `evolution of Single Human Intelligence`; treat it as product
+identity, not a scientific claim.
 
 `hive orchestrate` is the default prompt path. It asks the local router to split the request into a small agent society, prepares each provider/local worker artifact, writes `society_plan.json`, and reports which member owns which role. `hive ask` remains available for route-only debugging.
 
@@ -77,8 +195,8 @@ Hive Mind keeps `events.jsonl` as a machine/audit log and `hive_events.jsonl` as
 Provider and local worker activity is mirrored into per-agent log files under
 `agents/<provider>/<role>.log`, the human activity feed, and `transcript.md`.
 When a provider supports execution, stdout lines are streamed into those logs
-while the process is running. The TUI dashboard tails `transcript.md` in the
-`Live Transcript` panel.
+while the process is running. Transcript is now primarily a full observer view
+instead of a cramped board panel.
 
 Production wrappers:
 

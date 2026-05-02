@@ -568,10 +568,10 @@ initial role
 CLI로는:
 
 ```bash
-mos society report
-mos society propose-updates
-mos society approve prop_001
-mos society rollback prompt local_memory_extractor v3
+hive society report
+hive society propose-updates
+hive society approve prop_001
+hive society rollback prompt local_memory_extractor v3
 ```
 
 출력:

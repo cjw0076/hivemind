@@ -17,8 +17,10 @@ Quantum/Paper #4 logs remain in:
 /home/user/workspaces/jaewon/universe/.ai-runs/shared/
 ```
 
-MyWorld logs live here:
+Hive Mind session logs currently live here:
 
 ```text
-/home/user/workspaces/jaewon/myworld/.ai-runs/shared/
+/home/user/workspaces/jaewon/myworld/hivemind/.ai-runs/shared/
 ```
+
+MemoryOS and CapabilityOS should keep their own repo-local logs when they start making independent implementation decisions.

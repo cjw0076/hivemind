@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import shlex
 import shutil
+import socket
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -15,6 +18,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from .local_workers import choose_model, read_input, run_worker, validate_worker_result, worker_route_table
 from .run_validation import validate_run_artifacts
 from .utils import now_iso, stable_id
@@ -22,11 +27,17 @@ from .utils import now_iso, stable_id
 
 RUNS_DIR = ".runs"
 CURRENT_FILE = "current"
+CONTROL_LOCK_FILE = "control.lock"
 PROVIDER_CAPABILITIES = "provider_capabilities.json"
 GLOBAL_DIR = ".hivemind"
 PROJECT_DIR = ".hivemind"
 SETTINGS_PROFILE = "settings_profile.json"
 CHECKS_DIR = "checks"
+POLICY_FILE = "policy.yaml"
+WORKING_METHOD_SKILL_DIR = "hive-working-method"
+WORKING_METHOD_PHRASE = "evolution of Single Human Intelligence"
+LLM_CHECKER_REPO = "https://github.com/Pavelevich/llm-checker"
+LLM_CHECKER_NPM = "llm-checker"
 
 PIPELINE_SPEC = [
     ("intake", "task.yaml", "task"),
@@ -85,6 +96,10 @@ class RunPaths:
     @property
     def artifacts(self) -> Path:
         return self.run_dir / "artifacts"
+
+    @property
+    def control_lock(self) -> Path:
+        return self.run_dir / CONTROL_LOCK_FILE
 
     @property
     def local_dir(self) -> Path:
@@ -153,6 +168,8 @@ def init_onboarding(root: Path) -> dict[str, Any]:
         project_dir / "project.yaml": default_project_yaml(root),
         project_dir / "routing.yaml": default_routing_yaml(),
         project_dir / "README.md": default_project_readme(),
+        project_dir / POLICY_FILE: default_policy_yaml(),
+        project_dir / "skills" / WORKING_METHOD_SKILL_DIR / "SKILL.md": default_working_method_skill(),
         project_dir / CHECKS_DIR / "memory-policy.md": default_check_memory_policy(),
         project_dir / CHECKS_DIR / "no-raw-export-leak.md": default_check_no_raw_export_leak(),
         project_dir / CHECKS_DIR / "implementation-handoff.md": default_check_implementation_handoff(),
@@ -303,6 +320,71 @@ def load_run(root: Path, run_id: str | None = None) -> tuple[RunPaths, dict[str,
     return paths, json.loads(paths.state.read_text(encoding="utf-8"))
 
 
+def acquire_control_lock(root: Path, run_id: str | None = None, role: str = "controller", ttl_seconds: int = 120) -> dict[str, Any]:
+    """Acquire the single write-capable controller lock for a run."""
+    paths, _ = load_run(root, run_id)
+    now = time.time()
+    existing = read_control_lock(paths)
+    if existing and not is_control_lock_stale(existing, now, ttl_seconds):
+        holder = existing.get("session_id") or "unknown"
+        pid = existing.get("pid") or "unknown"
+        raise RuntimeError(f"run already has an active controller: {holder} pid={pid}")
+    session_id = stable_id("sess", paths.run_id, os.getpid(), now)
+    lock = {
+        "schema_version": 1,
+        "session_id": session_id,
+        "role": role,
+        "pid": os.getpid(),
+        "started_at": now_iso(),
+        "last_heartbeat": now_iso(),
+        "last_heartbeat_epoch": now,
+        "ttl_seconds": ttl_seconds,
+    }
+    write_json(paths.control_lock, lock)
+    append_event(paths, "control_lock_acquired", {"session_id": session_id, "role": role})
+    return lock
+
+
+def heartbeat_control_lock(root: Path, run_id: str | None, session_id: str) -> None:
+    paths, _ = load_run(root, run_id)
+    lock = read_control_lock(paths)
+    if not lock or lock.get("session_id") != session_id:
+        raise RuntimeError("controller lock lost")
+    lock["last_heartbeat"] = now_iso()
+    lock["last_heartbeat_epoch"] = time.time()
+    write_json(paths.control_lock, lock)
+
+
+def release_control_lock(root: Path, run_id: str | None, session_id: str) -> None:
+    paths, _ = load_run(root, run_id)
+    lock = read_control_lock(paths)
+    if lock and lock.get("session_id") == session_id:
+        paths.control_lock.unlink(missing_ok=True)
+        append_event(paths, "control_lock_released", {"session_id": session_id})
+
+
+def read_control_lock(paths: RunPaths) -> dict[str, Any] | None:
+    if not paths.control_lock.exists():
+        return None
+    try:
+        data = json.loads(paths.control_lock.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {
+            "schema_version": 1,
+            "session_id": "invalid",
+            "role": "controller",
+            "last_heartbeat_epoch": 0,
+        }
+    return data if isinstance(data, dict) else None
+
+
+def is_control_lock_stale(lock: dict[str, Any], now: float | None = None, ttl_seconds: int = 120) -> bool:
+    heartbeat = lock.get("last_heartbeat_epoch")
+    if not isinstance(heartbeat, (int, float)):
+        return True
+    return (now or time.time()) - float(heartbeat) > ttl_seconds
+
+
 def list_runs(root: Path) -> list[dict[str, Any]]:
     runs_dir = root / RUNS_DIR
     if not runs_dir.exists():
@@ -338,8 +420,9 @@ def run_board(root: Path, run_id: str | None = None) -> dict[str, Any]:
 def artifact_status(paths: RunPaths, state: dict[str, Any]) -> list[dict[str, Any]]:
     rows = []
     for name, rel_path in (state.get("artifacts") or {}).items():
-        exists = isinstance(rel_path, str) and (paths.root / rel_path).exists()
-        rows.append({"name": name, "path": rel_path, "status": "ok" if exists else "missing"})
+        path = paths.root / rel_path if isinstance(rel_path, str) else None
+        exists = bool(path and path.exists())
+        rows.append(build_artifact_row(name, rel_path, exists, path, state))
     extra = {
         "routing_plan": paths.run_dir / "routing_plan.json",
         "society_plan": paths.run_dir / "society_plan.json",
@@ -351,14 +434,66 @@ def artifact_status(paths: RunPaths, state: dict[str, Any]) -> list[dict[str, An
     known = {row["name"] for row in rows}
     for name, path in extra.items():
         if name not in known:
-            rows.append(
-                {
-                    "name": name,
-                    "path": path.relative_to(paths.root).as_posix(),
-                    "status": "ok" if path.exists() else "missing",
-                }
-            )
+            rows.append(build_artifact_row(name, path.relative_to(paths.root).as_posix(), path.exists(), path, state))
     return rows
+
+
+def build_artifact_row(name: str, rel_path: Any, exists: bool, path: Path | None, state: dict[str, Any]) -> dict[str, Any]:
+    freshness = artifact_freshness(name, exists, path, state)
+    return {
+        "name": name,
+        "path": rel_path,
+        "status": "ok" if exists else "missing",
+        "exists": exists,
+        "phase_class": artifact_phase_class(name),
+        "producer": artifact_producer(name),
+        "freshness": freshness,
+        "validated": freshness in {"fresh", "initial"},
+    }
+
+
+def artifact_phase_class(name: str) -> str:
+    if name in {"task", "events", "run_state", "routing_plan", "society_plan"}:
+        return "required"
+    if name in {"context_pack", "handoff", "verification", "memory_drafts", "final_report", "hive_events"}:
+        return "phase"
+    if name in {"checks_report", "git_diff_report", "commit_summary"}:
+        return "post_execution"
+    return "optional"
+
+
+def artifact_producer(name: str) -> str:
+    return {
+        "task": "system",
+        "context_pack": "system/local-context",
+        "handoff": "claude/planner",
+        "events": "system",
+        "run_state": "system",
+        "verification": "verifier",
+        "memory_drafts": "hive/memory-draft",
+        "final_report": "hive/summary",
+        "transcript": "system",
+        "hive_events": "hive",
+        "routing_plan": "local/intent-router",
+        "society_plan": "hive/orchestrator",
+        "checks_report": "hive/check",
+        "git_diff_report": "git",
+        "commit_summary": "hive/commit-summary",
+    }.get(name, "unknown")
+
+
+def artifact_freshness(name: str, exists: bool, path: Path | None, state: dict[str, Any]) -> str:
+    if not exists:
+        return "missing"
+    if name == "context_pack" and agent_status(state, "local-context-compressor") != "completed":
+        return "stale"
+    if name == "verification" and path and "not_run" in path.read_text(encoding="utf-8", errors="replace"):
+        return "stale"
+    if name == "memory_drafts" and path and memory_draft_count(path) == 0:
+        return "empty"
+    if name == "final_report" and path and "Status: planned" in path.read_text(encoding="utf-8", errors="replace"):
+        return "initial"
+    return "fresh"
 
 
 def pipeline_status(paths: RunPaths) -> list[dict[str, Any]]:
@@ -685,6 +820,812 @@ def doctor_report(root: Path) -> dict[str, Any]:
     }
 
 
+def doctor_scope_report(root: Path, scope: str = "all") -> dict[str, Any]:
+    if scope not in {"hardware", "providers", "models", "permissions", "all"}:
+        raise ValueError(f"unknown doctor scope: {scope}")
+    generated_at = now_iso()
+    reports: dict[str, Any] = {}
+    if scope in {"providers", "all"}:
+        reports["providers"] = doctor_report(root)
+    if scope in {"hardware", "all"}:
+        reports["hardware"] = hardware_report(root)
+    if scope in {"models", "all"}:
+        reports["models"] = models_report(root)
+    if scope in {"permissions", "all"}:
+        reports["permissions"] = permissions_report(root)
+    statuses = [item.get("status") for item in reports.values() if isinstance(item, dict)]
+    status = "ready" if statuses and all(item == "ready" for item in statuses) else "needs_setup"
+    return {
+        "schema_version": 1,
+        "generated_at": generated_at,
+        "scope": scope,
+        "status": status,
+        "reports": reports,
+    }
+
+
+def hardware_report(root: Path) -> dict[str, Any]:
+    providers = detect_agents(root, write=True)
+    disk = shutil.disk_usage(root)
+    gpus = probe_gpus()
+    runtime = {
+        "python": {
+            "status": "available",
+            "path": sys.executable,
+            "version": platform.python_version(),
+        },
+        "node": probe_binary_version("node", ["--version"]),
+        "docker": probe_binary_version("docker", ["--version"]),
+        "ollama": probe_binary_version("ollama", ["--version"]),
+    }
+    warnings = []
+    if not gpus:
+        warnings.append("no NVIDIA GPU detected through nvidia-smi")
+    if runtime["node"].get("status") != "available":
+        warnings.append("node is unavailable")
+    if runtime["docker"].get("status") != "available":
+        warnings.append("docker is unavailable")
+    if runtime["ollama"].get("status") != "available":
+        warnings.append("ollama binary is unavailable")
+    ports = {
+        "ollama": probe_tcp_port("127.0.0.1", 11434),
+        "dev_8000": probe_tcp_port("127.0.0.1", 8000),
+        "dev_8080": probe_tcp_port("127.0.0.1", 8080),
+    }
+    return {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "status": "ready" if runtime["python"].get("status") == "available" else "needs_setup",
+        "system": {
+            "platform": platform.platform(),
+            "system": platform.system(),
+            "release": platform.release(),
+            "machine": platform.machine(),
+            "processor": platform.processor(),
+        },
+        "cpu": {
+            "logical_count": os.cpu_count(),
+        },
+        "memory": memory_profile(),
+        "gpu": gpus,
+        "disk": {
+            "path": root.as_posix(),
+            "total_bytes": disk.total,
+            "used_bytes": disk.used,
+            "free_bytes": disk.free,
+        },
+        "runtime": runtime,
+        "provider_cli_paths": provider_cli_paths(providers),
+        "network": probe_network(),
+        "ports": ports,
+        "warnings": warnings,
+    }
+
+
+def models_report(root: Path) -> dict[str, Any]:
+    local_runtime = local_runtime_report(root, write=True)
+    ollama = local_runtime.get("ollama") or {}
+    routes = worker_route_table()
+    role_assignments = []
+    for role, route in routes.items():
+        selected = choose_model(role, "default")
+        role_assignments.append(
+            {
+                "role": role,
+                "complexity": "default",
+                "primary": (route.get("models") or {}).get("default"),
+                "fallback": (route.get("models") or {}).get("fast"),
+                "selected": selected,
+                "available": selected in set(ollama.get("models") or []),
+            }
+        )
+    return {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "status": "ready" if ollama.get("models") else "needs_setup",
+        "local_runtime": local_runtime,
+        "role_assignments": role_assignments,
+    }
+
+
+def local_model_profile(root: Path, write: bool = True) -> dict[str, Any]:
+    local_runtime = local_runtime_report(root, write=True)
+    ollama = local_runtime.get("ollama") or {}
+    present = set(ollama.get("models") or [])
+    routes = worker_route_table()
+    models: dict[str, dict[str, Any]] = {}
+    for role, route in routes.items():
+        model_names = route.get("models") or {}
+        for complexity, model in model_names.items():
+            item = models.setdefault(
+                model,
+                {
+                    "available": model in present,
+                    "recommended_roles": [],
+                    "json_validity": None,
+                    "latency_ms": None,
+                    "benchmark_status": "not_run",
+                },
+            )
+            item["recommended_roles"].append(f"{role}:{complexity}")
+    profile = {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "runtime": "ollama",
+        "status": "ready" if present else "needs_setup",
+        "models": models,
+        "role_assignments": models_report(root).get("role_assignments", []),
+        "external_checker": llm_checker_detection(),
+        "notes": [
+            "Benchmark fields are placeholders until hive local benchmark runs real prompts.",
+            "Optional llm-checker adapter can provide hardware-aware recommendations and calibration artifacts.",
+            WORKING_METHOD_PHRASE,
+        ],
+    }
+    if write:
+        project_dir = root / PROJECT_DIR
+        project_dir.mkdir(parents=True, exist_ok=True)
+        write_json(project_dir / "local_model_profile.json", profile)
+    return profile
+
+
+def format_local_model_profile(report: dict[str, Any]) -> str:
+    lines = ["Hive Mind Local Model Profile", "", f"Status: {report.get('status')}"]
+    for model, item in sorted((report.get("models") or {}).items()):
+        marker = "✓" if item.get("available") else "○"
+        roles = ", ".join(item.get("recommended_roles") or [])
+        lines.append(f"{marker} {model}: {roles}")
+    lines.extend(["", f"Thread: {WORKING_METHOD_PHRASE}"])
+    return "\n".join(lines)
+
+
+def llm_checker_detection(use_npx: bool = False) -> dict[str, Any]:
+    path = shutil.which("llm-checker")
+    npx = shutil.which("npx")
+    if path:
+        return {
+            "status": "available",
+            "command": [path],
+            "path": path,
+            "repo": LLM_CHECKER_REPO,
+            "npm": LLM_CHECKER_NPM,
+        }
+    if use_npx and npx:
+        return {
+            "status": "npx_available",
+            "command": [npx, "--yes", LLM_CHECKER_NPM],
+            "path": npx,
+            "repo": LLM_CHECKER_REPO,
+            "npm": LLM_CHECKER_NPM,
+        }
+    return {
+        "status": "unavailable",
+        "command": [],
+        "path": None,
+        "repo": LLM_CHECKER_REPO,
+        "npm": LLM_CHECKER_NPM,
+        "install": "npm install -g llm-checker",
+        "npx": "npx llm-checker hw-detect",
+    }
+
+
+def llm_checker_report(
+    root: Path,
+    category: str = "coding",
+    use_npx: bool = False,
+    execute: bool = False,
+    write: bool = True,
+) -> dict[str, Any]:
+    detection = llm_checker_detection(use_npx=use_npx)
+    report: dict[str, Any] = {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "status": detection["status"],
+        "source": {
+            "repo": LLM_CHECKER_REPO,
+            "npm": LLM_CHECKER_NPM,
+            "checked_at": "2026-05-02",
+            "capabilities": [
+                "hardware-aware local model recommendation",
+                "Ollama installed-model ranking",
+                "calibration policy generation",
+                "policy validation and audit export",
+                "benchmark via CLI/MCP where installed",
+            ],
+        },
+        "category": category,
+        "detection": detection,
+        "commands": {
+            "detect": "llm-checker hw-detect",
+            "installed": "llm-checker installed",
+            "recommend": f"llm-checker recommend --category {category}",
+            "calibrate": "llm-checker calibrate --suite <jsonl> --models <models...> --runtime ollama --objective balanced --output .hivemind/llm_checker_calibration.json --policy-out .hivemind/llm_checker_policy.yaml",
+        },
+        "executed": execute,
+        "results": {},
+        "working_method": WORKING_METHOD_PHRASE,
+    }
+    command = detection.get("command") or []
+    if execute and command:
+        report["results"] = {
+            "version": run_llm_checker_command(command, ["--version"]),
+            "hw_detect": run_llm_checker_command(command, ["hw-detect"]),
+            "installed": run_llm_checker_command(command, ["installed"]),
+            "recommend": run_llm_checker_command(command, ["recommend", "--category", category]),
+        }
+        failed = [name for name, item in report["results"].items() if item.get("returncode") not in {0, None}]
+        report["status"] = "executed_with_errors" if failed else "executed"
+    elif execute and not command:
+        report["status"] = "unavailable"
+        report["results"] = {"error": "llm-checker is not installed; pass --use-npx or install npm package"}
+    if write:
+        project_dir = root / PROJECT_DIR
+        project_dir.mkdir(parents=True, exist_ok=True)
+        write_json(project_dir / "llm_checker_report.json", report)
+    return report
+
+
+def run_llm_checker_command(command: list[str], args: list[str], timeout: int = 60) -> dict[str, Any]:
+    started = time.monotonic()
+    try:
+        completed = subprocess.run([*command, *args], text=True, capture_output=True, timeout=timeout)
+        return {
+            "command": [*command, *args],
+            "returncode": completed.returncode,
+            "duration_ms": int((time.monotonic() - started) * 1000),
+            "stdout": completed.stdout.strip()[-8000:],
+            "stderr": completed.stderr.strip()[-4000:],
+        }
+    except Exception as exc:
+        return {
+            "command": [*command, *args],
+            "returncode": None,
+            "duration_ms": int((time.monotonic() - started) * 1000),
+            "stdout": "",
+            "stderr": str(exc),
+        }
+
+
+def format_llm_checker_report(report: dict[str, Any]) -> str:
+    source = report.get("source") or {}
+    detection = report.get("detection") or {}
+    lines = [
+        "Hive Mind LLM Checker Adapter",
+        "",
+        f"Status: {report.get('status')}",
+        f"Repo: {source.get('repo')}",
+        f"NPM: {source.get('npm')}",
+        f"Detected: {detection.get('status')}",
+        "",
+        "Planned commands:",
+    ]
+    for name, command in (report.get("commands") or {}).items():
+        lines.append(f"- {name}: {command}")
+    results = report.get("results") or {}
+    if results:
+        lines.extend(["", "Execution:"])
+        for name, item in results.items():
+            if isinstance(item, dict):
+                lines.append(f"- {name}: returncode={item.get('returncode')} duration_ms={item.get('duration_ms')}")
+            else:
+                lines.append(f"- {name}: {item}")
+    if detection.get("install"):
+        lines.extend(["", "Install:", f"  {detection.get('install')}", f"  {detection.get('npx')}"])
+    lines.extend(["", f"Thread: {report.get('working_method')}"])
+    return "\n".join(lines)
+
+
+def build_context_pack_for_role(root: Path, role: str, run_id: str | None = None) -> dict[str, Any]:
+    paths, state = load_run(root, run_id)
+    context_dir = paths.run_dir / "context"
+    context_dir.mkdir(parents=True, exist_ok=True)
+    registry = agent_role_registry().get(role, {})
+    policy = (load_policy(root).get("roles") or {}).get(role, {})
+    task = safe_load_yaml(paths.task)
+    pack = {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "run_id": paths.run_id,
+        "agent_role": role,
+        "context_pack": {
+            "objective": state.get("user_request"),
+            "project_state": {
+                "project": state.get("project"),
+                "phase": state.get("phase"),
+                "status": state.get("status"),
+            },
+            "active_decisions": [
+                "Hive Mind owns orchestration, provider adapters, TUI, and run artifacts.",
+                "MemoryOS owns accepted memory graph and review/approval.",
+                "CapabilityOS owns capability/workflow recommendations.",
+            ],
+            "constraints": task.get("constraints", []) if isinstance(task, dict) else [],
+            "relevant_memories": [],
+            "capability_recommendations": [],
+            "open_questions": [],
+            "risks": role_context_risks(role),
+            "forbidden_scope": registry.get("forbidden_actions", []),
+            "raw_refs": [
+                paths.task.relative_to(root).as_posix(),
+                paths.state.relative_to(root).as_posix(),
+                "docs/hive_mind2.md",
+                "docs/TODO.md",
+            ],
+            "output_contract": role_output_contract(role),
+            "policy": policy,
+            "working_method": WORKING_METHOD_PHRASE,
+        },
+    }
+    safe_role = role.replace(".", "_").replace("/", "_")
+    output_path = context_dir / f"{safe_role}_context_pack.yaml"
+    output_path.write_text(format_simple_yaml(pack) + "\n", encoding="utf-8")
+    append_event(paths, "context_edited", {"agent_role": role, "artifact": output_path.relative_to(root).as_posix()})
+    append_hive_activity(paths, "hive/context", "built_context", f"Built context pack for {role}.", {"artifact": output_path.relative_to(root).as_posix()})
+    return {
+        "schema_version": 1,
+        "run_id": paths.run_id,
+        "role": role,
+        "path": output_path.relative_to(root).as_posix(),
+        "pack": pack,
+    }
+
+
+def role_context_risks(role: str) -> list[str]:
+    if role.startswith("codex."):
+        return ["unrelated_user_changes", "unsafe_shell", "missing_tests", "scope_creep"]
+    if role.startswith("claude."):
+        return ["unsupported_claims", "overbroad_plan", "memory_boundary_confusion"]
+    if role.startswith("local."):
+        return ["invalid_json", "low_confidence", "draft_misread_as_decision"]
+    return ["ambiguous_role"]
+
+
+def role_output_contract(role: str) -> dict[str, Any]:
+    if role == "claude.planner":
+        return {"artifact": "handoff.yaml", "must_include": ["objective", "constraints", "risks", "acceptance_criteria"]}
+    if role == "codex.executor":
+        return {"artifact": "executor_result.yaml", "must_include": ["files_changed", "commands_run", "tests_run", "risk_level"]}
+    if role.startswith("local."):
+        return {"artifact": "worker_json", "must_include": ["confidence", "should_escalate", "escalation_reason"]}
+    return {"artifact": "role_result", "must_include": ["status", "evidence", "next"]}
+
+
+def safe_load_yaml(path: Path) -> Any:
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+
+
+def run_audit_report(root: Path, run_id: str | None = None) -> dict[str, Any]:
+    paths, state = load_run(root, run_id)
+    validation = validate_run_artifacts(paths.run_dir, root)
+    board = run_board(root, paths.run_id)
+    artifacts = board.get("artifacts") or []
+    stale = [item for item in artifacts if item.get("freshness") in {"stale", "missing", "empty"}]
+    provider_results = []
+    for result_path in sorted((paths.run_dir / "agents").glob("*/*_result.yaml")):
+        data = safe_load_yaml(result_path)
+        provider_results.append(
+            {
+                "path": result_path.relative_to(root).as_posix(),
+                "agent": data.get("agent"),
+                "role": data.get("role"),
+                "status": data.get("status"),
+                "risk_level": data.get("risk_level", "unknown"),
+                "policy_violations": data.get("policy_violations") or [],
+            }
+        )
+    failures = [item for item in provider_results if item.get("status") == "failed"]
+    policy = policy_report(root, write=False)
+    recommendations = []
+    if validation.get("verdict") != "pass":
+        recommendations.append("run verification needs review")
+    if stale:
+        recommendations.append("refresh stale/missing/empty artifacts")
+    if failures:
+        recommendations.append("inspect failed provider results")
+    if policy.get("status") != "ready":
+        recommendations.append("run hive policy check --write")
+    if not recommendations:
+        recommendations.append("run is audit-clean; continue with next action or summary")
+    return {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "run_id": paths.run_id,
+        "status": (
+            "ready"
+            if validation.get("verdict") == "pass" and not failures and not stale and policy.get("status") == "ready"
+            else "needs_review"
+        ),
+        "validation": validation,
+        "stale_artifacts": stale,
+        "provider_results": provider_results,
+        "provider_failures": failures,
+        "policy": {"status": policy.get("status"), "path": policy.get("path"), "issues": policy.get("issues", [])},
+        "recommendations": recommendations,
+        "working_method": WORKING_METHOD_PHRASE,
+    }
+
+
+def format_run_audit(report: dict[str, Any]) -> str:
+    lines = [f"Hive Mind Audit: {report.get('run_id')}", "", f"Status: {report.get('status')}"]
+    validation = report.get("validation") or {}
+    lines.append(f"Verification: {validation.get('verdict')}")
+    lines.extend(["", "Stale / Missing Artifacts:"])
+    stale = report.get("stale_artifacts") or []
+    if stale:
+        for item in stale:
+            lines.append(f"! {item.get('name')} freshness={item.get('freshness')} producer={item.get('producer')}")
+    else:
+        lines.append("✓ none")
+    lines.extend(["", "Provider Results:"])
+    results = report.get("provider_results") or []
+    if results:
+        for item in results:
+            lines.append(f"- {item.get('agent')}/{item.get('role')}: {item.get('status')} risk={item.get('risk_level')}")
+    else:
+        lines.append("○ none")
+    lines.extend(["", "Recommendations:"])
+    for item in report.get("recommendations") or []:
+        lines.append(f"- {item}")
+    lines.extend(["", f"Thread: {report.get('working_method')}"])
+    return "\n".join(lines)
+
+
+def workspace_layout_report(layout: str = "dev") -> dict[str, Any]:
+    layouts = {
+        "dev": [
+            "hive board",
+            "hive events --follow",
+            "hive transcript --tui",
+            "hive diff --tui",
+        ],
+        "dual": [
+            "hive board",
+            "hive agents view",
+            "hive artifacts",
+            "hive memory view",
+            "hive society",
+        ],
+    }
+    if layout not in layouts:
+        raise ValueError("layout must be one of: dev, dual")
+    return {
+        "schema_version": 1,
+        "layout": layout,
+        "commands": layouts[layout],
+        "tmux_hint": " | ".join(layouts[layout]),
+        "working_method": WORKING_METHOD_PHRASE,
+    }
+
+
+def format_workspace_layout(report: dict[str, Any]) -> str:
+    lines = [f"Hive Workspace Layout: {report.get('layout')}", ""]
+    for index, command in enumerate(report.get("commands") or [], start=1):
+        lines.append(f"{index}. {command}")
+    lines.extend(["", f"Thread: {report.get('working_method')}"])
+    return "\n".join(lines)
+
+
+def permissions_report(root: Path) -> dict[str, Any]:
+    project_dir = root / PROJECT_DIR
+    policy_path = project_dir / POLICY_FILE
+    checks_dir = project_dir / CHECKS_DIR
+    providers = detect_agents(root, write=True).get("providers", {})
+    risks = {
+        name: item.get("risks", [])
+        for name, item in providers.items()
+        if item.get("risks")
+    }
+    return {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "status": "ready" if policy_path.exists() else "needs_setup",
+        "policy": {
+            "path": policy_path.as_posix(),
+            "exists": policy_path.exists(),
+        },
+        "checks_dir": {
+            "path": checks_dir.as_posix(),
+            "exists": checks_dir.exists(),
+            "count": len(list(checks_dir.glob("*.md"))) if checks_dir.exists() else 0,
+        },
+        "provider_risks": risks,
+        "warnings": [] if policy_path.exists() else ["project policy.yaml is missing"],
+    }
+
+
+def load_policy(root: Path) -> dict[str, Any]:
+    policy_path = root / PROJECT_DIR / POLICY_FILE
+    if not policy_path.exists():
+        return yaml.safe_load(default_policy_yaml()) or {}
+    loaded = yaml.safe_load(policy_path.read_text(encoding="utf-8")) or {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def policy_report(root: Path, write: bool = False) -> dict[str, Any]:
+    project_dir = root / PROJECT_DIR
+    policy_path = project_dir / POLICY_FILE
+    created = False
+    if write and not policy_path.exists():
+        project_dir.mkdir(parents=True, exist_ok=True)
+        policy_path.write_text(default_policy_yaml(), encoding="utf-8")
+        created = True
+    skill_path = ensure_working_method_skill(root, write=write)
+    policy = load_policy(root)
+    issues = []
+    if not policy_path.exists():
+        issues.append("policy file is missing")
+    if not isinstance(policy.get("roles"), dict):
+        issues.append("policy.roles must be an object")
+    if (policy.get("danger_modes") or {}).get("allowed") is not False:
+        issues.append("danger_modes.allowed must stay false by default")
+    for role in ["claude.planner", "codex.executor", "local.memory_extractor"]:
+        if role not in (policy.get("roles") or {}):
+            issues.append(f"missing required role policy: {role}")
+    return {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "status": "ready" if not issues else "needs_setup",
+        "path": policy_path.as_posix(),
+        "working_method_skill": skill_path.as_posix(),
+        "working_method_skill_exists": skill_path.exists(),
+        "created": created,
+        "issues": issues,
+        "policy": policy,
+    }
+
+
+def ensure_working_method_skill(root: Path, write: bool = False) -> Path:
+    skill_path = root / PROJECT_DIR / "skills" / WORKING_METHOD_SKILL_DIR / "SKILL.md"
+    if write and not skill_path.exists():
+        skill_path.parent.mkdir(parents=True, exist_ok=True)
+        skill_path.write_text(default_working_method_skill(), encoding="utf-8")
+    return skill_path
+
+
+def explain_policy(root: Path, role: str) -> dict[str, Any]:
+    report = policy_report(root, write=False)
+    policy = report.get("policy") or {}
+    role_policy = (policy.get("roles") or {}).get(role)
+    role_meta = agent_role_registry().get(role)
+    return {
+        "schema_version": 1,
+        "role": role,
+        "found": bool(role_policy or role_meta),
+        "policy_path": report.get("path"),
+        "policy": role_policy or {},
+        "role": role,
+        "registry": role_meta or {},
+        "danger_modes": policy.get("danger_modes") or {},
+    }
+
+
+def format_policy_report(report: dict[str, Any]) -> str:
+    lines = ["Hive Mind Policy", "", f"Path: {report.get('path')}", f"Status: {report.get('status')}"]
+    if report.get("created"):
+        lines.append("Created default policy.")
+    issues = report.get("issues") or []
+    if issues:
+        lines.extend(["", "Issues:"])
+        for issue in issues:
+            lines.append(f"! {issue}")
+    else:
+        lines.append("✓ policy gate ready")
+    lines.extend(["", f"Hidden thread: {WORKING_METHOD_PHRASE}"])
+    return "\n".join(lines)
+
+
+def format_policy_explain(report: dict[str, Any]) -> str:
+    lines = [f"Policy Explain: {report.get('role')}", "", f"Found: {report.get('found')}"]
+    registry = report.get("registry") or {}
+    policy = report.get("policy") or {}
+    if registry:
+        lines.append(f"Purpose: {registry.get('purpose')}")
+        lines.append(f"Default mode: {registry.get('default_mode')}")
+    if policy:
+        lines.extend(["", "Allowed:"])
+        for name, value in policy.items():
+            if name == "description":
+                continue
+            lines.append(f"- {name}: {value}")
+    danger = report.get("danger_modes") or {}
+    lines.extend(["", f"Danger modes allowed: {danger.get('allowed')}"])
+    return "\n".join(lines)
+
+
+def agent_role_registry() -> dict[str, dict[str, Any]]:
+    return {
+        "user.director": {
+            "provider": "human",
+            "purpose": "Final direction, taste, acceptance, and boundary decisions.",
+            "default_mode": "approve_or_redirect",
+            "allowed_actions": ["set_goal", "accept", "reject", "change_boundary"],
+            "forbidden_actions": ["silent_auto_acceptance"],
+            "handoff_outputs": ["decision", "taste_signal", "boundary_update"],
+        },
+        "claude.planner": {
+            "provider": "claude",
+            "purpose": "Conceptual planning, critique, claim discipline, and unresolved-risk surfacing.",
+            "default_mode": "plan",
+            "allowed_actions": ["read_context", "write_handoff", "critique", "surface_risks"],
+            "forbidden_actions": ["repo_write", "memory_commit", "danger_bypass"],
+            "handoff_outputs": ["handoff.yaml", "planner_result.yaml"],
+        },
+        "codex.executor": {
+            "provider": "codex",
+            "purpose": "Repository-aware implementation, tests, and verification logs.",
+            "default_mode": "workspace_write_with_policy",
+            "allowed_actions": ["repo_read", "repo_write_with_approval", "run_tests", "write_provider_result"],
+            "forbidden_actions": ["memory_commit", "raw_export_access", "destructive_git"],
+            "handoff_outputs": ["executor_result.yaml", "diff_report", "verification"],
+        },
+        "gemini.reviewer": {
+            "provider": "gemini",
+            "purpose": "Alternate review, multimodal review, and second-opinion critique.",
+            "default_mode": "read_only",
+            "allowed_actions": ["read_context", "review_outputs", "challenge_plan"],
+            "forbidden_actions": ["repo_write", "memory_commit", "danger_bypass"],
+            "handoff_outputs": ["reviewer_result.yaml"],
+        },
+        "local.context": {
+            "provider": "local",
+            "purpose": "Cheap-first context compression and routing support.",
+            "default_mode": "draft_only",
+            "allowed_actions": ["compress_context", "classify", "draft_memory", "summarize_log"],
+            "forbidden_actions": ["repo_write", "final_decision", "memory_commit"],
+            "handoff_outputs": ["context_pack", "worker_json"],
+        },
+        "local.memory_extractor": {
+            "provider": "local",
+            "purpose": "Extract reviewable memory drafts without accepting them.",
+            "default_mode": "draft_only",
+            "allowed_actions": ["draft_memory", "attach_raw_refs"],
+            "forbidden_actions": ["memory_commit", "repo_write", "final_decision"],
+            "handoff_outputs": ["memory_drafts.json"],
+        },
+    }
+
+
+def agent_roles_report() -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "roles": agent_role_registry(),
+        "working_method": WORKING_METHOD_PHRASE,
+    }
+
+
+def explain_agent_role(root: Path, role: str) -> dict[str, Any]:
+    registry = agent_role_registry()
+    policy = load_policy(root)
+    return {
+        "schema_version": 1,
+        "role": role,
+        "found": role in registry,
+        "registry": registry.get(role, {}),
+        "policy": (policy.get("roles") or {}).get(role, {}),
+        "working_method": WORKING_METHOD_PHRASE,
+    }
+
+
+def format_agent_roles(report: dict[str, Any]) -> str:
+    lines = ["Hive Mind Agent Roles", "", f"Thread: {report.get('working_method')}", ""]
+    for role, item in sorted((report.get("roles") or {}).items()):
+        lines.append(f"{role}: {item.get('purpose')} [{item.get('default_mode')}]")
+    return "\n".join(lines)
+
+
+def format_agent_explain(report: dict[str, Any]) -> str:
+    item = report.get("registry") or {}
+    policy = report.get("policy") or {}
+    lines = [f"Agent Explain: {report.get('role')}", "", f"Found: {report.get('found')}"]
+    if item:
+        lines.append(f"Provider: {item.get('provider')}")
+        lines.append(f"Purpose: {item.get('purpose')}")
+        lines.append(f"Default mode: {item.get('default_mode')}")
+        lines.extend(["Allowed actions:"])
+        lines.extend(f"- {action}" for action in item.get("allowed_actions") or [])
+        lines.extend(["Forbidden actions:"])
+        lines.extend(f"- {action}" for action in item.get("forbidden_actions") or [])
+    if policy:
+        lines.extend(["", "Policy:"])
+        for key, value in policy.items():
+            lines.append(f"- {key}: {value}")
+    lines.extend(["", f"Thread: {report.get('working_method')}"])
+    return "\n".join(lines)
+
+
+def memory_profile() -> dict[str, Any]:
+    meminfo = Path("/proc/meminfo")
+    if not meminfo.exists():
+        return {"status": "unknown", "total_bytes": None, "available_bytes": None}
+    values: dict[str, int] = {}
+    for line in meminfo.read_text(encoding="utf-8", errors="replace").splitlines():
+        if ":" not in line:
+            continue
+        key, raw = line.split(":", 1)
+        parts = raw.strip().split()
+        if parts and parts[0].isdigit():
+            values[key] = int(parts[0]) * 1024
+    return {
+        "status": "available" if values.get("MemTotal") else "unknown",
+        "total_bytes": values.get("MemTotal"),
+        "available_bytes": values.get("MemAvailable"),
+    }
+
+
+def probe_gpus() -> list[dict[str, Any]]:
+    nvidia_smi = shutil.which("nvidia-smi")
+    if not nvidia_smi:
+        return []
+    try:
+        completed = subprocess.run(
+            [nvidia_smi, "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+            text=True,
+            capture_output=True,
+            timeout=5,
+        )
+    except Exception:
+        return []
+    if completed.returncode != 0:
+        return []
+    gpus = []
+    for index, line in enumerate(completed.stdout.splitlines()):
+        parts = [part.strip() for part in line.split(",")]
+        if not parts or not parts[0]:
+            continue
+        memory_mb = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
+        gpus.append({"index": index, "name": parts[0], "memory_total_mb": memory_mb})
+    return gpus
+
+
+def probe_binary_version(command: str, args: list[str]) -> dict[str, Any]:
+    path = shutil.which(command)
+    if not path:
+        return {"status": "unavailable", "command": command, "path": None, "version": ""}
+    try:
+        completed = subprocess.run([path, *args], text=True, capture_output=True, timeout=5)
+    except Exception as exc:
+        return {"status": "gated", "command": command, "path": path, "version": "", "reason": str(exc)}
+    raw = (completed.stdout or completed.stderr).strip()
+    if completed.returncode != 0:
+        return {"status": "gated", "command": command, "path": path, "version": raw.splitlines()[0] if raw else ""}
+    return {"status": "available", "command": command, "path": path, "version": raw.splitlines()[0] if raw else ""}
+
+
+def probe_tcp_port(host: str, port: int) -> dict[str, Any]:
+    try:
+        with socket.create_connection((host, port), timeout=0.2):
+            status = "open"
+    except OSError:
+        status = "closed"
+    return {"host": host, "port": port, "status": status}
+
+
+def probe_network() -> dict[str, Any]:
+    target = ("1.1.1.1", 53)
+    try:
+        with socket.create_connection(target, timeout=1.0):
+            status = "reachable"
+    except OSError:
+        status = "unreachable"
+    return {"status": status, "target": f"{target[0]}:{target[1]}"}
+
+
+def provider_cli_paths(providers: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    result = {}
+    for name, item in (providers.get("providers") or {}).items():
+        result[name] = {
+            "status": item.get("status"),
+            "command": item.get("command"),
+            "path": item.get("path"),
+            "version": item.get("version", ""),
+        }
+    return result
+
+
 def format_doctor(report: dict[str, Any]) -> str:
     lines = ["Hive Mind Doctor", "", "Core:"]
     for name, check in report["checks"].items():
@@ -698,6 +1639,91 @@ def format_doctor(report: dict[str, Any]) -> str:
         lines.append(f"{icon} {name}: {provider.get('status')} {detail}")
     lines.extend(["", f"Status: {report['status']}"])
     return "\n".join(lines)
+
+
+def format_doctor_scope(report: dict[str, Any]) -> str:
+    scope = report.get("scope")
+    reports = report.get("reports") or {}
+    lines = [f"Hive Mind Doctor [{scope}]", "", f"Status: {report.get('status')}"]
+    if "providers" in reports:
+        provider_report = reports["providers"]
+        lines.extend(["", "Providers:"])
+        for name, provider in provider_report.get("providers", {}).items():
+            icon = "✓" if provider.get("status") in {"available", "configured"} else "○"
+            detail = provider.get("version") or provider.get("path") or provider.get("reason", "")
+            lines.append(f"{icon} {name}: {provider.get('status')} {detail}")
+    if "hardware" in reports:
+        hardware = reports["hardware"]
+        disk = hardware.get("disk") or {}
+        memory = hardware.get("memory") or {}
+        lines.extend(
+            [
+                "",
+                "Hardware:",
+                f"System: {(hardware.get('system') or {}).get('platform')}",
+                f"CPU logical: {(hardware.get('cpu') or {}).get('logical_count')}",
+                f"RAM: {format_bytes(memory.get('available_bytes'))} available / {format_bytes(memory.get('total_bytes'))} total",
+                f"Disk: {format_bytes(disk.get('free_bytes'))} free / {format_bytes(disk.get('total_bytes'))} total",
+            ]
+        )
+        gpus = hardware.get("gpu") or []
+        if gpus:
+            for gpu in gpus:
+                lines.append(f"GPU: {gpu.get('name')} {gpu.get('memory_total_mb') or '?'} MB")
+        else:
+            lines.append("GPU: none detected")
+        lines.extend(["Runtime:"])
+        for name, item in (hardware.get("runtime") or {}).items():
+            detail = item.get("version") or item.get("path") or item.get("status")
+            lines.append(f"  {name}: {item.get('status')} {detail}")
+        lines.extend(["Ports:"])
+        for name, item in (hardware.get("ports") or {}).items():
+            lines.append(f"  {name}: {item.get('status')} {item.get('host')}:{item.get('port')}")
+        if hardware.get("warnings"):
+            lines.extend(["Warnings:"])
+            for warning in hardware["warnings"]:
+                lines.append(f"! {warning}")
+    if "models" in reports:
+        models = reports["models"]
+        local_runtime = models.get("local_runtime") or {}
+        ollama = local_runtime.get("ollama") or {}
+        lines.extend(["", "Models:", f"Ollama server: {ollama.get('server')}", f"Model source: {ollama.get('model_source')}"])
+        for model in ollama.get("models") or []:
+            lines.append(f"✓ {model}")
+        if not ollama.get("models"):
+            lines.append("○ no local model manifests found")
+        missing = local_runtime.get("missing_recommended_models") or []
+        if missing:
+            lines.append("Missing recommended:")
+            for model in missing:
+                lines.append(f"○ {model}")
+    if "permissions" in reports:
+        permissions = reports["permissions"]
+        policy = permissions.get("policy") or {}
+        checks_dir = permissions.get("checks_dir") or {}
+        lines.extend(
+            [
+                "",
+                "Permissions:",
+                f"Policy: {'present' if policy.get('exists') else 'missing'} {policy.get('path')}",
+                f"Checks: {checks_dir.get('count', 0)} files at {checks_dir.get('path')}",
+            ]
+        )
+        for warning in permissions.get("warnings") or []:
+            lines.append(f"! {warning}")
+    return "\n".join(lines)
+
+
+def format_bytes(value: Any) -> str:
+    if not isinstance(value, (int, float)):
+        return "unknown"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    size = float(value)
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
 
 
 def probe_command(name: str, version_args: list[str], roles: list[str], mode: str | None = None) -> dict[str, Any]:
@@ -1771,17 +2797,18 @@ def invoke_external_agent(
         command_path.write_text(suggest_external_command(agent, prompt_path, root), encoding="utf-8")
         result_path = agent_dir / f"{role}_result.yaml"
         provider = detect_agents(root, write=True)["providers"].get(agent, {})
-        result = {
-            "schema_version": 1,
-            "agent": agent,
-            "role": role,
-            "status": "prepared",
-            "provider_mode": provider.get("mode", "prepare_only"),
-            "provider_status": provider.get("status", "unknown"),
-            "prompt": prompt_path.relative_to(root).as_posix(),
-            "command": command_path.relative_to(root).as_posix(),
-            "execute": False,
-        }
+        result = provider_result_record(
+            root,
+            agent=agent,
+            role=role,
+            status="prepared",
+            provider_mode=provider.get("mode", "prepare_only"),
+            permission_mode=role_permission_mode(agent, role),
+            prompt_path=prompt_path,
+            command_path=command_path,
+            execute=False,
+            provider_status=provider.get("status", "unknown"),
+        )
         result_path.write_text(format_simple_yaml(result), encoding="utf-8")
         append_agent_log(paths, agent, role, f"prepared result={result_path.relative_to(root).as_posix()} mode={result['provider_mode']}")
         append_transcript(paths, "Prepared", f"{agent}/{role} -> `{result_path.relative_to(root).as_posix()}`")
@@ -1794,17 +2821,19 @@ def invoke_external_agent(
     if agent == "codex":
         command_path = agent_dir / f"{role}_command.txt"
         command_path.write_text(suggest_external_command(agent, prompt_path, root), encoding="utf-8")
-        result = {
-            "schema_version": 1,
-            "agent": agent,
-            "role": role,
-            "status": "failed",
-            "provider_mode": "prepare_only",
-            "reason": "codex execution is disabled until the non-interactive CLI contract is stable",
-            "prompt": prompt_path.relative_to(root).as_posix(),
-            "command": command_path.relative_to(root).as_posix(),
-            "execute": False,
-        }
+        result = provider_result_record(
+            root,
+            agent=agent,
+            role=role,
+            status="failed",
+            provider_mode="prepare_only",
+            permission_mode=role_permission_mode(agent, role),
+            prompt_path=prompt_path,
+            command_path=command_path,
+            execute=False,
+            reason="codex execution is disabled until the non-interactive CLI contract is stable",
+            risk_level="medium",
+        )
         result_path.write_text(format_simple_yaml(result), encoding="utf-8")
         append_agent_log(paths, agent, role, f"blocked prepare_only result={result_path.relative_to(root).as_posix()}")
         append_transcript(paths, "Prepared", f"{agent}/{role} blocked as prepare-only -> `{result_path.relative_to(root).as_posix()}`")
@@ -1815,14 +2844,17 @@ def invoke_external_agent(
 
     agent_bin = resolve_provider_binary(root, agent)
     if not agent_bin:
-        result = {
-            "schema_version": 1,
-            "agent": agent,
-            "role": role,
-            "status": "failed",
-            "provider_mode": "unavailable",
-            "reason": f"{agent} binary not found",
-        }
+        result = provider_result_record(
+            root,
+            agent=agent,
+            role=role,
+            status="failed",
+            provider_mode="unavailable",
+            permission_mode=role_permission_mode(agent, role),
+            prompt_path=prompt_path,
+            reason=f"{agent} binary not found",
+            risk_level="medium",
+        )
         result_path.write_text(format_simple_yaml(result), encoding="utf-8")
         append_agent_log(paths, agent, role, f"failed unavailable result={result_path.relative_to(root).as_posix()}")
         append_transcript(paths, "Prepared", f"{agent}/{role} unavailable -> `{result_path.relative_to(root).as_posix()}`")
@@ -1835,7 +2867,11 @@ def invoke_external_agent(
     append_agent_log(paths, agent, role, f"started execute binary={agent_bin}")
     append_event(paths, "agent_started", {"agent": agent, "role": role})
     command = external_command(agent, agent_bin, prompt_path.read_text(encoding="utf-8"))
+    started = time.monotonic()
+    started_at = now_iso()
     returncode = run_provider_with_live_log(paths, root, agent, role, command, output_path, timeout=600)
+    finished_at = now_iso()
+    duration_ms = int((time.monotonic() - started) * 1000)
     append_agent_log(
         paths,
         agent,
@@ -1843,22 +2879,129 @@ def invoke_external_agent(
         f"{'completed' if returncode == 0 else 'failed'} returncode={returncode} output={output_path.relative_to(root).as_posix()}",
     )
     status = "completed" if returncode == 0 else "failed"
-    result = {
-        "schema_version": 1,
-        "agent": agent,
-        "role": role,
-        "status": status,
-        "provider_mode": "execute_supported",
-        "returncode": returncode,
-        "prompt": prompt_path.relative_to(root).as_posix(),
-        "output": output_path.relative_to(root).as_posix(),
-    }
+    result = provider_result_record(
+        root,
+        agent=agent,
+        role=role,
+        status=status,
+        provider_mode="execute_supported",
+        permission_mode=role_permission_mode(agent, role),
+        prompt_path=prompt_path,
+        output_path=output_path,
+        returncode=returncode,
+        started_at=started_at,
+        finished_at=finished_at,
+        duration_ms=duration_ms,
+        commands_run=[" ".join(shlex.quote(part) for part in command)],
+        artifacts_created=[result_path.relative_to(root).as_posix(), output_path.relative_to(root).as_posix()],
+        risk_level="low" if status == "completed" else "medium",
+    )
     result_path.write_text(format_simple_yaml(result), encoding="utf-8")
     append_transcript(paths, "Ran", f"{agent}/{role} execute -> `{result_path.relative_to(root).as_posix()}` status={status}")
     set_agent_status(paths, agent_name, status)
     append_event(paths, f"agent_{status}", {"agent": agent, "role": role, "artifact": result_path.relative_to(root).as_posix()})
     update_state(paths, phase="handoff", status="in_progress" if status == "completed" else "needs_attention")
     return result_path
+
+
+def provider_result_record(
+    root: Path,
+    *,
+    agent: str,
+    role: str,
+    status: str,
+    provider_mode: str,
+    permission_mode: str,
+    prompt_path: Path | None = None,
+    command_path: Path | None = None,
+    stdout_path: Path | None = None,
+    stderr_path: Path | None = None,
+    output_path: Path | None = None,
+    returncode: int | None = None,
+    started_at: str | None = None,
+    finished_at: str | None = None,
+    duration_ms: int | None = None,
+    files_changed: list[str] | None = None,
+    commands_run: list[str] | None = None,
+    tests_run: list[str] | None = None,
+    artifacts_created: list[str] | None = None,
+    risk_level: str = "low",
+    policy_violations: list[str] | None = None,
+    memory_refs_used: list[str] | None = None,
+    capability_refs_used: list[str] | None = None,
+    execute: bool | None = None,
+    provider_status: str | None = None,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "provider": agent,
+        "agent": agent,
+        "role": role,
+        "status": status,
+        "provider_mode": provider_mode,
+        "permission_mode": permission_mode,
+        "provider_status": provider_status or "",
+        "prompt_path": rel_or_empty(root, prompt_path),
+        "command_path": rel_or_empty(root, command_path),
+        "stdout_path": rel_or_empty(root, stdout_path),
+        "stderr_path": rel_or_empty(root, stderr_path),
+        "output_path": rel_or_empty(root, output_path),
+        "prompt": rel_or_empty(root, prompt_path),
+        "command": rel_or_empty(root, command_path),
+        "output": rel_or_empty(root, output_path),
+        "returncode": returncode,
+        "started_at": started_at or "",
+        "finished_at": finished_at or "",
+        "duration_ms": duration_ms,
+        "files_changed": files_changed if files_changed is not None else git_changed_files(root),
+        "commands_run": commands_run or [],
+        "tests_run": tests_run or [],
+        "artifacts_created": artifacts_created or [],
+        "risk_level": risk_level,
+        "policy_violations": policy_violations or [],
+        "memory_refs_used": memory_refs_used or [],
+        "capability_refs_used": capability_refs_used or [],
+        "execute": execute,
+        "reason": reason or "",
+        "working_method": WORKING_METHOD_PHRASE,
+    }
+
+
+def rel_or_empty(root: Path, path: Path | None) -> str:
+    if path is None:
+        return ""
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def role_permission_mode(agent: str, role: str) -> str:
+    if agent == "claude":
+        return "plan"
+    if agent == "codex" and role == "executor":
+        return "workspace_write_with_policy"
+    if agent == "codex":
+        return "read_only"
+    if agent == "gemini":
+        return "read_only"
+    return "draft_only"
+
+
+def git_changed_files(root: Path) -> list[str]:
+    try:
+        completed = subprocess.run(["git", "status", "--short"], cwd=root, text=True, capture_output=True, timeout=5)
+    except Exception:
+        return []
+    if completed.returncode != 0:
+        return []
+    files = []
+    for line in completed.stdout.splitlines():
+        value = line[3:].strip()
+        if value:
+            files.append(value)
+    return files
 
 
 def run_provider_with_live_log(
@@ -2176,9 +3319,84 @@ def default_routing_yaml() -> str:
     )
 
 
+def default_policy_yaml() -> str:
+    return (
+        "version: 1\n"
+        "default:\n"
+        "  repo_write: deny\n"
+        "  shell: deny\n"
+        "  memory_commit: deny\n"
+        "  raw_export_access: deny\n"
+        "roles:\n"
+        "  user.director:\n"
+        "    description: Final direction, taste, acceptance, and project boundary.\n"
+        "    repo_read: allow\n"
+        "    repo_write: allow_with_intent\n"
+        "    memory_commit: approve_only\n"
+        "  claude.planner:\n"
+        "    repo_read: allow\n"
+        "    repo_write: deny\n"
+        "    memory_draft: allow\n"
+        "    memory_commit: deny\n"
+        "    default_mode: plan\n"
+        "  codex.executor:\n"
+        "    repo_read: allow\n"
+        "    repo_write: allow_with_approval\n"
+        "    shell: allowlist\n"
+        "    memory_commit: deny\n"
+        "    raw_export_access: deny\n"
+        "    default_mode: workspace_write_with_policy\n"
+        "  gemini.reviewer:\n"
+        "    repo_read: allow\n"
+        "    repo_write: deny\n"
+        "    memory_commit: deny\n"
+        "    default_mode: read_only\n"
+        "  local.context:\n"
+        "    compress_context: allow\n"
+        "    classify: allow\n"
+        "    repo_write: deny\n"
+        "    final_decision: deny\n"
+        "  local.memory_extractor:\n"
+        "    memory_draft: allow\n"
+        "    repo_write: deny\n"
+        "    memory_commit: deny\n"
+        "danger_modes:\n"
+        "  allowed: false\n"
+        "  require_flags:\n"
+        "    - --confirm-danger\n"
+        "    - --isolated-worktree\n"
+        "working_method:\n"
+        f"  hidden_thread: {json.dumps(WORKING_METHOD_PHRASE)}\n"
+        "  principle: user_direction_plus_claude_critique_plus_codex_execution_plus_local_drafts\n"
+    )
+
+
+def default_working_method_skill() -> str:
+    return (
+        "---\n"
+        "name: hive-working-method\n"
+        "description: Use when a Hive Mind run needs the native working method: user direction, Claude critique, Codex execution, local LLM draft work, policy gates, verification, and memory handoff.\n"
+        "---\n\n"
+        "# Hive Working Method\n\n"
+        "This skill captures the operating pattern that Hive Mind should reproduce as product behavior.\n\n"
+        "## Loop\n\n"
+        "1. User sets direction, taste, acceptance, and boundary.\n"
+        "2. Claude or planner role critiques assumptions, risks, and claim discipline.\n"
+        "3. Codex or executor role edits files, runs checks, and records reproducible evidence.\n"
+        "4. Local LLM roles classify, compress, draft memory, summarize logs, and escalate uncertainty.\n"
+        "5. Hive Mind stores artifacts, policy decisions, disagreements, verification, and next actions.\n\n"
+        "## Rules\n\n"
+        "- Do not collapse critique into agreement.\n"
+        "- Keep MemoryOS acceptance separate from Hive Mind memory drafts.\n"
+        "- Keep CapabilityOS recommendations separate from execution results.\n"
+        "- Treat prompt, routing, role, and skill mutations as proposals until reviewed.\n"
+        "- Preserve the hidden product thread: evolution of Single Human Intelligence.\n"
+    )
+
+
 def default_project_readme() -> str:
     return (
-        "# Project MemoryOS\n\n"
+        "# Project Hive Mind\n\n"
         "This directory stores project-local Hive Mind config, context, skills, and run references.\n\n"
         "Start with:\n\n"
         "```bash\n"

@@ -2,7 +2,7 @@
 
 Last checked: 2026-05-02 KST.
 
-This guide is for `mos` provider adapters. It documents command availability, safe invocation patterns, output formats, risks, and the integration shape for Claude, Codex, Gemini, DeepSeek, Qwen, and local Ollama.
+This guide is for `hive` provider adapters. It documents command availability, safe invocation patterns, output formats, risks, and the integration shape for Claude, Codex, Gemini, DeepSeek, Qwen, and local Ollama.
 
 ## Harness Contract
 
@@ -16,19 +16,33 @@ Every provider should write the same artifacts:
   <role>_result.yaml
 ```
 
-Minimum `result.yaml` fields:
+Production `result.yaml` fields:
 
 ```yaml
-provider: claude
-role: planner
-status: completed
-mode: read_only
-command: "claude -p ... --permission-mode plan --output-format json"
-prompt: ".runs/.../agents/claude/planner_prompt.md"
-output: ".runs/.../agents/claude/planner_output.md"
-returncode: 0
-started_at: "..."
-finished_at: "..."
+schema_version: 1
+provider: codex
+agent: codex
+role: executor
+status: prepared
+provider_mode: execute_supported
+permission_mode: workspace_write_with_policy
+prompt_path: ".runs/.../agents/codex/executor_prompt.md"
+command_path: ".runs/.../agents/codex/executor_command.txt"
+stdout_path: ""
+stderr_path: ""
+output_path: ""
+returncode: null
+started_at: ""
+finished_at: ""
+duration_ms: null
+files_changed: []
+commands_run: []
+tests_run: []
+artifacts_created: []
+risk_level: low
+policy_violations: []
+memory_refs_used: []
+capability_refs_used: []
 ```
 
 Default policy:
@@ -85,11 +99,11 @@ Strengths:
 
 Risks:
 
-- `--dangerously-skip-permissions` and `--allow-dangerously-skip-permissions` should stay forbidden in `mos`.
-- Non-interactive mode skips workspace trust UI, so `mos` must enforce trusted root and allowed directories.
+- `--dangerously-skip-permissions` and `--allow-dangerously-skip-permissions` should stay forbidden in `hive`.
+- Non-interactive mode skips workspace trust UI, so `hive` must enforce trusted root and allowed directories.
 - Claude can edit when permission mode allows it; read-only roles must use `plan` and disabled write tools if possible.
 
-`mos` integration:
+`hive` integration:
 
 - Make Claude the default `planner`, `critic`, and `claim-auditor`.
 - Use `--output-format json` for parseable recommendations.
@@ -102,7 +116,7 @@ Observed local state:
 
 - `codex` exists at `/home/user/bin/codex`.
 - `docs/cli_help.md` records the local CLI contract, including `codex exec` for non-interactive execution.
-- Direct execution in this session is currently gated by a local access prompt and returns `접근 거부`; `mos` captures that as a failed provider artifact.
+- Direct execution in this session is currently gated by a local access prompt and returns `접근 거부`; `hive` captures that as a failed provider artifact.
 
 Safe read-only non-interactive pattern:
 
@@ -134,9 +148,9 @@ Risks:
 
 - The local CLI contract is not yet verified in this shell.
 - Full-auto can make broad changes if prompt scope is weak.
-- `mos` must protect unrelated user edits and reject destructive commands unless explicitly authorized.
+- `hive` must protect unrelated user edits and reject destructive commands unless explicitly authorized.
 
-`mos` integration:
+`hive` integration:
 
 - Generate Codex prompt/command artifacts for executor/reviewer roles.
 - Allow read-only `--execute` through `codex exec --sandbox read-only --ask-for-approval never`.
@@ -181,11 +195,11 @@ Strengths:
 
 Risks:
 
-- `--yolo` should be forbidden in `mos`.
-- `--skip-trust` removes a prompt, so `mos` must enforce the trusted root.
+- `--yolo` should be forbidden in `hive`.
+- `--skip-trust` removes a prompt, so `hive` must enforce the trusted root.
 - Model/version behavior may vary with user auth and configured provider.
 
-`mos` integration:
+`hive` integration:
 
 - Keep Gemini as `reviewer`, `alternate-planner`, and `policy-checker`.
 - Prefer `--approval-mode plan` for normal use.
@@ -236,7 +250,7 @@ Risks:
 - Model aliases and feature support change; probe model list or centralize model names in config.
 - Do not rely on undocumented OpenAI-specific fields without adapter tests.
 
-`mos` integration:
+`hive` integration:
 
 - Implement as an HTTP provider, not a CLI provider.
 - Use for `cheap-critic`, `batch-summarizer`, `code-review-draft`, and `memory-extractor-check`.
@@ -253,7 +267,7 @@ Official/primary paths:
 - Qwen Code is an official terminal agent from QwenLM. It supports interactive `qwen` and headless `qwen -p "..."`.
 - Qwen Code supports API-key authentication and multiple provider protocols.
 - DashScope / Alibaba Model Studio supports OpenAI-compatible access through `https://dashscope.aliyuncs.com/compatible-mode/v1`.
-- Qwen docs and tooling commonly use OpenAI-compatible environment names such as `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and Qwen model names, but `mos` should expose explicit provider config names to avoid ambiguity.
+- Qwen docs and tooling commonly use OpenAI-compatible environment names such as `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and Qwen model names, but `hive` should expose explicit provider config names to avoid ambiguity.
 
 Headless CLI pattern after install:
 
@@ -274,15 +288,15 @@ Strengths:
 
 - Strong open-model/code-agent path, especially for Qwen Coder models.
 - Good candidate for cheap alternative planning and local/open-model comparison.
-- Qwen Code is based on Gemini CLI patterns, so `mos` can reuse much of the Gemini adapter shape after install.
+- Qwen Code is based on Gemini CLI patterns, so `hive` can reuse much of the Gemini adapter shape after install.
 
 Risks:
 
 - CLI not installed yet in this workspace.
 - Auth paths differ: Alibaba Cloud Coding Plan, DashScope API key, OpenRouter, Fireworks, and other compatible endpoints.
-- Avoid overloading `OPENAI_API_KEY` in `mos`; use provider-specific env names and translate internally.
+- Avoid overloading `OPENAI_API_KEY` in `hive`; use provider-specific env names and translate internally.
 
-`mos` integration:
+`hive` integration:
 
 - Add `qwen` as optional CLI provider after install detection.
 - Add `qwen_api` as OpenAI-compatible HTTP provider immediately.
@@ -324,7 +338,7 @@ Risks:
 - Runtime availability depends on local server and model pulls.
 - Local models are workers, not final judges for architecture or claim discipline.
 
-`mos` integration:
+`hive` integration:
 
 - Keep Ollama behind role workers, not raw chat by default.
 - Add health checks: wrapper exists, server responds, model exists, smoke prompt passes JSON validation.

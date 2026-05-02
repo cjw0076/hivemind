@@ -22,6 +22,7 @@ graph TD
   L13[for_future_agent.md]
   L14[optima.md]
   L15[word.md]
+  L16[hive_mind2.md]
 
   L0 --> L1
   L0 --> L2
@@ -43,6 +44,10 @@ graph TD
   L13 --> L5
   L14 --> L4
   L15 --> L4
+  L1 --> L16
+  L16 --> L2
+  L16 --> L7
+  L16 --> L9
 ```
 
 ## Canonicalization Policy
@@ -57,7 +62,7 @@ graph TD
 | File | Type | Primary VG nodes | What to use it for | Canonical destination |
 | --- | --- | --- | --- | --- |
 | `final.md` | synthesis source | `VG-00`, `VG-01`, `VG-02`, `VG-03`, `VG-06` | Full Human-AI-Agent Operating Stack and component roles. | `NORTHSTAR.md`, `ROADMAP.md`, `VISION_GRAPH.md`. |
-| `make_production.md` | production source | `VG-03`, `VG-04`, `VG-05`, `VG-13` | Installable `mos`, onboarding, provider/MCP/local runtime commands. | `TUI_HARNESS.md`, `PROVIDER_HARNESS_GUIDE.md`, future packaging spec. |
+| `make_production.md` | production source | `VG-03`, `VG-04`, `VG-05`, `VG-13` | Installable `hive`, onboarding, provider/MCP/local runtime commands. | `TUI_HARNESS.md`, `PROVIDER_HARNESS_GUIDE.md`, future packaging spec. |
 | `tui.md` | harness source | `VG-03`, `VG-04`, `VG-11` | Blackboard run folder, artifact protocol, wrapper CLI/TUI behavior. | `TUI_HARNESS.md`, Harness Runtime TODO. |
 | `ui_future.md` | product/UX source | `VG-00`, `VG-03`, `VG-10` | Future Chatbot Harness, Agent Harness, visual product language. | API/UI roadmap, future Desktop spec. |
 | `memoryOS.md` | large source vault | `VG-01`, `VG-10`, `VG-11`, `VG-12` | Conversation memory graph, parser ideas, desktop screens, implementation handoffs. | `MEMORYOS_MVP.md`, `EXPORT_PARSERS.md`, split mirror. |
@@ -72,12 +77,13 @@ graph TD
 | `for_future_agent.md` | future protocol source | `VG-02`, `VG-04`, `VG-06` | Capability modules, CMP-like protocol, future agent package layer. | CapabilityOS schema/workflow docs. |
 | `optima.md` | storage/source strategy | `VG-01`, `VG-11`, `VG-12` | Source graph, claim graph, hot/warm/cold storage, discriminator role. | Schema/Audit/Search TODO. |
 | `word.md` | lexicon source | `VG-00` through `VG-13` | Terminology, naming, layer vocabulary. | Keep as lexicon; cite from canonical docs. |
+| `hive_mind2.md` | production hardening source | `VG-03`, `VG-04`, `VG-05`, `VG-06`, `VG-13` | Production-readiness gaps for `hive`: doctor, local setup, role policy, context packs, provider result schema, MemoryOS/CapabilityOS links, tests, install, audit. | `TODO.md` Production Hardening section, `TUI_HARNESS.md`, `PROVIDER_HARNESS_GUIDE.md`, future policy/context specs. |
 
 ## Read Order By Task
 
 | Task | Read |
 | --- | --- |
-| Implement `mos`/TUI/provider flow | `make_production.md` -> `tui.md` -> `cli_help.md` -> `local_llm_use.md` |
+| Implement `hive`/TUI/provider flow | `make_production.md` -> `hive_mind2.md` -> `tui.md` -> `cli_help.md` -> `local_llm_use.md` |
 | Implement MemoryOS graph/import/audit | `memoryOS.md` split index -> `optima.md` -> `word.md` |
 | Implement local LLM workers | `local_llm_use.md` -> `localllm.md` -> `cli_help.md` |
 | Plan CapabilityOS | `capabilityOS.md` -> `for_future_agent.md` -> `ecosystem.md` |
@@ -91,4 +97,3 @@ graph TD
 - Distill `optima.md` into `docs/STORAGE_STRATEGY.md`.
 - Distill `word.md` into a stable glossary linked from all canonical docs.
 - Keep `memoryOS.md`, `my_world.md`, and `goen_resonance.md` as source vaults, not active implementation docs.
-

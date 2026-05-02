@@ -1,4 +1,4 @@
-좋아. `mos` CLI / Harness 만들 때 참고할 만한 레퍼런스는 크게 6종류로 보면 돼.
+좋아. `hive` CLI / Harness 만들 때 참고할 만한 레퍼런스는 크게 6종류로 보면 돼.
 
 ```text
 1. Provider-native coding CLI
@@ -9,26 +9,26 @@
 6. CLI → Desktop 확장 구조
 ```
 
-## Current `mos` Implementation Notes
+## Current `hive` Implementation Notes
 
 Implemented now:
 
 ```bash
-mos
-mos "task"
-mos ask "task"
-mos run -q --json "task"
-mos plan
-mos check list
-mos check run
-mos diff
-mos review-diff
-mos commit-summary
-mos tui
-mos completion zsh
+hive
+hive "task"
+hive ask "task"
+hive run -q --json "task"
+hive plan
+hive check list
+hive check run
+hive diff
+hive review-diff
+hive commit-summary
+hive tui
+hive completion zsh
 ```
 
-`mos agents detect --json` now returns normalized provider records for:
+`hive agents detect --json` now returns normalized provider records for:
 
 ```text
 claude, codex, gemini, ollama, deepseek_api, qwen_api,
@@ -39,9 +39,9 @@ Reference-driven next CLI targets:
 
 ```text
 - slash commands / REPL shell inspired by OpenClaude and Open Codex
-- installer flags: mos init --no-tui --skills=yes --mcp=yes
+- installer flags: hive init --no-tui --skills=yes --mcp=yes
 - provider adapter execution paths beyond claude/codex/gemini/local
-- markdown rules/checks under .memoryos/checks/
+- markdown rules/checks under .hivemind/checks/
 - git-first diff/check/commit summary loop inspired by Aider and Continue
 - GitHub issue/PR runner later, after local run artifacts stabilize
 ```
@@ -49,9 +49,9 @@ Reference-driven next CLI targets:
 Implemented checks:
 
 ```text
-.memoryos/checks/memory-policy.md
-.memoryos/checks/no-raw-export-leak.md
-.memoryos/checks/implementation-handoff.md
+.hivemind/checks/memory-policy.md
+.hivemind/checks/no-raw-export-leak.md
+.hivemind/checks/implementation-handoff.md
 ```
 
 아래 프로젝트들을 우선순위로 보면 좋아.
@@ -62,7 +62,7 @@ Implemented checks:
 
 **GitHub:** `Gitlawb/openclaude`
 
-OpenClaude는 “cloud/local model provider를 모두 쓰는 open-source coding-agent CLI”를 표방하고, OpenAI-compatible APIs, Gemini, GitHub Models, Codex OAuth, Codex, Ollama, Atomic Chat 등을 하나의 terminal-first workflow로 묶는다고 설명한다. prompts, tools, agents, MCP, slash commands, streaming output을 한 workflow에 넣는 구조라서 `mos`의 CLI shell 구조에 참고하기 좋다. ([GitHub][1])
+OpenClaude는 “cloud/local model provider를 모두 쓰는 open-source coding-agent CLI”를 표방하고, OpenAI-compatible APIs, Gemini, GitHub Models, Codex OAuth, Codex, Ollama, Atomic Chat 등을 하나의 terminal-first workflow로 묶는다고 설명한다. prompts, tools, agents, MCP, slash commands, streaming output을 한 workflow에 넣는 구조라서 `hive`의 CLI shell 구조에 참고하기 좋다. ([GitHub][1])
 
 참고 포인트:
 
@@ -98,10 +98,10 @@ OpenCode는 open-source AI coding agent이고, terminal-based interface, desktop
 - provider-agnostic 방향
 ```
 
-`mos`도 나중에:
+`hive`도 나중에:
 
 ```text
-mos CLI
+hive CLI
 → MemoryOS Desktop
 → GitHub issue/PR runner
 ```
@@ -115,7 +115,7 @@ mos CLI
 **GitHub:** `code-yeongyu/oh-my-openagent`
 **관련:** `opensoft/oh-my-opencode`, `oh-my-opencode-slim`
 
-oh-my-opencode 계열은 OpenCode 위에서 “battery included agent harness”처럼 설정/프리셋/스킬/루프를 패키징하는 흐름이라, 우리 `mos install`, `mos init`, `mos skills install` UX에 참고하기 좋아. 검색 결과에 따르면 oh-my-opencode는 OpenCode 위에서 동작하는 플러그인/하네스처럼 설명되고, 별도 설정 없이 설치 후 바로 쓸 수 있는 “Battery Included” 방향으로 성장했다. ([갓대희의 작은공간][4])
+oh-my-opencode 계열은 OpenCode 위에서 “battery included agent harness”처럼 설정/프리셋/스킬/루프를 패키징하는 흐름이라, 우리 `hive install`, `hive init`, `hive skills install` UX에 참고하기 좋아. 검색 결과에 따르면 oh-my-opencode는 OpenCode 위에서 동작하는 플러그인/하네스처럼 설명되고, 별도 설정 없이 설치 후 바로 쓸 수 있는 “Battery Included” 방향으로 성장했다. ([갓대희의 작은공간][4])
 
 `oh-my-opencode-slim` 설치 문서는 `bunx oh-my-opencode-slim@latest install --no-tui --skills=yes`처럼 non-interactive install과 skills 설치 옵션을 제공한다. ([GitHub][5])
 
@@ -129,10 +129,10 @@ oh-my-opencode 계열은 OpenCode 위에서 “battery included agent harness”
 - opinionated agent harness packaging
 ```
 
-`mos`도 비슷하게:
+`hive`도 비슷하게:
 
 ```bash
-mos init --no-tui --skills=yes --mcp=yes
+hive init --no-tui --skills=yes --mcp=yes
 ```
 
 같은 형태가 좋다.
@@ -163,11 +163,11 @@ mos init --no-tui --skills=yes --mcp=yes
 우리도 최소한:
 
 ```bash
-mos
-mos "task"
-mos run "task"
-mos run -q --json "task"
-mos completion zsh
+hive
+hive "task"
+hive run "task"
+hive run -q --json "task"
+hive completion zsh
 ```
 
 이런 CLI ergonomics가 필요해.
@@ -192,11 +192,11 @@ Codex CLI는 `npm i -g @openai/codex` 또는 Homebrew로 설치하고, local com
 - AGENTS.md convention
 ```
 
-`mos`는 Codex를 대체하기보다 감싸야 하니까:
+`hive`는 Codex를 대체하기보다 감싸야 하니까:
 
 ```text
 codex = executor
-mos = context/harness/memory provider
+hive = context/harness/memory provider
 ```
 
 로 봐야 함.
@@ -219,7 +219,7 @@ Aider는 “AI pair programming in your terminal”이고, local git repo에서 
 - terminal pair-programming ergonomics
 ```
 
-`mos`의 Agent Harness에서 `git diff`, `patch`, `commit summary`, `run event`를 어떻게 다룰지 참고하기 좋다.
+`hive`의 Agent Harness에서 `git diff`, `patch`, `commit summary`, `run event`를 어떻게 다룰지 참고하기 좋다.
 
 ---
 
@@ -242,7 +242,7 @@ Goose는 macOS/Linux/Windows desktop app, terminal workflow용 CLI, embed 가능
 우리의 최종 형태와 매우 유사한 방향:
 
 ```text
-mos CLI
+hive CLI
 MemoryOS Desktop
 MemoryOS API/MCP
 ```
@@ -271,9 +271,9 @@ Continue는 PR마다 agent check를 돌리는 구조가 인상적이다. `.conti
 예:
 
 ```text
-.memoryos/checks/security-review.md
-.memoryos/checks/memory-policy.md
-.memoryos/checks/no-raw-export-leak.md
+.hivemind/checks/security-review.md
+.hivemind/checks/memory-policy.md
+.hivemind/checks/no-raw-export-leak.md
 ```
 
 ---
@@ -315,7 +315,7 @@ CapabilityOS의 “MCP가 없는 앱도 wrapper 생성” 아이디어에 직접
 
 # 참고 우선순위
 
-지금 `mos` CLI를 만든다면 우선순위는 이렇게.
+지금 `hive` CLI를 만든다면 우선순위는 이렇게.
 
 ```text
 1. OpenClaude
@@ -345,32 +345,32 @@ CapabilityOS의 “MCP가 없는 앱도 wrapper 생성” 아이디어에 직접
 
 ---
 
-# `mos`에 바로 반영할 설계
+# `hive`에 바로 반영할 설계
 
-이 레퍼런스들을 종합하면 `mos` CLI는 이렇게 가면 좋다.
+이 레퍼런스들을 종합하면 `hive` CLI는 이렇게 가면 좋다.
 
 ```bash
-mos init
-mos doctor
-mos agents detect
-mos mcp install --for all
-mos local setup
-mos run "작업"
-mos invoke claude
-mos invoke codex
-mos invoke local
-mos status
-mos open current
-mos memory drafts
-mos capability gap "작업"
-mos radar scan
-mos society report
+hive init
+hive doctor
+hive agents detect
+hive mcp install --for all
+hive local setup
+hive run "작업"
+hive invoke claude
+hive invoke codex
+hive invoke local
+hive status
+hive open current
+hive memory drafts
+capabilityos capability gap "작업"
+capabilityos radar scan
+hive society report
 ```
 
 내부 구조:
 
 ```text
-mos
+hive
 ├── provider adapters
 │   ├── claude-cli
 │   ├── codex-cli
@@ -404,7 +404,7 @@ mos
 
 # 한 줄 결론
 
-`mos`는 **OpenClaude의 multi-provider terminal UX + OpenCode/Goose의 CLI/Desktop/API 구조 + oh-my-opencode의 battery-included setup + Codex의 executor ergonomics + Continue의 markdown rules/checks + Aider의 git-first loop**를 섞어서 만들면 된다.
+`hive`는 **OpenClaude의 multi-provider terminal UX + OpenCode/Goose의 CLI/Desktop/API 구조 + oh-my-opencode의 battery-included setup + Codex의 executor ergonomics + Continue의 markdown rules/checks + Aider의 git-first loop**를 섞어서 만들면 된다.
 
 [1]: https://github.com/Gitlawb/openclaude?utm_source=chatgpt.com "Gitlawb/openclaude: runs anywhere. uses anything"
 [2]: https://opencode.ai/docs/?utm_source=chatgpt.com "Intro | AI coding agent built for the terminal"

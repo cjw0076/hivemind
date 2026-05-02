@@ -14,11 +14,27 @@ from .harness import (
     commit_summary,
     detect_agents,
     doctor_report,
+    doctor_scope_report,
+    agent_roles_report,
+    build_context_pack_for_role,
+    explain_agent_role,
+    explain_policy,
     format_agents_status,
+    format_agent_explain,
+    format_agent_roles,
     format_doctor,
+    format_doctor_scope,
     format_memory_drafts,
     format_local_runtime,
+    format_local_model_profile,
+    format_llm_checker_report,
+    format_policy_explain,
+    format_policy_report,
+    format_run_audit,
+    format_workspace_layout,
     local_routes_report,
+    local_model_profile,
+    llm_checker_report,
     get_current,
     init_harness,
     init_onboarding,
@@ -30,6 +46,8 @@ from .harness import (
     memory_drafts_report,
     open_run_folder,
     read_transcript,
+    read_events,
+    read_hive_activity,
     format_onboarding,
     format_run_board,
     format_settings,
@@ -50,8 +68,11 @@ from .harness import (
     review_diff,
     run_checks,
     run_board,
+    run_audit_report,
+    policy_report,
+    workspace_layout_report,
 )
-from .tui import print_status, run_tui
+from .tui import TUI_VIEWS, print_status, run_tui
 
 
 COMMANDS = {
@@ -59,11 +80,17 @@ COMMANDS = {
     "doctor",
     "agents",
     "settings",
+    "policy",
     "local",
     "run",
     "ask",
     "orchestrate",
     "status",
+    "board",
+    "events",
+    "transcript",
+    "artifacts",
+    "society",
     "tui",
     "plan",
     "runs",
@@ -81,6 +108,8 @@ COMMANDS = {
     "diff",
     "review-diff",
     "commit-summary",
+    "audit",
+    "workspace",
     "log",
     "prompt",
     "next",
@@ -110,19 +139,17 @@ def normalize_argv(argv: list[str]) -> list[str]:
 def resolve_root(root_arg: str) -> Path:
     """Resolve Hive Mind root, including the umbrella `myworld/` workspace layout."""
     root = Path(root_arg).resolve()
-    if root_arg == ".":
-        if (root / ".runs").exists():
-            return root
-        child = root / "hivemind"
-        if (child / "pyproject.toml").exists() and (child / "hivemind").is_dir():
-            return child.resolve()
+    if (root / "pyproject.toml").exists() and (root / "hivemind").is_dir():
+        return root
+    child = root / "hivemind"
+    if (child / "pyproject.toml").exists() and (child / "hivemind").is_dir():
+        return child.resolve()
     return root
 
 
 def main(argv: list[str] | None = None) -> None:
     argv = normalize_argv(list(sys.argv[1:] if argv is None else argv))
-    prog = "mos" if Path(sys.argv[0]).name == "mos" else "hive"
-    parser = argparse.ArgumentParser(prog=prog, description="Hive Mind control plane for provider CLI harnessing")
+    parser = argparse.ArgumentParser(prog="hive", description="Hive Mind control plane for provider CLI harnessing")
     parser.add_argument("--root", default=".", help="workspace root")
     parser.add_argument("--version", action="version", version="hive 0.1.0")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -133,6 +160,7 @@ def main(argv: list[str] | None = None) -> None:
     init_cmd.add_argument("--skills", choices=["yes", "no"], default="no", help="prepare skill config placeholders")
     init_cmd.add_argument("--mcp", choices=["yes", "no"], default="no", help="prepare MCP config placeholders")
     doctor_cmd = sub.add_parser("doctor", help="check Hive Mind runtime health")
+    doctor_cmd.add_argument("scope", nargs="?", choices=["hardware", "providers", "models", "permissions", "all"], help="doctor scope")
     doctor_cmd.add_argument("--json", action="store_true")
 
     agents_cmd = sub.add_parser("agents", help="provider/agent registry helpers")
@@ -141,6 +169,24 @@ def main(argv: list[str] | None = None) -> None:
     detect_cmd.add_argument("--json", action="store_true")
     agents_status_cmd = agents_sub.add_parser("status", help="show provider registry as an agent status board")
     agents_status_cmd.add_argument("--json", action="store_true")
+    agents_view_cmd = agents_sub.add_parser("view", help="open the agents TUI view")
+    agents_view_cmd.add_argument("--run-id")
+    agents_roles_cmd = agents_sub.add_parser("roles", help="show role registry")
+    agents_roles_cmd.add_argument("--json", action="store_true")
+    agents_policy_cmd = agents_sub.add_parser("policy", help="show role policy status")
+    agents_policy_cmd.add_argument("--json", action="store_true")
+    agents_explain_cmd = agents_sub.add_parser("explain", help="explain an agent role")
+    agents_explain_cmd.add_argument("role")
+    agents_explain_cmd.add_argument("--json", action="store_true")
+
+    policy_cmd = sub.add_parser("policy", help="policy gate helpers")
+    policy_sub = policy_cmd.add_subparsers(dest="policy_cmd", required=True)
+    policy_check_cmd = policy_sub.add_parser("check", help="validate or create project policy")
+    policy_check_cmd.add_argument("--write", action="store_true", help="write default policy if missing")
+    policy_check_cmd.add_argument("--json", action="store_true")
+    policy_explain_cmd = policy_sub.add_parser("explain", help="explain policy for a role")
+    policy_explain_cmd.add_argument("role")
+    policy_explain_cmd.add_argument("--json", action="store_true")
 
     settings_cmd = sub.add_parser("settings", help="detect and persist production CLI settings")
     settings_sub = settings_cmd.add_subparsers(dest="settings_cmd", required=True)
@@ -154,9 +200,15 @@ def main(argv: list[str] | None = None) -> None:
     local_status_cmd = local_sub.add_parser("status", help="show local runtime/model status")
     local_status_cmd.add_argument("--json", action="store_true")
     local_setup_cmd = local_sub.add_parser("setup", help="write local runtime config and show recommended setup")
+    local_setup_cmd.add_argument("--auto", action="store_true", help="write local model profile and role assignments")
     local_setup_cmd.add_argument("--json", action="store_true")
     local_routes_cmd = local_sub.add_parser("routes", help="show local worker route table")
     local_routes_cmd.add_argument("--json", action="store_true")
+    local_checker_cmd = local_sub.add_parser("checker", help="optional llm-checker adapter report")
+    local_checker_cmd.add_argument("--category", default="coding")
+    local_checker_cmd.add_argument("--use-npx", action="store_true", help="allow npx --yes llm-checker when not installed")
+    local_checker_cmd.add_argument("--execute", action="store_true", help="run llm-checker commands instead of only writing the adapter plan")
+    local_checker_cmd.add_argument("--json", action="store_true")
 
     run_cmd = sub.add_parser("run", help="create a structured run folder")
     run_cmd.add_argument("task", help="user task/request")
@@ -180,12 +232,32 @@ def main(argv: list[str] | None = None) -> None:
     status_cmd.add_argument("--run-id")
     status_cmd.add_argument("--json", action="store_true")
 
+    board_cmd = sub.add_parser("board", help="open the board TUI view")
+    board_cmd.add_argument("--run-id")
+    board_cmd.add_argument("--observer", action="store_true", help="open read-only observer mode")
+
+    events_cmd = sub.add_parser("events", help="show run events or open the events TUI view")
+    events_cmd.add_argument("--run-id")
+    events_cmd.add_argument("--tail", type=int, default=60)
+    events_cmd.add_argument("--follow", action="store_true", help="open the live events TUI view")
+    events_cmd.add_argument("--json", action="store_true")
+
+    transcript_cmd = sub.add_parser("transcript", help="show transcript or open transcript TUI view")
+    transcript_cmd.add_argument("--run-id")
+    transcript_cmd.add_argument("--tail", type=int, default=120)
+    transcript_cmd.add_argument("--tui", action="store_true")
+
+    artifacts_cmd = sub.add_parser("artifacts", help="open the artifacts TUI view")
+    artifacts_cmd.add_argument("--run-id")
+
     next_cmd = sub.add_parser("next", help="show next recommended command")
     next_cmd.add_argument("--run-id")
     next_cmd.add_argument("--json", action="store_true")
 
     tui_cmd = sub.add_parser("tui", help="open the run status TUI")
     tui_cmd.add_argument("--run-id")
+    tui_cmd.add_argument("--view", choices=sorted(TUI_VIEWS), default="board")
+    tui_cmd.add_argument("--observer", action="store_true", help="read-only TUI session")
 
     plan_cmd = sub.add_parser("plan", help="show current routing plan")
     plan_cmd.add_argument("--run-id")
@@ -196,8 +268,10 @@ def main(argv: list[str] | None = None) -> None:
     open_cmd = sub.add_parser("open", help="print/open current run folder")
     open_cmd.add_argument("target", nargs="?", default="current")
 
-    context_cmd = sub.add_parser("context", help="print current context pack path")
+    context_cmd = sub.add_parser("context", help="print current context pack path or build agent-specific context")
+    context_cmd.add_argument("context_cmd", nargs="?", choices=["build"])
     context_cmd.add_argument("--run-id")
+    context_cmd.add_argument("--for", dest="for_role", help="agent role, for example claude.planner or codex.executor")
 
     handoff_cmd = sub.add_parser("handoff", help="print current handoff path")
     handoff_cmd.add_argument("--run-id")
@@ -223,6 +297,8 @@ def main(argv: list[str] | None = None) -> None:
     memory_list_cmd = memory_sub.add_parser("list", help="list memory drafts for the current run")
     memory_list_cmd.add_argument("--run-id")
     memory_list_cmd.add_argument("--json", action="store_true")
+    memory_view_cmd = memory_sub.add_parser("view", help="open the memory draft TUI view")
+    memory_view_cmd.add_argument("--run-id")
 
     completion_cmd = sub.add_parser("completion", help="print shell completion script")
     completion_cmd.add_argument("shell", choices=["bash", "zsh", "fish"])
@@ -241,6 +317,7 @@ def main(argv: list[str] | None = None) -> None:
     diff_cmd = sub.add_parser("diff", help="write/show git diff report for current run")
     diff_cmd.add_argument("--run-id")
     diff_cmd.add_argument("--json", action="store_true")
+    diff_cmd.add_argument("--tui", action="store_true")
     review_diff_cmd = sub.add_parser("review-diff", help="capture git diff and run local review")
     review_diff_cmd.add_argument("--run-id")
     commit_summary_cmd = sub.add_parser("commit-summary", help="write proposed commit summary without committing")
@@ -255,6 +332,16 @@ def main(argv: list[str] | None = None) -> None:
     hive_activity_cmd = hive_sub.add_parser("activity", help="show human-readable hive activity feed")
     hive_activity_cmd.add_argument("--run-id")
     hive_activity_cmd.add_argument("--tail", type=int, default=30)
+    society_cmd = sub.add_parser("society", help="open the society TUI view")
+    society_cmd.add_argument("--run-id")
+
+    audit_cmd = sub.add_parser("audit", help="audit current run artifacts, provider results, and policy")
+    audit_cmd.add_argument("--run-id")
+    audit_cmd.add_argument("--json", action="store_true")
+
+    workspace_cmd = sub.add_parser("workspace", help="print multi-session Hive Console layout")
+    workspace_cmd.add_argument("--layout", choices=["dev", "dual"], default="dev")
+    workspace_cmd.add_argument("--json", action="store_true")
 
     args = parser.parse_args(argv)
     root = resolve_root(args.root)
@@ -269,13 +356,18 @@ def main(argv: list[str] | None = None) -> None:
             print(format_onboarding(report))
         return
     if args.cmd == "doctor":
-        report = doctor_report(root)
+        if args.scope:
+            report = doctor_scope_report(root, args.scope)
+            formatter = format_doctor_scope
+        else:
+            report = doctor_report(root)
+            formatter = format_doctor
         if args.json:
             import json
 
             print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
         else:
-            print(format_doctor(report))
+            print(formatter(report))
         return
     if args.cmd == "agents" and args.agents_cmd == "detect":
         result = detect_agents(root, write=True)
@@ -297,6 +389,54 @@ def main(argv: list[str] | None = None) -> None:
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         else:
             print(format_agents_status(result))
+        return
+    if args.cmd == "agents" and args.agents_cmd == "view":
+        run_tui(root, run_id=args.run_id, view="agents", control=False)
+        return
+    if args.cmd == "agents" and args.agents_cmd == "roles":
+        report = agent_roles_report()
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_agent_roles(report))
+        return
+    if args.cmd == "agents" and args.agents_cmd == "policy":
+        report = policy_report(root, write=False)
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_policy_report(report))
+        return
+    if args.cmd == "agents" and args.agents_cmd == "explain":
+        report = explain_agent_role(root, args.role)
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_agent_explain(report))
+        return
+    if args.cmd == "policy" and args.policy_cmd == "check":
+        report = policy_report(root, write=args.write)
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_policy_report(report))
+        return
+    if args.cmd == "policy" and args.policy_cmd == "explain":
+        report = explain_policy(root, args.role)
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_policy_explain(report))
         return
     if args.cmd == "settings":
         report = settings_report(root, write=True)
@@ -325,7 +465,29 @@ def main(argv: list[str] | None = None) -> None:
             else:
                 for name, route in report["routes"].items():
                     models = route["models"]
-                    print(f"{name}: fast={models['fast']} default={models['default']} strong={models['strong']}")
+                print(f"{name}: fast={models['fast']} default={models['default']} strong={models['strong']}")
+            return
+        if args.local_cmd == "checker":
+            report = llm_checker_report(root, category=args.category, use_npx=args.use_npx, execute=args.execute, write=True)
+            if args.json:
+                import json
+
+                print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(format_llm_checker_report(report))
+                print("")
+                print(f"Wrote {root / '.hivemind' / 'llm_checker_report.json'}")
+            return
+        if args.local_cmd == "setup" and args.auto:
+            report = local_model_profile(root, write=True)
+            if args.json:
+                import json
+
+                print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(format_local_model_profile(report))
+                print("")
+                print(f"Wrote {root / '.hivemind' / 'local_model_profile.json'}")
             return
         report = local_runtime_report(root, write=args.local_cmd == "setup")
         if args.json:
@@ -370,6 +532,36 @@ def main(argv: list[str] | None = None) -> None:
         else:
             print(format_run_board(run_board(root, args.run_id)))
         return
+    if args.cmd == "board":
+        run_tui(root, run_id=args.run_id, view="board", control=not args.observer)
+        return
+    if args.cmd == "events":
+        if args.follow:
+            run_tui(root, run_id=args.run_id, view="events", control=False)
+            return
+        paths, _ = load_run(root, args.run_id)
+        events = read_hive_activity(paths, limit=args.tail) or read_events(paths, limit=args.tail)
+        if args.json:
+            import json
+
+            print(json.dumps(events, ensure_ascii=False, indent=2))
+        else:
+            for event in events:
+                if "summary" in event:
+                    print(f"{event.get('ts')} {event.get('actor')} {event.get('action')} {event.get('summary')}")
+                else:
+                    artifact = f" {event.get('artifact')}" if event.get("artifact") else ""
+                    print(f"{event.get('ts')} {event.get('type')}{artifact}")
+        return
+    if args.cmd == "transcript":
+        if args.tui:
+            run_tui(root, run_id=args.run_id, view="transcript", control=False)
+        else:
+            print(read_transcript(root, args.run_id, tail=args.tail), end="")
+        return
+    if args.cmd == "artifacts":
+        run_tui(root, run_id=args.run_id, view="artifacts", control=False)
+        return
     if args.cmd == "next":
         board = run_board(root, args.run_id)
         if args.json:
@@ -385,7 +577,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"  {next_action.get('reason')}")
         return
     if args.cmd == "tui":
-        run_tui(root, run_id=args.run_id)
+        run_tui(root, run_id=args.run_id, view=args.view, control=not args.observer)
         return
     if args.cmd == "plan":
         plan = load_routing_plan(root, args.run_id)
@@ -406,6 +598,12 @@ def main(argv: list[str] | None = None) -> None:
         open_run_folder(paths)
         return
     if args.cmd == "context":
+        if args.context_cmd == "build":
+            if not args.for_role:
+                raise SystemExit("hive context build requires --for <agent-role>")
+            report = build_context_pack_for_role(root, args.for_role, args.run_id)
+            print(report["path"])
+            return
         paths, _ = load_run(root, args.run_id)
         print(paths.context_pack)
         return
@@ -441,6 +639,9 @@ def main(argv: list[str] | None = None) -> None:
         else:
             print(format_memory_drafts(report))
         return
+    if args.cmd == "memory" and args.memory_cmd == "view":
+        run_tui(root, run_id=args.run_id, view="memory", control=False)
+        return
     if args.cmd == "completion":
         print_completion(args.shell)
         return
@@ -469,6 +670,9 @@ def main(argv: list[str] | None = None) -> None:
         run_chat(root)
         return
     if args.cmd == "diff":
+        if args.tui:
+            run_tui(root, run_id=args.run_id, view="diff", control=False)
+            return
         report = git_diff_report(root, args.run_id)
         if args.json:
             import json
@@ -494,6 +698,27 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.cmd == "hive" and args.hive_cmd == "activity":
         print(format_hive_activity(root, args.run_id, limit=args.tail))
+        return
+    if args.cmd == "society":
+        run_tui(root, run_id=args.run_id, view="society", control=False)
+        return
+    if args.cmd == "audit":
+        report = run_audit_report(root, args.run_id)
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_run_audit(report))
+        return
+    if args.cmd == "workspace":
+        report = workspace_layout_report(args.layout)
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_workspace_layout(report))
         return
 
 

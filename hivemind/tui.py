@@ -18,6 +18,7 @@ from .harness import (
     build_summary,
     build_verification,
     append_event,
+    acquire_control_lock,
     ask_router,
     git_diff_report,
     invoke_external_agent,
@@ -26,51 +27,88 @@ from .harness import (
     read_events,
     read_hive_activity,
     read_transcript,
+    heartbeat_control_lock,
+    release_control_lock,
     run_board,
     orchestrate_prompt,
 )
 
+TUI_VIEWS = {"board", "events", "transcript", "agents", "artifacts", "memory", "society", "diff"}
 
-def run_tui(root: Path, run_id: str | None = None) -> None:
+
+def run_tui(root: Path, run_id: str | None = None, view: str = "board", control: bool = True) -> None:
+    if view not in TUI_VIEWS:
+        raise SystemExit(f"unknown TUI view: {view}")
+    lock: dict[str, Any] | None = None
+    if control:
+        lock = acquire_control_lock(root, run_id)
     try:
-        curses.wrapper(lambda screen: draw_loop(screen, root, run_id))
+        curses.wrapper(lambda screen: draw_loop(screen, root, run_id, view, control, lock.get("session_id") if lock else None))
     except KeyboardInterrupt:
         return
     except curses.error as exc:
         raise SystemExit(f"hive tui requires an interactive terminal: {exc}") from exc
+    finally:
+        if lock:
+            release_control_lock(root, run_id, str(lock.get("session_id")))
 
 
-def draw_loop(screen, root: Path, run_id: str | None) -> None:
+def draw_loop(screen, root: Path, run_id: str | None, initial_view: str, control: bool, lock_session_id: str | None) -> None:
     curses.curs_set(0)
     init_theme()
     screen.nodelay(True)
     message = "ready"
+    view = initial_view
     while True:
         screen.erase()
         height, width = screen.getmaxyx()
         try:
+            if lock_session_id:
+                heartbeat_control_lock(root, run_id, lock_session_id)
             paths, state = load_run(root, run_id)
-            events = read_events(paths, limit=8)
-            activities = read_hive_activity(paths, limit=8) or events
-            transcript_lines = [line for line in read_transcript(root, paths.run_id, tail=18).splitlines() if line.strip()]
+            event_limit = 80 if view == "events" else 12
+            transcript_limit = 160 if view == "transcript" else 24
+            events = read_events(paths, limit=event_limit)
+            activities = read_hive_activity(paths, limit=event_limit) or events
+            transcript_lines = [line for line in read_transcript(root, paths.run_id, tail=transcript_limit).splitlines() if line.strip()]
             health = collect_run_health(root, paths, state, events)
             board = run_board(root, paths.run_id)
-            draw_state(screen, height, width, state, activities, transcript_lines, health, board)
+            draw_view(screen, height, width, root, paths, state, activities, transcript_lines, health, board, view, control)
         except Exception as exc:  # TUI should show recoverable state instead of crashing.
             add_line(screen, 1, 2, "Hive Mind Harness", curses.A_BOLD)
             add_wrapped(screen, 3, 2, width - 4, str(exc))
-        draw_global_composer(screen, height, width, message)
+        draw_global_composer(screen, height, width, message, view, control)
         screen.refresh()
         key = screen.getch()
         if key in {ord("q"), ord("Q"), 27}:
             return
         if key != -1:
-            message = handle_key(screen, root, run_id, key)
+            next_view = view_for_key(key)
+            if next_view:
+                view = next_view
+                message = f"view -> {view}"
+            else:
+                message = handle_key(screen, root, run_id, key, control)
         time.sleep(0.5)
 
 
-def handle_key(screen, root: Path, run_id: str | None, key: int) -> str:
+def view_for_key(key: int) -> str | None:
+    return {
+        ord("1"): "board",
+        ord("2"): "events",
+        ord("3"): "transcript",
+        ord("4"): "agents",
+        ord("5"): "artifacts",
+        ord("6"): "memory",
+        ord("7"): "society",
+        ord("8"): "diff",
+    }.get(key)
+
+
+def handle_key(screen, root: Path, run_id: str | None, key: int, control: bool = True) -> str:
     try:
+        if not control and key not in {ord("r"), ord("R"), ord("h"), ord("H"), ord("?")}:
+            return "observer mode: use --control to run actions"
         if key in {10, 13, curses.KEY_ENTER, ord("/")}:
             prefix = "/" if key == ord("/") else ""
             return prompt_and_route(screen, root, run_id=run_id, prefix=prefix)
@@ -110,7 +148,7 @@ def handle_key(screen, root: Path, run_id: str | None, key: int) -> str:
             report = git_diff_report(root, run_id=run_id)
             return f"diff -> {report.get('path')} ({len(report.get('changed_files') or [])} files)"
         if key in {ord("h"), ord("H"), ord("?")}:
-            return "keys: n prompt, e edit context, a route, l/c/x/g agents, v verify, s summarize, m memory, d diff"
+            return "views: 1 board 2 events 3 transcript 4 agents 5 artifacts 6 memory 7 society 8 diff"
     except Exception as exc:
         return f"error: {exc}"
     return "unknown key"
@@ -192,6 +230,44 @@ def edit_context_pack(screen, root: Path, run_id: str | None) -> str:
     return f"context editor exited {completed.returncode}: {paths.context_pack}"
 
 
+def draw_view(
+    screen,
+    height: int,
+    width: int,
+    root: Path,
+    paths: Any,
+    state: dict[str, Any],
+    events: list[dict[str, Any]],
+    transcript_lines: list[str],
+    health: dict[str, Any],
+    board: dict[str, Any],
+    view: str,
+    control: bool,
+) -> None:
+    if view == "events":
+        draw_full_events_view(screen, height, width, state, events)
+        return
+    if view == "transcript":
+        draw_full_transcript_view(screen, height, width, state, transcript_lines)
+        return
+    if view == "agents":
+        draw_full_agents_view(screen, height, width, root, paths, state, board)
+        return
+    if view == "artifacts":
+        draw_full_artifacts_view(screen, height, width, state, board)
+        return
+    if view == "memory":
+        draw_memory_view(screen, height, width, paths)
+        return
+    if view == "society":
+        draw_society_view(screen, height, width, paths, board)
+        return
+    if view == "diff":
+        draw_diff_view(screen, height, width, paths)
+        return
+    draw_board_view(screen, height, width, state, events, health, board, control)
+
+
 def draw_state(
     screen,
     height: int,
@@ -269,15 +345,221 @@ def draw_state(
     draw_events(screen, events_top + 1, 4, max(1, footer_row - events_top - 2), content_width - 4, events)
 
 
-def draw_global_composer(screen, height: int, width: int, message: str) -> None:
+def draw_global_composer(screen, height: int, width: int, message: str, view: str = "board", control: bool = True) -> None:
     if height < 4:
         return
-    help_text = "Enter: type task  /: command  Examples: build parser | /verify | /codex executor | q quit"
+    mode = "controller" if control else "observer"
+    help_text = (
+        f"view:{view} mode:{mode}  1 board 2 events 3 transcript 4 agents 5 artifacts 6 memory 7 society 8 diff  "
+        "Enter task  / command  q quit"
+    )
     clear_line(screen, height - 2)
     clear_line(screen, height - 1)
     add_line(screen, height - 2, 2, "hive> ", color(1, curses.A_BOLD))
     add_line(screen, height - 2, 7, truncate(help_text, max(10, width - 9)), curses.A_DIM)
     add_line(screen, height - 1, 2, truncate(message, max(10, width - 4)), color(2) if message != "ready" else curses.A_DIM)
+
+
+def draw_board_view(
+    screen,
+    height: int,
+    width: int,
+    state: dict[str, Any],
+    events: list[dict[str, Any]],
+    health: dict[str, Any],
+    board: dict[str, Any],
+    control: bool,
+) -> None:
+    if height < 18 or width < 64:
+        draw_compact(screen, height, width, state, events, health)
+        return
+    margin = 2
+    content_width = width - 4
+    footer_row = height - 3
+    mode = "controller" if control else "observer"
+    clock = time.strftime("%H:%M")
+    top = f"Hive Mind  Run {state.get('run_id')}  Project {state.get('project')}  Mode {mode}  {clock}"
+    add_line(screen, 0, margin, truncate(top, content_width), color(1, curses.A_BOLD))
+
+    current_h = 7
+    next_h = current_h
+    current_w = max(38, content_width // 2 - 1)
+    next_w = content_width - current_w - 2
+    draw_box(screen, 2, margin, current_h, current_w, "Current")
+    draw_current_panel(screen, 3, margin + 2, current_h - 2, current_w - 4, state, health, board)
+    draw_box(screen, 2, margin + current_w + 2, next_h, next_w, "Next")
+    draw_next_actions(screen, 3, margin + current_w + 4, next_h - 2, next_w - 4, board)
+
+    pipeline_top = 10
+    draw_box(screen, pipeline_top, margin, 4, content_width, "Pipeline")
+    draw_pipeline_bar(screen, pipeline_top + 1, margin + 2, 2, content_width - 4, board.get("pipeline", []))
+
+    agents_top = 15
+    events_h = 6
+    decision_h = 5
+    agents_h = max(7, footer_row - agents_top - events_h - decision_h - 2)
+    draw_box(screen, agents_top, margin, agents_h, content_width, "Agents")
+    draw_agent_reason_table(screen, agents_top + 1, margin + 2, agents_h - 2, content_width - 4, board.get("agents", []), health)
+
+    decision_top = agents_top + agents_h + 1
+    draw_box(screen, decision_top, margin, decision_h, content_width, "Decisions / Open Questions")
+    draw_decisions_panel(screen, decision_top + 1, margin + 2, decision_h - 2, content_width - 4, state, board, health)
+
+    events_top = decision_top + decision_h + 1
+    draw_box(screen, events_top, margin, max(3, footer_row - events_top), content_width, "Latest Events")
+    draw_events(screen, events_top + 1, margin + 2, max(1, footer_row - events_top - 2), content_width - 4, events)
+
+
+def draw_current_panel(screen, y: int, x: int, height: int, width: int, state: dict[str, Any], health: dict[str, Any], board: dict[str, Any]) -> None:
+    required, optional = classify_missing(board)
+    phase = phase_label(board, state)
+    failures = len(health.get("recent_failures", []))
+    health_label = "GOOD" if failures == 0 and not required else "NEEDS REVIEW"
+    rows = [
+        f"Task: {state.get('user_request')}",
+        f"Phase: {phase}",
+        f"Health: {health_label}",
+        f"Missing: {len(required)} required / {len(optional)} optional",
+        f"Workers: {health.get('providers_available')}/{health.get('providers_total')} ready",
+    ]
+    for index, row in enumerate(rows[:height]):
+        attr = color(1, curses.A_BOLD) if index == 2 and health_label == "GOOD" else (color(3, curses.A_BOLD) if index == 2 else 0)
+        add_line(screen, y + index, x, truncate(row, width), attr)
+
+
+def draw_pipeline_bar(screen, y: int, x: int, height: int, width: int, pipeline: list[dict[str, Any]]) -> None:
+    done = [item for item in pipeline if item.get("status") == "done"]
+    pending = [item for item in pipeline if item.get("status") != "done"]
+    lines = [
+        "  ".join(f"✓ {str(item.get('step')).title()}" for item in done),
+        "  ".join(f"○ {str(item.get('step')).title()}" for item in pending),
+    ]
+    for index, line in enumerate(lines[:height]):
+        add_line(screen, y + index, x, truncate(line or "-", width), color(1 if index == 0 else 3))
+
+
+def draw_agent_reason_table(screen, y: int, x: int, height: int, width: int, agents: list[dict[str, Any]], health: dict[str, Any]) -> None:
+    add_line(screen, y, x, truncate("Agent/Role              Status      Provider        Reason", width), curses.A_DIM)
+    for index, agent in enumerate(agents[: max(0, height - 1)]):
+        status = str(agent.get("status") or "pending")
+        name = str(agent.get("name") or "agent")
+        provider = name.split("-", 1)[0]
+        reason = agent_reason(name, status, health)
+        row = f"{name:<23} {status_icon(status)} {status:<10} {provider:<14} {reason}"
+        add_line(screen, y + index + 1, x, truncate(row, width), status_attr(status))
+
+
+def draw_decisions_panel(screen, y: int, x: int, height: int, width: int, state: dict[str, Any], board: dict[str, Any], health: dict[str, Any]) -> None:
+    next_action = board.get("next") or {}
+    rows = [
+        "Decision: keep Hive Mind as the controller; MemoryOS owns accepted memory.",
+        f"Decision: next action is {next_action.get('command')}",
+        f"Open: should Codex execute or remain prepare-only? route={health.get('route_intent')}",
+        "Open: is context fresh, or only context_pack.md present?",
+    ]
+    for index, row in enumerate(rows[:height]):
+        add_line(screen, y + index, x, truncate(row, width), color(2) if row.startswith("Decision") else color(3))
+
+
+def draw_full_events_view(screen, height: int, width: int, state: dict[str, Any], events: list[dict[str, Any]]) -> None:
+    draw_view_header(screen, width, "Events", state, "Live event stream from hive_events.jsonl/events.jsonl")
+    draw_events(screen, 4, 2, max(1, height - 7), width - 4, events)
+
+
+def draw_full_transcript_view(screen, height: int, width: int, state: dict[str, Any], transcript_lines: list[str]) -> None:
+    draw_view_header(screen, width, "Transcript", state, "Human-readable run log; raw JSON hidden by default")
+    draw_log_lines(screen, 4, 2, max(1, height - 7), width - 4, transcript_lines)
+
+
+def draw_full_agents_view(screen, height: int, width: int, root: Path, paths: Any, state: dict[str, Any], board: dict[str, Any]) -> None:
+    draw_view_header(screen, width, "Agents", state, "Provider/local worker detail board")
+    rows = ["Agent/Role                  Status      Mode              Last Artifact"]
+    for agent in board.get("agents", []):
+        name = str(agent.get("name") or "")
+        status = str(agent.get("status") or "pending")
+        artifact = find_agent_artifact(paths, name)
+        rows.append(f"{name:<27} {status:<11} {agent_mode(name):<17} {artifact}")
+    draw_rows(screen, 4, 2, height - 7, width - 4, rows)
+
+
+def draw_full_artifacts_view(screen, height: int, width: int, state: dict[str, Any], board: dict[str, Any]) -> None:
+    draw_view_header(screen, width, "Artifacts", state, "Exists vs current-phase completion are separate")
+    rows = ["Artifact                 Exists  Freshness  Class            Producer              Path"]
+    for item in board.get("artifacts", []):
+        name = str(item.get("name") or "")
+        exists = "yes" if item.get("exists") else "no"
+        rows.append(
+            f"{name:<24} {exists:<7} {str(item.get('freshness')):<10} "
+            f"{str(item.get('phase_class')):<16} {str(item.get('producer')):<21} {item.get('path')}"
+        )
+    required, optional = classify_missing(board)
+    rows.extend(["", f"Required missing: {', '.join(required) if required else 'none'}", f"Optional/post-execution missing: {', '.join(optional) if optional else 'none'}"])
+    draw_rows(screen, 4, 2, height - 7, width - 4, rows)
+
+
+def draw_memory_view(screen, height: int, width: int, paths: Any) -> None:
+    draw_view_header(screen, width, "Memory Drafts", {"run_id": paths.run_id}, "Hive Mind drafts; MemoryOS owns review/acceptance")
+    rows = ["No memory drafts yet."]
+    draft_path = paths.run_dir / "memory_drafts.json"
+    if draft_path.exists():
+        try:
+            data = json.loads(draft_path.read_text(encoding="utf-8"))
+            drafts = data.get("memory_drafts") if isinstance(data, dict) else []
+            rows = []
+            for index, draft in enumerate(drafts or []):
+                rows.append(f"[{index}] {draft.get('type')} {draft.get('status')} confidence={draft.get('confidence')}")
+                rows.append(f"    {draft.get('content')}")
+                rows.append(f"    refs: {', '.join(draft.get('raw_refs') or [])}")
+            if not rows:
+                rows = ["memory_drafts.json exists, but contains no drafts."]
+        except (json.JSONDecodeError, OSError) as exc:
+            rows = [f"Invalid memory_drafts.json: {exc}"]
+    draw_rows(screen, 4, 2, height - 7, width - 4, rows)
+
+
+def draw_society_view(screen, height: int, width: int, paths: Any, board: dict[str, Any]) -> None:
+    draw_view_header(screen, width, "Society", {"run_id": paths.run_id}, "Roles, disagreements, peer review placeholders")
+    rows = ["Members"]
+    society_path = paths.run_dir / "society_plan.json"
+    if society_path.exists():
+        try:
+            data = json.loads(society_path.read_text(encoding="utf-8"))
+            for member in data.get("members") or []:
+                rows.append(f"- {member.get('id') or member.get('agent')} role={member.get('role')} status={member.get('status')}")
+        except (json.JSONDecodeError, OSError) as exc:
+            rows.append(f"Invalid society_plan.json: {exc}")
+    else:
+        rows.append("- no society_plan.json")
+    rows.extend(["", "Disagreements", "- not extracted yet", "", "Open Questions", "- should Codex execute or remain prepare-only?", "- should local context be rerun?"])
+    draw_rows(screen, 4, 2, height - 7, width - 4, rows)
+
+
+def draw_diff_view(screen, height: int, width: int, paths: Any) -> None:
+    draw_view_header(screen, width, "Diff", {"run_id": paths.run_id}, "Git-first observer view")
+    report_path = paths.run_dir / "git_diff_report.json"
+    rows = ["No git diff report yet. Run: hive diff"]
+    if report_path.exists():
+        try:
+            data = json.loads(report_path.read_text(encoding="utf-8"))
+            rows = ["Changed Files"]
+            rows.extend(f"- {path}" for path in data.get("changed_files") or [])
+            rows.extend(["", "Next", "hive review-diff", "hive check run", "hive commit-summary"])
+        except (json.JSONDecodeError, OSError) as exc:
+            rows = [f"Invalid git_diff_report.json: {exc}"]
+    draw_rows(screen, 4, 2, height - 7, width - 4, rows)
+
+
+def draw_view_header(screen, width: int, title: str, state: dict[str, Any], subtitle: str) -> None:
+    run_id = state.get("run_id", "-")
+    add_line(screen, 0, 2, f"Hive Mind / {title}", color(1, curses.A_BOLD))
+    add_line(screen, 1, 2, truncate(f"Run {run_id}  {subtitle}", max(10, width - 4)), curses.A_DIM)
+    add_line(screen, 2, 2, "─" * max(0, width - 4), curses.A_DIM)
+
+
+def draw_rows(screen, y: int, x: int, height: int, width: int, rows: list[str]) -> None:
+    for index, row in enumerate(rows[: max(0, height)]):
+        attr = curses.A_BOLD if index == 0 and row else 0
+        add_line(screen, y + index, x, truncate(row, width), attr)
 
 
 def init_theme() -> None:
@@ -448,6 +730,71 @@ def draw_next_actions(screen, y: int, x: int, height: int, width: int, board: di
     for index, row in enumerate(rows[:height]):
         attr = color(5 if index == 0 else 2) if index in {0, 2, 3} else curses.A_DIM
         add_line(screen, y + index, x, truncate(row, width), attr)
+
+
+def classify_missing(board: dict[str, Any]) -> tuple[list[str], list[str]]:
+    required: list[str] = []
+    optional: list[str] = []
+    for item in board.get("artifacts", []):
+        if item.get("status") == "ok":
+            continue
+        name = str(item.get("name") or "")
+        if item.get("phase_class") == "required":
+            required.append(name)
+        else:
+            optional.append(name)
+    return required, optional
+
+
+def phase_label(board: dict[str, Any], state: dict[str, Any]) -> str:
+    pipeline = board.get("pipeline") or []
+    pending = [str(item.get("step")) for item in pipeline if item.get("status") != "done"]
+    if pending:
+        return f"{pending[0]}.pending"
+    return f"{state.get('phase')}.{state.get('status')}"
+
+
+def agent_reason(name: str, status: str, health: dict[str, Any]) -> str:
+    if status == "completed":
+        return "artifact ready"
+    if status == "prepared":
+        return "prompt/result prepared"
+    if "context" in name and status == "pending":
+        return "local context not run"
+    if "codex" in name and status == "pending":
+        return "waiting for validated handoff"
+    if "gemini" in name and status == "pending":
+        return "optional review not run"
+    if status == "failed":
+        return "see events/transcript"
+    return "pending"
+
+
+def agent_mode(name: str) -> str:
+    if name.startswith("local"):
+        return "local worker"
+    if name.startswith("claude"):
+        return "planner/read-only"
+    if name.startswith("codex"):
+        return "executor/approval"
+    if name.startswith("gemini"):
+        return "reviewer/read-only"
+    return "provider"
+
+
+def find_agent_artifact(paths: Any, name: str) -> str:
+    parts = name.split("-", 1)
+    provider = parts[0] if parts else name
+    role_hint = parts[1] if len(parts) > 1 else ""
+    agent_dir = paths.run_dir / "agents" / provider
+    if not agent_dir.exists():
+        return "-"
+    results = sorted(agent_dir.glob("*_result.yaml"))
+    if role_hint:
+        for path in results:
+            if role_hint.split("-", 1)[0] in path.name:
+                return path.relative_to(paths.root).as_posix()
+    return results[-1].relative_to(paths.root).as_posix() if results else "-"
 
 
 def status_attr(status: str | None) -> int:

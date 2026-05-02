@@ -98,13 +98,13 @@ Human intent
   -> MemoryOS + CapabilityOS update
 ```
 
-Near-term, this stack is implemented through the `mos` harness and file-backed run folders, not a large autonomous swarm.
+Near-term, this stack is implemented through the `hive` harness and file-backed run folders, not a large autonomous swarm.
 
 Roles:
 
 - MemoryOS remembers decisions, claims, evidence, disagreements, project state, and agent runs.
 - CapabilityOS maps tools, models, MCP servers, skills, connectors, workflows, risks, quality tiers, and legacy comparisons.
-- The `mos` harness turns user requests into task specs, context packs, handoffs, provider artifacts, verification reports, and memory drafts.
+- The `hive` harness turns user requests into task specs, context packs, handoffs, provider artifacts, verification reports, and memory drafts.
 - Local LLM workers classify, extract, compress, summarize, and draft handoffs as cheap provider-like workers.
 - Claude, Codex, Gemini, and future providers plug into the same artifact protocol according to their strengths.
 - Agent Society records performance, peer review, user feedback, and routing proposals, but prompt/routing mutations require review.

@@ -1,4 +1,4 @@
-좋아. 레퍼런스를 보면 `mos` CLI는 단순 coding CLI를 따라가면 안 되고, **“작업 진행판 + agent blackboard + provider wrapper + memory/capability context”가 결합된 terminal control surface**로 설계해야 해.
+좋아. 레퍼런스를 보면 `hive` CLI는 단순 coding CLI를 따라가면 안 되고, **“작업 진행판 + agent blackboard + provider wrapper + memory/capability context”가 결합된 terminal control surface**로 설계해야 해.
 
 아래처럼 가면 된다.
 
@@ -13,8 +13,8 @@ Claude Code는 interactive session, initial prompt, `-p` one-shot query, pipe in
 가져올 패턴:
 
 ```text id="gocysy"
-- mos "task" shorthand
-- mos -p / mos ask one-shot
+- hive "task" shorthand
+- hive -p / hive ask one-shot
 - slash-command shell
 - project-local commands
 - MCP prompt/tool discovery
@@ -69,7 +69,7 @@ Continue는 PR check를 markdown 파일로 정의한다. `.continue/checks/` 또
 
 ```text id="57egjy"
 - markdown-as-agent-check
-- .memoryos/checks/*.md
+- .hivemind/checks/*.md
 - pass/fail criteria를 사람이 파일로 관리
 - check 결과를 run artifact로 저장
 ```
@@ -89,9 +89,9 @@ Goose는 Desktop, CLI, API를 모두 제공하고, 70개 이상 MCP extension을
 
 ---
 
-# 2. `mos` CLI의 정체성
+# 2. `hive` CLI의 정체성
 
-`mos`는 coding agent가 아니라 **작업 운영 CLI**여야 해.
+`hive`는 coding agent가 아니라 **작업 운영 CLI**여야 해.
 
 ```text id="67x3ab"
 Claude Code = 한 agent와 대화/작업
@@ -100,16 +100,16 @@ Aider = pair programming
 OpenCode = terminal coding agent
 Goose = general local agent
 
-mos = 여러 agent와 memory/capability/runtime을 묶는 harness control plane
+hive = 여러 agent와 memory/capability/runtime을 묶는 harness control plane
 ```
 
-즉 `mos`의 한 줄 정의:
+즉 `hive`의 한 줄 정의:
 
-> **`mos` is a terminal control plane for MemoryOS runs, multi-agent handoffs, local workers, provider CLIs, checks, and memory updates.**
+> **`hive` is a terminal control plane for Hive Mind runs, multi-agent handoffs, local workers, provider CLIs, checks, and MemoryOS draft artifacts.**
 
 한국어로:
 
-> **`mos`는 Claude/Codex/Gemini/local LLM을 직접 대체하는 CLI가 아니라, 이들을 하나의 작업 run으로 묶는 MemoryOS 하네스 터미널이다.**
+> **`hive`는 Claude/Codex/Gemini/local LLM을 직접 대체하는 CLI가 아니라, 이들을 하나의 작업 run으로 묶는 Hive Mind 하네스 터미널이다.**
 
 ---
 
@@ -133,11 +133,11 @@ mos = 여러 agent와 memory/capability/runtime을 묶는 harness control plane
 ## 3.1 Core
 
 ```bash id="3der8v"
-mos init
-mos doctor
-mos status
-mos version
-mos update
+hive init
+hive doctor
+hive status
+hive version
+hive update
 ```
 
 역할:
@@ -151,14 +151,14 @@ mos update
 ## 3.2 Run
 
 ```bash id="6flwm0"
-mos run "task"
-mos ask "task"
-mos plan
-mos continue
-mos pause
-mos resume <run_id>
-mos open current
-mos runs
+hive run "task"
+hive ask "task"
+hive plan
+hive continue
+hive pause
+hive resume <run_id>
+hive open current
+hive runs
 ```
 
 역할:
@@ -167,16 +167,16 @@ mos runs
 작업 생성, 현재 run 관리, run folder 접근
 ```
 
-`mos "task"`는 `mos ask "task"`의 shorthand로 유지.
+`hive "task"`는 `hive ask "task"`의 shorthand로 유지.
 
 ---
 
 ## 3.3 TUI / Shell
 
 ```bash id="f3hz5g"
-mos
-mos tui
-mos shell
+hive
+hive tui
+hive shell
 ```
 
 역할:
@@ -185,20 +185,20 @@ mos shell
 interactive control surface
 ```
 
-bare `mos`는 Claude/OpenCode처럼 interactive entry로 들어가는 게 좋다.
+bare `hive`는 Claude/OpenCode처럼 interactive entry로 들어가는 게 좋다.
 
 ---
 
 ## 3.4 Agent
 
 ```bash id="8gg81u"
-mos agents detect
-mos agents status
-mos invoke local --role context
-mos invoke claude --role planner
-mos invoke codex --role executor
-mos invoke gemini --role reviewer
-mos handoff
+hive agents detect
+hive agents status
+hive invoke local --role context
+hive invoke claude --role planner
+hive invoke codex --role executor
+hive invoke gemini --role reviewer
+hive handoff
 ```
 
 역할:
@@ -212,12 +212,12 @@ provider CLI/local LLM을 worker로 호출하고 artifact 저장
 ## 3.5 Memory
 
 ```bash id="k1vq6p"
-mos memory draft
-mos memory list
-mos memory approve
-mos memory reject
-mos memory search "query"
-mos context
+hive memory draft
+hive memory list
+memoryos approve
+memoryos reject
+memoryos search "query"
+hive context
 ```
 
 역할:
@@ -231,10 +231,10 @@ run 결과를 MemoryOS memory draft로 만들고 승인
 ## 3.6 Capability
 
 ```bash id="lzxo4o"
-mos capability gap "task"
-mos capability recommend "task"
-mos radar scan
-mos workflow list
+capabilityos capability gap "task"
+capabilityos capability recommend "task"
+capabilityos radar scan
+capabilityos workflow list
 ```
 
 역할:
@@ -250,12 +250,12 @@ CapabilityOS가 생긴 뒤 tool/MCP/skill/workflow 추천
 ## 3.7 Check / Verify
 
 ```bash id="5l03ae"
-mos check list
-mos check run
-mos verify
-mos diff
-mos review-diff
-mos commit-summary
+hive check list
+hive check run
+hive verify
+hive diff
+hive review-diff
+hive commit-summary
 ```
 
 역할:
@@ -269,13 +269,13 @@ Continue + Aider 패턴 결합
 ## 3.8 System / Settings
 
 ```bash id="pkctgq"
-mos settings detect
-mos settings shell
-mos local status
-mos local setup
-mos mcp start
-mos mcp install --for claude
-mos mcp install --for codex
+hive settings detect
+hive settings shell
+hive local status
+hive local setup
+hive mcp start
+hive mcp install --for claude
+hive mcp install --for codex
 ```
 
 역할:
@@ -291,7 +291,7 @@ provider path, local runtime, MCP 연결 관리
 ## Mode A. One-shot
 
 ```bash id="qxfq48"
-mos "Draft Review 화면 구현"
+hive "Draft Review 화면 구현"
 ```
 
 내부 동작:
@@ -321,9 +321,9 @@ Plan
   4. local/summarizer          pending
 
 Next
-  mos tui
-  mos invoke claude --role planner --execute
-  mos invoke codex --role executor --execute
+  hive tui
+  hive invoke claude --role planner --execute
+  hive invoke codex --role executor --execute
 ```
 
 ---
@@ -331,14 +331,14 @@ Next
 ## Mode B. Guided TUI
 
 ```bash id="usjh84"
-mos tui
+hive tui
 ```
 
 화면은 **run board** 중심.
 
 ```text id="g7r5re"
 ┌──────────────────────────────────────────────────────────────┐
-│ mos / MemoryOS Harness                         Local ● MCP ○ │
+│ hive / Hive Mind Harness                         Local ● MCP ○ │
 ├──────────────────────────────────────────────────────────────┤
 │ Run     run_20260502_153012_a91c                             │
 │ Task    Draft Review 화면 구현                                │
@@ -367,18 +367,18 @@ TUI는 final product UI가 아니라 **작업 진행판**이어야 함.
 ## Mode C. Slash Shell
 
 ```bash id="3yi2oh"
-mos
+hive
 ```
 
 입력:
 
 ```text id="923mt7"
-mos> /new Draft Review 화면 구현
-mos> /route
-mos> /invoke claude planner
-mos> /invoke codex executor
-mos> /diff
-mos> /memory
+hive> /new Draft Review 화면 구현
+hive> /route
+hive> /invoke claude planner
+hive> /invoke codex executor
+hive> /diff
+hive> /memory
 ```
 
 Claude slash command처럼 익숙한 구조를 가져가되, 우리 명령은 run artifact 중심.
@@ -387,7 +387,7 @@ Claude slash command처럼 익숙한 구조를 가져가되, 우리 명령은 ru
 
 # 5. 작업 진행 순서 UI
 
-`mos`의 핵심은 “작업이 어느 단계인지”가 보여야 하는 것.
+`hive`의 핵심은 “작업이 어느 단계인지”가 보여야 하는 것.
 
 기본 pipeline:
 
@@ -453,7 +453,7 @@ gemini/reviewer
   status: optional
 ```
 
-Codex/Cli류에서 approval mode가 중요하듯, `mos`는 **agent별 permission/mode**를 항상 보여줘야 함. Codex의 approval mode UX를 참고하면 된다. ([OpenAI Help Center][2])
+Codex/Cli류에서 approval mode가 중요하듯, `hive`는 **agent별 permission/mode**를 항상 보여줘야 함. Codex의 approval mode UX를 참고하면 된다. ([OpenAI Help Center][2])
 
 ---
 
@@ -473,10 +473,10 @@ events.jsonl
 final_report.md
 ```
 
-`mos status`는 이 artifact completeness를 보여줘야 함.
+`hive status`는 이 artifact completeness를 보여줘야 함.
 
 ```bash id="efd08l"
-mos status
+hive status
 ```
 
 출력:
@@ -496,7 +496,7 @@ Missing next artifact:
   handoff.yaml
 
 Recommended next command:
-  mos invoke claude --role planner --execute
+  hive invoke claude --role planner --execute
 ```
 
 ---
@@ -508,24 +508,24 @@ Recommended next command:
 사용자 기본 경험:
 
 ```bash id="ghskax"
-mos "작업"
-mos tui
+hive "작업"
+hive tui
 ```
 
 ## 8.2 모든 단계는 직접 실행 가능
 
 ```bash id="f6v4f0"
-mos invoke local --role context
-mos invoke claude --role planner
-mos invoke codex --role executor
-mos verify
-mos memory draft
+hive invoke local --role context
+hive invoke claude --role planner
+hive invoke codex --role executor
+hive verify
+hive memory draft
 ```
 
 ## 8.3 항상 dry-run 가능
 
 ```bash id="4jbn0a"
-mos invoke codex --role executor --dry-run
+hive invoke codex --role executor --dry-run
 ```
 
 Provider CLI가 불안정해도 artifact는 생성되어야 한다.
@@ -533,26 +533,26 @@ Provider CLI가 불안정해도 artifact는 생성되어야 한다.
 ## 8.4 JSON output 필수
 
 ```bash id="l9wej5"
-mos run -q --json "task"
-mos status --json
-mos agents detect --json
-mos check run --json
+hive run -q --json "task"
+hive status --json
+hive agents detect --json
+hive check run --json
 ```
 
-다른 agent가 `mos`를 호출할 수 있어야 하니까.
+다른 agent가 `hive`를 호출할 수 있어야 하니까.
 
 ## 8.5 위험한 모드는 명시적이어야 함
 
 ```bash id="ngljb2"
-mos invoke codex --role executor --execute --mode workspace-write
-mos invoke codex --role executor --execute --mode danger --confirm-danger
+hive invoke codex --role executor --execute --mode workspace-write
+hive invoke codex --role executor --execute --mode danger --confirm-danger
 ```
 
 기본은 safe.
 
 ---
 
-# 9. `mos`의 slash commands
+# 9. `hive`의 slash commands
 
 Claude의 slash command 패턴을 참고해서, 우리는 이렇게 간다.
 
@@ -578,7 +578,7 @@ Claude의 slash command 패턴을 참고해서, 우리는 이렇게 간다.
 나중에는 project-local command도 가능.
 
 ```text id="rmsucu"
-.memoryos/commands/
+.hivemind/commands/
   draft-review.md
   parser-work.md
   capability-card.md
@@ -592,12 +592,12 @@ Claude의 slash command 패턴을 참고해서, 우리는 이렇게 간다.
 
 OpenCode처럼 `@file`과 `!shell`은 강력하다. ([OpenCode][3])
 
-`mos` shell에서:
+`hive` shell에서:
 
 ```text id="qjkljz"
-mos> @docs/TODO.md 다음 작업 3개 뽑아줘
-mos> !git status
-mos> 이 diff를 review-diff로 보내줘
+hive> @docs/TODO.md 다음 작업 3개 뽑아줘
+hive> !git status
+hive> 이 diff를 review-diff로 보내줘
 ```
 
 다만 `!shell`은 event log에 반드시 기록.
@@ -613,7 +613,7 @@ mos> 이 diff를 review-diff로 보내줘
 Continue 패턴을 그대로 가져오자. ([Continue Docs][5])
 
 ```text id="l5h1hk"
-.memoryos/checks/
+.hivemind/checks/
   no-raw-export-leak.md
   memory-draft-policy.md
   schema-change-safety.md
@@ -637,8 +637,8 @@ Fail if a code change:
 명령:
 
 ```bash id="wwrjgm"
-mos check list
-mos check run
+hive check list
+hive check run
 ```
 
 출력:
@@ -659,16 +659,16 @@ Checks
 Aider에서 가져올 패턴. ([GitHub][4])
 
 ```bash id="pvbegz"
-mos diff
-mos review-diff
-mos commit-summary
+hive diff
+hive review-diff
+hive commit-summary
 ```
 
 출력:
 
 ```text id="c6jfb7"
 Changed Files
-  M memoryos/mos.py
+  M hivemind/hive.py
   A tests/fixtures/exports/chatgpt_redacted.json
 
 Risk
@@ -679,7 +679,7 @@ Suggested Commit
   feat(parser): add redacted ChatGPT fixture and parser metadata
 ```
 
-`mos`가 직접 commit하는 것은 나중. 초기에는 commit message 제안까지만.
+`hive`가 직접 commit하는 것은 나중. 초기에는 commit message 제안까지만.
 
 ---
 
@@ -688,11 +688,11 @@ Suggested Commit
 Goose처럼 extension/provider를 설정 가능하게 한다. ([Goose Docs][6])
 
 ```bash id="ui39mb"
-mos agents detect
-mos agents configure
-mos mcp install --for claude
-mos mcp install --for codex
-mos extension list
+hive agents detect
+hive agents configure
+hive mcp install --for claude
+hive mcp install --for codex
+hive extension list
 ```
 
 출력:
@@ -739,7 +739,7 @@ Ollama
 Run board:
 
 ```text id="1qpw0m"
-MemoryOS Harness
+Hive Mind Harness
 ────────────────────────────────────────────
 Run      run_20260502_153012_a91c
 Task     Add provider validation
@@ -756,7 +756,7 @@ Agents
 ○ codex/executor      prepare_only   waiting
 
 Next
-mos invoke claude --role planner --execute
+hive invoke claude --role planner --execute
 ```
 
 ---
@@ -768,40 +768,40 @@ mos invoke claude --role planner --execute
 ## Default Happy Path
 
 ```bash id="dc893z"
-mos "작업 내용"
-mos tui
+hive "작업 내용"
+hive tui
 ```
 
 ## Manual Step Path
 
 ```bash id="7mw5w0"
-mos ask "작업 내용"
-mos plan
-mos invoke local --role context
-mos invoke claude --role planner --execute
-mos invoke codex --role executor --dry-run
-mos verify
-mos memory draft
-mos summarize
+hive ask "작업 내용"
+hive plan
+hive invoke local --role context
+hive invoke claude --role planner --execute
+hive invoke codex --role executor --dry-run
+hive verify
+hive memory draft
+hive summarize
 ```
 
 ## Review Path
 
 ```bash id="ele2jl"
-mos diff
-mos review-diff
-mos check run
-mos commit-summary
+hive diff
+hive review-diff
+hive check run
+hive commit-summary
 ```
 
 ## Environment Path
 
 ```bash id="8vk5vt"
-mos init
-mos doctor
-mos agents detect
-mos local status
-mos settings shell
+hive init
+hive doctor
+hive agents detect
+hive local status
+hive settings shell
 ```
 
 ---
@@ -820,33 +820,33 @@ mos settings shell
 7. TODO/route/source provenance와 연결된다.
 ```
 
-그래서 `mos`는 일반 CLI보다 **작업 추적성과 agent handoff 품질**이 중요해.
+그래서 `hive`는 일반 CLI보다 **작업 추적성과 agent handoff 품질**이 중요해.
 
 ---
 
 # 17. 다음 개선 제안
 
-현재 repo 기준으로는 이미 `mos` 명령이 많이 있으니, 다음은 디자인을 더 굳히는 작업이 좋다.
+현재 Hive Mind repo 기준으로는 이미 `hive` 명령이 많이 있으니, 다음은 디자인을 더 굳히는 작업이 좋다.
 
 ```text id="q77kwl"
-1. `mos status`를 pipeline board 형태로 개선
-2. `mos tui`에서 pipeline phase를 상단 고정
-3. `mos invoke` 결과를 provider cards로 정리
-4. `mos check run` 결과를 pass/fail table로 정리
-5. `mos next` 명령 추가
+1. `hive status`를 pipeline board 형태로 개선
+2. `hive tui`에서 pipeline phase를 상단 고정
+3. `hive invoke` 결과를 provider cards로 정리
+4. `hive check run` 결과를 pass/fail table로 정리
+5. `hive next` 명령 추가
 ```
 
-특히 `mos next`가 있으면 좋아.
+특히 `hive next`가 있으면 좋아.
 
 ```bash id="pccwir"
-mos next
+hive next
 ```
 
 출력:
 
 ```text id="6ftysu"
 Next recommended action:
-  mos invoke claude --role planner --execute
+  hive invoke claude --role planner --execute
 
 Reason:
   handoff.yaml is missing and task_type=implementation.
@@ -858,11 +858,11 @@ Reason:
 
 # 18. 최종 CLI 철학
 
-> **`mos` should always answer: What is the current task? Where are we in the pipeline? Which agent should act next? What artifacts exist? What is safe to do now?**
+> **`hive` should always answer: What is the current task? Where are we in the pipeline? Which agent should act next? What artifacts exist? What is safe to do now?**
 
 한국어로:
 
-> **`mos`는 항상 “현재 작업이 무엇이고, 어느 단계이며, 다음에 어떤 agent가 무엇을 해야 하고, 어떤 산출물이 남았는지”를 보여줘야 한다.**
+> **`hive`는 항상 “현재 작업이 무엇이고, 어느 단계이며, 다음에 어떤 agent가 무엇을 해야 하고, 어떤 산출물이 남았는지”를 보여줘야 한다.**
 
 그래서 터미널 디자인의 중심은 채팅창이 아니라:
 
