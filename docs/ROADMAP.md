@@ -1,0 +1,336 @@
+# MemoryOS Roadmap
+
+This roadmap keeps MemoryOS small enough to execute while preserving the longer GoEN/Dipeen research direction.
+
+## Phase 0 - File Substrate
+
+Status: started.
+
+Goal: make MemoryOS useful without external services, DB servers, model keys, or a UI.
+
+Deliverables:
+
+- Import markdown/text notes.
+- Import AI export ZIP/JSON/markdown bundles.
+- Normalize observations, conversations, messages, pairs, concepts, claims, decisions, assumptions, questions, and tasks.
+- Store nodes and edges in append-only JSONL.
+- Emit audit reports.
+- Keep source pointers for every imported node.
+
+Current implementation:
+
+- `memoryos/` Python CLI.
+- `memory/processed/nodes.jsonl`.
+- `ontology/edges.jsonl`.
+- `runs/reports/latest_audit.md`.
+
+Exit criteria:
+
+- Re-imports do not create uncontrolled duplication.
+- Every node can be traced to a source file or archive member.
+- Basic counts, top concepts, decisions, tasks, and questions are reliable enough for manual review.
+
+## Phase 0.5 - Harness Runtime
+
+Status: started.
+
+Goal: make `mos` the first operational wrapper around MemoryOS, local workers, and provider CLIs.
+
+Deliverables:
+
+- Stable `.runs/` folder protocol with `task.yaml`, `context_pack.md`, `handoff.yaml`, `events.jsonl`, `run_state.json`, `verification.yaml`, `memory_drafts.json`, and `final_report.md`.
+- `mos run`, `mos status`, `mos tui`, `mos context`, `mos handoff`, `mos invoke`, `mos verify`, `mos summarize`, and `mos memory draft`.
+- Provider invocation artifacts for Claude, Codex, Gemini, and local workers.
+- Prepare-only path for providers without a stable non-interactive execution contract.
+- Recoverable failure artifacts when a provider or local model is unavailable.
+- TUI status surface that reads run files without requiring a DB.
+
+Exit criteria:
+
+- A run can be created, inspected, verified, summarized, and imported as draft memory without manual folder archaeology.
+- Provider/local worker failures are visible as structured run state.
+- No run-derived memory is accepted without review.
+
+## Phase 1 - Parser Reliability
+
+Goal: make export parsing a stable product surface.
+
+Deliverables:
+
+- Parser fixtures for ChatGPT, DeepSeek, Grok, Perplexity, Claude, Gemini, and manual markdown.
+- Parser version recorded in imported metadata.
+- Archive hash and source hash for deduplication.
+- Redaction fixtures so tests do not expose private conversation text.
+- Provider-specific export instructions.
+
+Supported now:
+
+- ChatGPT-style `conversations.json` structure.
+- DeepSeek `mapping[].message.fragments` structure observed locally.
+- Grok `prod-grok-backend.json` structure observed locally.
+- Perplexity markdown ZIP bundles.
+
+Next parser targets:
+
+- Claude official export.
+- Gemini Takeout.
+- Manual Claude project/session markdown.
+
+Exit criteria:
+
+- Each supported platform has at least one redacted fixture.
+- Role order and pair generation are stable in tests.
+- Malformed or partial records are skipped with recoverable warnings.
+
+## Phase 2 - Reviewable Memory Graph
+
+Goal: move from raw extraction to trusted memory.
+
+Deliverables:
+
+- Node statuses: `new`, `reviewed`, `accepted`, `rejected`, `speculative`, `stale`.
+- Claim discipline fields: confidence, evidence state, source, reviewer, last reviewed.
+- Manual edit/review command.
+- Deduplication of concepts, repeated claims, and repeated tasks.
+- Audit categories: unsupported claim, unresolved question, stale decision, duplicated concept, missing evidence.
+
+Agent roles:
+
+- Archivist: preserve source, normalize records, merge duplicates.
+- Critic: flag unsupported, contradictory, overbroad, or stale claims.
+- Planner: turn active decisions/questions into next actions.
+- Guardian: flag privacy, security, cost, and scope risks.
+
+Exit criteria:
+
+- Audit output distinguishes "extracted" from "accepted."
+- A user can review important nodes without editing raw JSONL by hand.
+
+## Phase 2.5 - CapabilityOS Seed
+
+Goal: build the first evidence-backed capability ontology from actual harness use.
+
+Deliverables:
+
+- Draft schemas for `TechnologyCard`, `Capability`, `WorkflowRecipe`, `ProviderRuntime`, `QualityProfile`, `Risk`, and `LegacyRelation`.
+- Seed provider/runtime records for local LLM workers, Claude, Codex, Gemini, Ollama, and visible MCP/skill capabilities.
+- `extract-capability` worker output as reviewable draft records.
+- First workflow recipe: `mos planning -> Codex implementation -> local summarize -> MemoryOS draft`.
+- Legacy comparisons against raw chat, manual shared folder, screenshot-only, and local-model-only workflows.
+
+Exit criteria:
+
+- CapabilityOS recommends capabilities and workflows, not only named tools.
+- Every capability record links to docs, run artifacts, or reviewed evidence.
+- Recommendations include constraints, risks, and escalation rules.
+
+## Phase 2.6 - Agent Society Telemetry
+
+Goal: record agent performance and routing evidence without unsafe self-modification.
+
+Deliverables:
+
+- `AgentProfile`, `PerformanceRecord`, `PeerReview`, `UserFeedback`, `RoutingPolicyProposal`, and `PromptMutationProposal` artifacts.
+- Peer review criteria for planner, executor, reviewer, summarizer, memory extractor, and capability extractor roles.
+- User feedback states and attribution fields for failure analysis.
+- Safety gate: profile/routing/prompt changes are proposed first and applied only by approval or low-risk aggregate metric rules.
+
+Exit criteria:
+
+- The system can explain why an agent/provider is preferred for a task.
+- Disagreements and failures improve future routing proposals without silently changing prompts.
+- Agent Society is observable before it is adaptive.
+
+## Phase 3 - Semantic Search
+
+Goal: make the memory graph queryable by meaning, not only text.
+
+Deliverables:
+
+- Embedding abstraction with local and hosted providers.
+- Granular embedding levels: message, pair, segment, conversation summary, user-only thought.
+- Vector index backend: start with local files or SQLite; later pgvector/LanceDB/Qdrant.
+- Search CLI/API: keyword + semantic + graph filters.
+
+Important separation:
+
+- `user_only_embedding`: user's own ideas/questions.
+- `assistant_only_embedding`: model suggestions.
+- `pair_embedding`: interaction meaning.
+- `conversation_embedding`: trajectory summary.
+
+Exit criteria:
+
+- Searching for a concept retrieves related project/context material, not only exact keyword hits.
+- User-originated ideas can be queried separately from AI-originated suggestions.
+
+## Phase 4 - Local API And Visual Board
+
+Goal: provide the UI shown in `docs/image.png` on top of stable data, not as a fake dashboard.
+
+Deliverables:
+
+- Local API for import status, graph summary, search, node detail, and review.
+- Memory cockpit: counts, recent imports, active projects, pending decisions, unresolved questions.
+- Import center: upload/export instructions, parser status, pipeline progress.
+- Ask Memory: query memory graph with evidence references.
+- Graph explorer: project/concept/claim/task relation view.
+- Draft review: accept/edit/reject extracted nodes.
+- Settings: local storage, backup, privacy, provider keys.
+
+Exit criteria:
+
+- UI reads real MemoryOS data.
+- Every answer links back to source nodes.
+- The user can correct graph state through the UI.
+
+## Phase 5 - Hypergraph Research Memory
+
+Goal: implement the Dipeen substrate as a true research memory graph.
+
+MPU-D0: Hypergraph Research Memory.
+
+Minimum corpus:
+
+- 30 research files.
+- 20 code artifacts.
+- 100 notes or conversation excerpts.
+
+Deliverables:
+
+- Nodes: file, chunk, claim, concept, experiment, code, result, memory, agent, task, user intent.
+- Hyperedges: supports, contradicts, derives_from, implements, tests, remembers, compresses, schedules, depends_on, generalizes, specializes.
+- Agents: archivist, critic, planner.
+- Metrics: evidence recall, duplicate task reduction, next-action quality, stale claim detection.
+
+Exit criteria:
+
+- Same-question evidence retrieval improves over raw text search.
+- The graph reduces repeated work or catches stale/contradictory claims in real use.
+
+## Phase 6 - GoEN Reverse Translation
+
+Goal: convert human language into structured cognition, not only summaries.
+
+Deliverables:
+
+- Surface parser for documents/conversations.
+- Claim/event/intent/uncertainty extractor.
+- Ontology mapper against existing MemoryOS concepts.
+- Hyperedge constructor.
+- Possibility brancher for ambiguous interpretations.
+- Optional phase-coded representation fields: salience, confidence, viewpoint, temporal stance, revisability.
+
+Research question:
+
+Can reverse-translation from natural language into plastic hypergraph representations improve long-horizon reasoning, memory consistency, and self-revision compared to token/vector-based memory?
+
+Exit criteria:
+
+- Ambiguous language is preserved as branches instead of forced into one summary.
+- Claim-evidence alignment and contradiction detection improve over static summaries.
+
+## Phase 7 - Ontology Plasticity Agent
+
+Goal: prove structural plasticity in a small world before claiming a larger architecture.
+
+MPU-D1 / MPU-delta0: Ontology Plasticity Agent.
+
+Actions:
+
+- AddNode.
+- SplitNode.
+- MergeNode.
+- AddTypedEdge.
+- RetypeEdge.
+- PruneEdge.
+- PromoteSubgraph.
+
+Metrics:
+
+- Prediction error reduction.
+- Adaptation speed.
+- Catastrophic forgetting reduction.
+- Contradiction reduction.
+- Task transfer.
+
+Comparison:
+
+```text
+fixed graph
+  < rewired graph
+  < ontology-editing graph
+```
+
+Exit criteria:
+
+- The ontology-editing agent repairs a hidden relation change better than static graph or vector memory baselines.
+
+## Phase 8 - Swarm Rewrite Policy
+
+Goal: make multiple agents safe and useful as graph rewrite operators.
+
+MPU-D2: Swarm Rewrite Policy.
+
+Deliverables:
+
+- Agent permissions over node/edge types.
+- Proposed edit queue.
+- Scoring: predictive gain, compression gain, consistency gain, intervention usefulness, memory stability.
+- Commit log and rollback for graph edits.
+- Disagreement records between agents.
+
+Exit criteria:
+
+- Agents can disagree without corrupting graph state.
+- The system records why an edit was accepted, rejected, or deferred.
+
+## Phase 9 - Personal Thought Encoder
+
+Goal: project general embeddings into the user's personal semantic space.
+
+V0:
+
+- Base embeddings only.
+
+V1:
+
+- Base embedding -> 2-layer MLP.
+- Loss: project classification + intent classification + contrastive loss.
+
+V2:
+
+- Add graph relation loss.
+
+V3:
+
+- Add temporal trajectory modeling.
+
+V4:
+
+- Personal Thought Encoder for user-specific retrieval and reflection.
+
+Exit criteria:
+
+- Queries retrieve conceptually related user concerns, not just literal keyword matches.
+- Project, intent, and temporal trajectory axes become visible in retrieval.
+
+## Phase 10 - Productization
+
+Goal: turn the local tool into a trustworthy product without violating the privacy premise.
+
+Stages:
+
+1. Local-first tool.
+2. Optional encrypted cloud sync.
+3. Desktop app or browser clipping extension.
+4. Personal AI agent with cross-provider memory.
+5. Team memory only after security model matures.
+
+Non-negotiables:
+
+- Raw exports encrypted or local-only by default.
+- Delete/export controls.
+- Clear separation between personal memory and model training.
+- No training on user uploads without explicit consent.
+- Sensitive project exclusion.

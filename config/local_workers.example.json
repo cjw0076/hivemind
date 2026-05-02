@@ -1,0 +1,55 @@
+{
+  "runtime": {
+    "kind": "ollama",
+    "base_url": "http://127.0.0.1:11434"
+  },
+  "routing": {
+    "classification": {
+      "primary": "classifier",
+      "fast_model": "qwen3:1.7b",
+      "default_model": "qwen3:1.7b",
+      "strong_model": "qwen3:8b",
+      "escalate_when": ["confidence_below_0_75", "ambiguous_task_type"]
+    },
+    "memory_extraction": {
+      "primary": "memory_extractor",
+      "fast_model": "qwen3:8b",
+      "default_model": "qwen3:8b",
+      "strong_model": "deepseek-coder-v2:16b",
+      "escalate_when": ["confidence_below_0_75", "decision_node", "conflict", "security_or_privacy"]
+    },
+    "context_compression": {
+      "primary": "context_compressor",
+      "fast_model": "qwen3:8b",
+      "default_model": "qwen3:8b",
+      "strong_model": "deepseek-coder-v2:16b"
+    },
+    "handoff_drafting": {
+      "primary": "handoff_drafter",
+      "fast_model": "qwen3:8b",
+      "default_model": "qwen3:8b",
+      "strong_model": "deepseek-coder-v2:16b",
+      "final_reviewer": "claude_or_codex"
+    },
+    "log_summarization": {
+      "primary": "log_summarizer",
+      "fast_model": "qwen3:1.7b",
+      "default_model": "deepseek-coder:6.7b",
+      "strong_model": "deepseek-coder-v2:16b"
+    },
+    "capability_extraction": {
+      "primary": "capability_extractor",
+      "fast_model": "qwen3:8b",
+      "default_model": "qwen3:8b",
+      "strong_model": "deepseek-coder-v2:16b",
+      "review_top_ranked_items_with": "claude"
+    },
+    "diff_review": {
+      "primary": "diff_reviewer",
+      "fast_model": "deepseek-coder:6.7b",
+      "default_model": "deepseek-coder-v2:16b",
+      "strong_model": "deepseek-coder-v2:16b",
+      "escalate_when": ["security_or_privacy", "schema_change", "missing_tests", "confidence_below_0_75"]
+    }
+  }
+}

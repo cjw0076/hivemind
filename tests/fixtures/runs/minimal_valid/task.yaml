@@ -1,0 +1,7 @@
+run_id: minimal_valid
+user_request: "fixture task"
+project: MemoryOS
+task_type: implementation
+goal: "Validate the minimal run schema."
+priority: high
+status: planned

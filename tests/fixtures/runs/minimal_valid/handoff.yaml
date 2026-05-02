@@ -1,0 +1,7 @@
+from_agent: harness
+to_agent: codex
+objective: "fixture task"
+constraints:
+  - Use structured artifacts.
+acceptance_criteria:
+  - Validation passes.

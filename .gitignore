@@ -1,0 +1,23 @@
+# local run artifacts
+.runs/
+.local/
+.memoryos/
+*.log
+*.pid
+
+# raw/private imports and generated memory stores
+data/
+memory/processed/
+ontology/edges.jsonl
+
+# generated run outputs; keep curated work-item docs
+runs/*
+!runs/work_items/
+!runs/work_items/*.md
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

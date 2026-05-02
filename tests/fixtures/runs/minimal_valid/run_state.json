@@ -1,0 +1,31 @@
+{
+  "agents": [
+    {
+      "name": "verifier",
+      "status": "pending"
+    }
+  ],
+  "artifacts": {
+    "context_pack": "minimal_valid/context_pack.md",
+    "events": "minimal_valid/events.jsonl",
+    "final_report": "minimal_valid/final_report.md",
+    "handoff": "minimal_valid/handoff.yaml",
+    "memory_drafts": "minimal_valid/memory_drafts.json",
+    "task": "minimal_valid/task.yaml",
+    "verification": "minimal_valid/verification.yaml"
+  },
+  "context": {
+    "active_decisions": 0,
+    "memories_used": 0,
+    "open_questions": 0
+  },
+  "created_at": "2026-05-02T00:00:00+09:00",
+  "latest_event": "run_created",
+  "phase": "planned",
+  "project": "MemoryOS",
+  "run_id": "minimal_valid",
+  "status": "planned",
+  "task_type": "implementation",
+  "updated_at": "2026-05-02T00:00:00+09:00",
+  "user_request": "fixture task"
+}

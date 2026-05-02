@@ -1,0 +1,13 @@
+[project]
+name = "memoryos"
+version = "0.1.0"
+description = "Local-first MemoryOS graph substrate for MyWorld"
+requires-python = ">=3.11"
+dependencies = ["PyYAML>=6.0.3"]
+
+[project.scripts]
+memoryos = "memoryos.cli:main"
+mos = "memoryos.mos:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
