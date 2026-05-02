@@ -20,6 +20,7 @@ Sources: `VG-03`, `VG-04`, `VG-05`, `VG-13`.
 - [x] Add `mos local status/setup` for Ollama wrapper, server state, and local model manifests.
 - [x] Include local LLM model manifest detection in `mos init` onboarding output.
 - [x] Stabilize `mos` run artifact schemas: task, handoff, run state, verification, memory drafts, final report.
+- [x] Add canonical `.runs` protocol spec for the MemoryOS Core kernel.
 - [x] Add event taxonomy and validation for `.runs/*/events.jsonl`.
 - [x] Normalize provider invocation artifacts for Claude, Codex, Gemini, and local workers.
 - [x] Add local worker route table with schema validation, confidence, and escalation fields.
@@ -34,6 +35,8 @@ Sources: `VG-03`, `VG-04`, `VG-05`, `VG-13`.
 Sources: `VG-03`, `VG-04`, `VG-13`.
 
 - [x] Add schema validation to `python -m memoryos.mos verify`.
+- [x] Validate provider `*_result.yaml` artifacts during `mos verify`.
+- [x] Add `MemoryObject` and `Hyperedge` schemas in code.
 - [x] Add `mos invoke <provider> --dry-run` for prompt/command artifact generation.
 - [x] Keep Codex prepare-only until non-interactive execution is explicitly stable.
 - [x] Record provider mode: `prepare_only`, `execute_supported`, or `unavailable`.
@@ -72,6 +75,7 @@ Sources: `VG-01`, `VG-07`, `VG-09`, `VG-12`.
 - [ ] Add claim fields: evidence_state, confidence, reviewer, review_time.
 - [ ] Add edge fields: relation confidence, evidence list, plasticity score, last used.
 - [ ] Add hyperedge representation for multi-node events.
+- [x] Add first `Hyperedge` dataclass representation for multi-node events.
 - [ ] Add project nodes and project membership edges.
 - [ ] Add user-originated vs AI-originated provenance fields.
 

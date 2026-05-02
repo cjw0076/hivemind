@@ -39,8 +39,10 @@ Goal: make `mos` the first operational wrapper around MemoryOS, local workers, a
 Deliverables:
 
 - Stable `.runs/` folder protocol with `task.yaml`, `context_pack.md`, `handoff.yaml`, `events.jsonl`, `run_state.json`, `verification.yaml`, `memory_drafts.json`, and `final_report.md`.
+- Canonical protocol spec in `docs/RUN_ARTIFACT_PROTOCOL.md`.
 - `mos run`, `mos status`, `mos tui`, `mos context`, `mos handoff`, `mos invoke`, `mos verify`, `mos summarize`, and `mos memory draft`.
 - Provider invocation artifacts for Claude, Codex, Gemini, and local workers.
+- Provider result validation for `agents/<provider>/<role>_result.yaml`.
 - Prepare-only path for providers without a stable non-interactive execution contract.
 - Recoverable failure artifacts when a provider or local model is unavailable.
 - TUI status surface that reads run files without requiring a DB.

@@ -216,3 +216,10 @@
 - Decision: Extended provider detection into a normalized adapter registry with stubs for `opencode`, `goose`, and `openclaude`, plus normalized `id`, `kind`, `roles`, `mode`, and `risks` for Claude, Codex, Gemini, Ollama, DeepSeek API, and Qwen API.
 - Evidence: `mos agents detect --json` now reports available provider CLIs, unconfigured hosted APIs, unavailable adapter stubs, base URLs, and policy risks. Verified py_compile and unit tests.
 - Next: Harden provider result validation and add malformed provider artifact fixtures.
+
+## 2026-05-02 10:39 KST - Codex
+
+- Context: User clarified the repo identity as the first executable MyWorld/MemoryOS agent blackboard + local harness + ontology-memory MVP, and directed work toward stabilizing MemoryOS Core before CapabilityOS/Surfer/Discriminator.
+- Decision: Froze `.runs` as the canonical kernel protocol, added `MemoryObject` and `Hyperedge` schemas, tightened memory draft validation, and added provider `*_result.yaml` validation to `mos verify`.
+- Evidence: Added `docs/RUN_ARTIFACT_PROTOCOL.md`, schema dataclasses in `memoryos/schema.py`, stricter validation in `memoryos/run_validation.py`, and tests for invalid memory drafts, invalid provider results, and MemoryObject/Hyperedge constructors. Verified py_compile, unit tests, and `mos verify` on the current run.
+- Next: Keep CapabilityOS deferred; next hardening should add more malformed run fixtures and provider result schema coverage.

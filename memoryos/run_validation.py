@@ -19,6 +19,25 @@ ALLOWED_EVENT_TYPES = {
     "verification_created",
     "summary_created",
     "memory_drafts_created",
+    "context_edited",
+    "intent_routed",
+    "routing_plan_created",
+    "route_action_failed",
+    "checks_report_created",
+    "git_diff_report_created",
+    "git_diff_captured",
+    "commit_summary_created",
+}
+
+RUN_ARTIFACT_SPEC = {
+    "task": "task.yaml",
+    "context_pack": "context_pack.md",
+    "handoff": "handoff.yaml",
+    "events": "events.jsonl",
+    "run_state": "run_state.json",
+    "verification": "verification.yaml",
+    "memory_drafts": "memory_drafts.json",
+    "final_report": "final_report.md",
 }
 
 REQUIRED_RUN_STATE_KEYS = {
@@ -39,6 +58,12 @@ REQUIRED_RUN_STATE_KEYS = {
 REQUIRED_TASK_KEYS = {"run_id", "user_request", "project", "task_type", "goal", "priority", "status"}
 REQUIRED_HANDOFF_KEYS = {"from_agent", "to_agent", "objective", "constraints", "acceptance_criteria"}
 REQUIRED_MEMORY_DRAFT_KEYS = {"type", "content", "origin", "project", "confidence", "status", "raw_refs"}
+ALLOWED_MEMORY_TYPES = {"idea", "decision", "action", "question", "constraint", "preference", "artifact", "reflection"}
+ALLOWED_MEMORY_ORIGINS = {"user", "assistant", "mixed", "unknown"}
+ALLOWED_MEMORY_STATUSES = {"draft", "reviewed", "accepted", "rejected", "speculative", "stale"}
+REQUIRED_PROVIDER_RESULT_KEYS = {"schema_version", "agent", "role", "status", "provider_mode"}
+ALLOWED_PROVIDER_STATUSES = {"prepared", "completed", "failed", "fallback"}
+ALLOWED_PROVIDER_MODES = {"prepare_only", "execute_supported", "unavailable", "local_runtime", "http"}
 
 
 def validate_run_artifacts(run_dir: Path, root: Path) -> dict[str, Any]:
@@ -47,16 +72,7 @@ def validate_run_artifacts(run_dir: Path, root: Path) -> dict[str, Any]:
     issues: list[str] = []
 
     run_id = run_dir.name
-    paths = {
-        "task": run_dir / "task.yaml",
-        "context_pack": run_dir / "context_pack.md",
-        "handoff": run_dir / "handoff.yaml",
-        "events": run_dir / "events.jsonl",
-        "run_state": run_dir / "run_state.json",
-        "verification": run_dir / "verification.yaml",
-        "memory_drafts": run_dir / "memory_drafts.json",
-        "final_report": run_dir / "final_report.md",
-    }
+    paths = {name: run_dir / filename for name, filename in RUN_ARTIFACT_SPEC.items()}
 
     for name, path in paths.items():
         checks[f"{name}_exists"] = path.exists()
@@ -76,6 +92,7 @@ def validate_run_artifacts(run_dir: Path, root: Path) -> dict[str, Any]:
     checks["memory_drafts_schema_valid"] = validate_memory_drafts(memory, issues) if memory is not None else True
     checks["final_report_schema_valid"] = validate_final_report(paths["final_report"], run_id, issues)
     checks["state_artifact_refs_valid"] = validate_state_artifact_refs(state, root, issues)
+    checks["provider_results_schema_valid"] = validate_provider_results(run_dir, root, issues)
 
     if isinstance(task, dict) and task.get("run_id") != run_id:
         checks["task_run_id_matches"] = False
@@ -183,6 +200,52 @@ def validate_memory_drafts(data: Any, issues: list[str]) -> bool:
         if not isinstance(confidence, (int, float)) or not 0 <= float(confidence) <= 1:
             issues.append(f"memory_drafts[{index}].confidence must be between 0 and 1")
             ok = False
+        if draft.get("type") not in ALLOWED_MEMORY_TYPES:
+            issues.append(f"memory_drafts[{index}].type is invalid: {draft.get('type')}")
+            ok = False
+        if draft.get("origin") not in ALLOWED_MEMORY_ORIGINS:
+            issues.append(f"memory_drafts[{index}].origin is invalid: {draft.get('origin')}")
+            ok = False
+        if draft.get("status") not in ALLOWED_MEMORY_STATUSES:
+            issues.append(f"memory_drafts[{index}].status is invalid: {draft.get('status')}")
+            ok = False
+        if not isinstance(draft.get("content"), str) or not draft.get("content", "").strip():
+            issues.append(f"memory_drafts[{index}].content must be a non-empty string")
+            ok = False
+        if not isinstance(draft.get("project"), str) or not draft.get("project", "").strip():
+            issues.append(f"memory_drafts[{index}].project must be a non-empty string")
+            ok = False
+        raw_refs = draft.get("raw_refs")
+        if not isinstance(raw_refs, list) or not all(isinstance(ref, str) and ref for ref in raw_refs):
+            issues.append(f"memory_drafts[{index}].raw_refs must be a list of non-empty strings")
+            ok = False
+    return ok
+
+
+def validate_provider_results(run_dir: Path, root: Path, issues: list[str]) -> bool:
+    ok = True
+    result_paths = sorted((run_dir / "agents").glob("*/*_result.yaml"))
+    for path in result_paths:
+        data = load_yaml(path, "provider_result", issues, required=False)
+        if not isinstance(data, dict):
+            issues.append(f"provider result must be an object: {path.relative_to(root).as_posix()}")
+            ok = False
+            continue
+        missing = sorted(REQUIRED_PROVIDER_RESULT_KEYS - set(data))
+        if missing:
+            issues.append(f"{path.relative_to(root).as_posix()} missing required keys: {', '.join(missing)}")
+            ok = False
+        if data.get("status") not in ALLOWED_PROVIDER_STATUSES:
+            issues.append(f"{path.relative_to(root).as_posix()} has invalid status: {data.get('status')}")
+            ok = False
+        if data.get("provider_mode") not in ALLOWED_PROVIDER_MODES:
+            issues.append(f"{path.relative_to(root).as_posix()} has invalid provider_mode: {data.get('provider_mode')}")
+            ok = False
+        for ref_key in ["prompt", "command", "output"]:
+            ref = data.get(ref_key)
+            if isinstance(ref, str) and ref and not (root / ref).exists():
+                issues.append(f"{path.relative_to(root).as_posix()} {ref_key} points to missing file: {ref}")
+                ok = False
     return ok
 
 
