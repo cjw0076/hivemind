@@ -25,6 +25,7 @@ Sources: `VG-03`, `VG-04`, `VG-05`, `VG-13`.
 - [x] Add local worker route table with schema validation, confidence, and escalation fields.
 - [x] Make `mos tui` show current run health, provider availability, latest event, failures, and missing artifacts.
 - [x] Add parser warnings instead of failing entire imports on one malformed record.
+- [x] Persist production settings profile during onboarding so provider paths, local model inventory, and shell exports are tracked.
 
 ## Harness Runtime
 
@@ -37,6 +38,7 @@ Sources: `VG-03`, `VG-04`, `VG-13`.
 - [x] Ensure failed provider/local invocations write artifacts and events.
 - [x] Add a minimal valid run fixture for harness tests.
 - [x] Add `memoryos import-run .runs/<run_id>` or equivalent draft import path.
+- [x] Add `mos settings detect/shell` and `scripts/mos-workbench.sh` for context editing plus fast provider artifact preparation.
 
 ## Parser Work
 

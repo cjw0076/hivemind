@@ -53,3 +53,12 @@ See:
 - `docs/PROVIDER_MODELS.md` — OpenRouter, DeepSeek, xAI/Grok, OpenAI, gpt-oss, Llama access plan.
 - `docs/OPEN_MODEL_PROVIDER_SURVEY.md` — broader open-model provider survey.
 - `config/providers.example.yaml` — provider registry template.
+
+## Fast Workbench
+
+```bash
+python -m memoryos.mos init
+scripts/mos-workbench.sh "your task"
+```
+
+Onboarding persists detected provider/runtime settings to `.memoryos/settings_profile.json` and `~/.memoryos/settings_profile.json`. Use `eval "$(python -m memoryos.mos settings shell)"` when launching provider CLIs from custom scripts.

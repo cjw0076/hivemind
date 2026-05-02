@@ -167,3 +167,10 @@
 - Decision: Added `memoryos import-run <run_id|current|path>` to convert `.runs/<run_id>/memory_drafts.json` plus run state into draft MemoryOS graph nodes.
 - Evidence: Added `build_run_import()` and `tests/test_import_run.py`. Verified `python -m unittest tests.test_run_validation tests.test_import_warnings tests.test_import_run`, `python -m memoryos.cli import-run current --dry-run`, `python -m memoryos.mos verify`, and `python -m memoryos.mos status`.
 - Next: Move into Parser Work and Schema Work, starting with redacted fixtures and reviewed node status fields.
+
+## 2026-05-02 09:56 KST - Codex
+
+- Context: User asked whether Codex failure was caused by a pinned wrapper or by this active session, then noted production onboarding should auto-track these settings.
+- Decision: Treated the issue as a PATH/provider resolution problem, not a session lock. Added persisted settings profiles and a fast workbench script so production CLI onboarding records usable provider binaries, local model state, shell exports, and warnings.
+- Evidence: `mos doctor` now detects Codex through `/home/user/.nvm/versions/node/v22.22.2/bin/codex` while warning that `/home/user/bin/codex` is gated. Added `mos settings detect`, `mos settings shell`, and `scripts/mos-workbench.sh`; verified py_compile, unit tests, `mos init`, `mos settings shell`, and a smoke workbench run.
+- Next: Keep Codex execution prepare-only until the non-interactive contract is safe; continue parser/schema TODOs after this settings layer is committed.

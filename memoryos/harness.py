@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import urllib.error
@@ -23,6 +24,7 @@ CURRENT_FILE = "current"
 PROVIDER_CAPABILITIES = "provider_capabilities.json"
 GLOBAL_DIR = ".memoryos"
 PROJECT_DIR = ".memoryos"
+SETTINGS_PROFILE = "settings_profile.json"
 
 
 @dataclass(frozen=True)
@@ -138,6 +140,7 @@ def init_onboarding(root: Path) -> dict[str, Any]:
 
     providers = detect_agents(root, write=True)
     local_runtime = local_runtime_report(root, write=True)
+    settings_profile = write_settings_profile(root, providers=providers, local_runtime=local_runtime)
     report = doctor_report(root)
     return {
         "generated_at": now_iso(),
@@ -148,6 +151,7 @@ def init_onboarding(root: Path) -> dict[str, Any]:
         "existing": existing,
         "providers": providers["providers"],
         "local_runtime": local_runtime,
+        "settings_profile": settings_profile,
         "doctor": report,
     }
 
@@ -185,6 +189,14 @@ def format_onboarding(report: dict[str, Any]) -> str:
             lines.append(f"○ {model}")
     if local_runtime.get("open_weight_note"):
         lines.append(local_runtime["open_weight_note"])
+    settings_profile = report.get("settings_profile") or {}
+    lines.extend(["", "Settings Profile:"])
+    lines.append(f"✓ project: {settings_profile.get('project_profile')}")
+    lines.append(f"✓ global: {settings_profile.get('global_profile')}")
+    if settings_profile.get("warnings"):
+        lines.append("Warnings:")
+        for warning in settings_profile["warnings"]:
+            lines.append(f"! {warning}")
     lines.extend(
         [
             "",
@@ -192,8 +204,9 @@ def format_onboarding(report: dict[str, Any]) -> str:
             "1. mos doctor",
             '2. mos run "your task"',
             "3. mos tui",
-            "4. optional: mos local setup",
-            "5. optional: mos mcp install --for all",
+            "4. optional: eval \"$(mos settings shell)\"",
+            "5. optional: mos local setup",
+            "6. optional: mos mcp install --for all",
         ]
     )
     return "\n".join(lines)
@@ -306,6 +319,114 @@ def detect_agents(root: Path, write: bool = True) -> dict[str, Any]:
     return result
 
 
+def build_settings_profile(
+    root: Path,
+    providers: dict[str, Any] | None = None,
+    local_runtime: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create the persisted settings profile used by scripts and provider launchers."""
+    providers = providers or detect_agents(root, write=True)
+    local_runtime = local_runtime or local_runtime_report(root, write=False)
+    provider_items = providers.get("providers", {})
+    warnings = []
+    shell_exports: dict[str, str] = {
+        "MEMORYOS_ROOT": root.as_posix(),
+        "MEMORYOS_RUNS_DIR": (root / RUNS_DIR).as_posix(),
+    }
+    tracked_providers: dict[str, Any] = {}
+    for name, item in provider_items.items():
+        command_path = item.get("path") or item.get("command")
+        tracked = {
+            "status": item.get("status"),
+            "command": item.get("command"),
+            "path": command_path,
+            "version": item.get("version", ""),
+            "mode": item.get("mode"),
+            "roles": item.get("roles", []),
+            "reason": item.get("reason", ""),
+        }
+        tracked_providers[name] = tracked
+        if command_path:
+            shell_exports[f"MOS_{name.upper()}_BIN"] = command_path
+        if item.get("status") == "gated":
+            warnings.append(f"{name} first candidate is gated: {item.get('reason', '')}".strip())
+    codex = provider_items.get("codex") or {}
+    codex_path = codex.get("path") or ""
+    path_codex = shutil.which("codex") or ""
+    if codex_path and path_codex and codex_path != path_codex:
+        warnings.append(f"codex PATH resolves to {path_codex}, but usable binary is {codex_path}")
+    ollama = (local_runtime.get("ollama") or {}) if isinstance(local_runtime, dict) else {}
+    if ollama.get("path"):
+        shell_exports["MOS_OLLAMA_BIN"] = ollama["path"]
+    return {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "root": root.as_posix(),
+        "providers": tracked_providers,
+        "local_runtime": local_runtime,
+        "shell_exports": shell_exports,
+        "warnings": warnings,
+    }
+
+
+def write_settings_profile(
+    root: Path,
+    providers: dict[str, Any] | None = None,
+    local_runtime: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    profile = build_settings_profile(root, providers=providers, local_runtime=local_runtime)
+    project_dir = root / PROJECT_DIR
+    global_dir = Path.home() / GLOBAL_DIR
+    project_dir.mkdir(parents=True, exist_ok=True)
+    global_dir.mkdir(parents=True, exist_ok=True)
+    project_profile = project_dir / SETTINGS_PROFILE
+    global_profile = global_dir / SETTINGS_PROFILE
+    write_json(project_profile, profile)
+    write_json(global_profile, profile)
+    return {
+        "project_profile": project_profile.as_posix(),
+        "global_profile": global_profile.as_posix(),
+        "warnings": profile.get("warnings", []),
+        "shell_exports": profile.get("shell_exports", {}),
+    }
+
+
+def settings_report(root: Path, write: bool = True) -> dict[str, Any]:
+    providers = detect_agents(root, write=True)
+    local_runtime = local_runtime_report(root, write=True)
+    profile_summary = write_settings_profile(root, providers=providers, local_runtime=local_runtime) if write else {}
+    profile = build_settings_profile(root, providers=providers, local_runtime=local_runtime)
+    profile.update(profile_summary)
+    return profile
+
+
+def format_settings(report: dict[str, Any]) -> str:
+    lines = ["MemoryOS Settings Profile", "", f"Root: {report.get('root')}"]
+    if report.get("project_profile"):
+        lines.append(f"Project profile: {report.get('project_profile')}")
+    if report.get("global_profile"):
+        lines.append(f"Global profile: {report.get('global_profile')}")
+    lines.extend(["", "Providers:"])
+    for name, provider in (report.get("providers") or {}).items():
+        detail = provider.get("version") or provider.get("path") or provider.get("reason", "")
+        icon = "✓" if provider.get("status") in {"available", "configured"} else ("!" if provider.get("status") == "gated" else "○")
+        lines.append(f"{icon} {name}: {provider.get('status')} {detail}")
+    lines.extend(["", "Shell:"])
+    lines.append('eval "$(mos settings shell)"')
+    if report.get("warnings"):
+        lines.extend(["", "Warnings:"])
+        for warning in report["warnings"]:
+            lines.append(f"! {warning}")
+    return "\n".join(lines)
+
+
+def format_settings_shell(report: dict[str, Any]) -> str:
+    lines = ["# MemoryOS shell profile"]
+    for key, value in sorted((report.get("shell_exports") or {}).items()):
+        lines.append(f"export {key}={shlex.quote(str(value))}")
+    return "\n".join(lines)
+
+
 def doctor_report(root: Path) -> dict[str, Any]:
     runs_dir = init_harness(root)
     current = get_current(root)
@@ -346,34 +467,63 @@ def format_doctor(report: dict[str, Any]) -> str:
 
 
 def probe_command(name: str, version_args: list[str], roles: list[str], mode: str | None = None) -> dict[str, Any]:
-    path = shutil.which(name)
-    if not path:
+    candidates = command_candidates(name)
+    if not candidates:
         return {"status": "unavailable", "command": name, "roles": roles, "reason": "not found on PATH"}
-    version = ""
+    gated_probe: dict[str, Any] | None = None
     try:
-        completed = subprocess.run([path, *version_args], text=True, capture_output=True, timeout=10)
-        raw = (completed.stdout or completed.stderr).strip()
-        if completed.returncode != 0 or "접근 거부" in raw or "틀렸습니다" in raw:
+        for path in candidates:
+            completed = subprocess.run([path, *version_args], text=True, capture_output=True, timeout=10)
+            raw = (completed.stdout or completed.stderr).strip()
+            if completed.returncode != 0 or "접근 거부" in raw or "틀렸습니다" in raw:
+                gated_probe = {
+                    "status": "gated",
+                    "command": name,
+                    "path": path,
+                    "version": "",
+                    "roles": roles,
+                    "mode": "prepare_only",
+                    "reason": raw.splitlines()[0] if raw else f"{name} probe exited {completed.returncode}",
+                }
+                continue
+            version = raw.splitlines()[0] if raw else ""
             return {
-                "status": "gated",
+                "status": "available",
                 "command": name,
                 "path": path,
-                "version": "",
+                "version": version,
                 "roles": roles,
-                "mode": "prepare_only",
-                "reason": raw.splitlines()[0] if raw else f"{name} probe exited {completed.returncode}",
+                "mode": mode or ("execute_supported" if name in {"claude", "gemini"} else "prepare_only"),
             }
-        version = raw.splitlines()[0] if raw else ""
     except Exception as exc:
-        version = f"version probe failed: {exc}"
-    return {
-        "status": "available",
-        "command": name,
-        "path": path,
-        "version": version,
-        "roles": roles,
-        "mode": mode or ("execute_supported" if name in {"claude", "gemini"} else "prepare_only"),
-    }
+        return {
+            "status": "gated",
+            "command": name,
+            "path": candidates[0],
+            "version": "",
+            "roles": roles,
+            "mode": "prepare_only",
+            "reason": f"version probe failed: {exc}",
+        }
+    return gated_probe or {"status": "unavailable", "command": name, "roles": roles, "reason": "no usable candidate"}
+
+
+def command_candidates(name: str) -> list[str]:
+    paths: list[str] = []
+    first = shutil.which(name)
+    if first:
+        paths.append(first)
+    if name == "codex":
+        candidate = Path.home() / ".nvm" / "versions" / "node" / "v22.22.2" / "bin" / "codex"
+        if candidate.exists():
+            paths.append(candidate.as_posix())
+    seen = set()
+    unique = []
+    for path in paths:
+        if path not in seen:
+            seen.add(path)
+            unique.append(path)
+    return unique
 
 
 def probe_env_provider(name: str, env_var: str, roles: list[str]) -> dict[str, Any]:
@@ -632,7 +782,7 @@ def invoke_external_agent(
 
     if not execute:
         command_path = agent_dir / f"{role}_command.txt"
-        command_path.write_text(suggest_external_command(agent, prompt_path), encoding="utf-8")
+        command_path.write_text(suggest_external_command(agent, prompt_path, root), encoding="utf-8")
         result_path = agent_dir / f"{role}_result.yaml"
         provider = detect_agents(root, write=True)["providers"].get(agent, {})
         result = {
@@ -655,7 +805,7 @@ def invoke_external_agent(
     result_path = agent_dir / f"{role}_result.yaml"
     if agent == "codex":
         command_path = agent_dir / f"{role}_command.txt"
-        command_path.write_text(suggest_external_command(agent, prompt_path), encoding="utf-8")
+        command_path.write_text(suggest_external_command(agent, prompt_path, root), encoding="utf-8")
         result = {
             "schema_version": 1,
             "agent": agent,
@@ -673,7 +823,7 @@ def invoke_external_agent(
         update_state(paths, phase="handoff", status="needs_attention")
         return result_path
 
-    agent_bin = shutil.which(agent)
+    agent_bin = resolve_provider_binary(root, agent)
     if not agent_bin:
         result = {
             "schema_version": 1,
@@ -793,12 +943,20 @@ def build_external_prompt(paths: RunPaths, state: dict[str, Any], agent: str, ro
     )
 
 
-def suggest_external_command(agent: str, prompt_path: Path) -> str:
+def resolve_provider_binary(root: Path, agent: str) -> str | None:
+    provider = detect_agents(root, write=True)["providers"].get(agent, {})
+    return provider.get("path") or shutil.which(agent)
+
+
+def suggest_external_command(agent: str, prompt_path: Path, root: Path | None = None) -> str:
+    binary = resolve_provider_binary(root, agent) if root else shutil.which(agent)
+    cmd = shlex.quote(binary or agent)
+    prompt = shlex.quote(prompt_path.as_posix())
     if agent == "claude":
-        return f"claude -p \"$(cat {prompt_path})\" --permission-mode plan --output-format text\n"
+        return f"{cmd} -p \"$(cat {prompt})\" --permission-mode plan --output-format text\n"
     if agent == "gemini":
-        return f"gemini -p \"$(cat {prompt_path})\" --approval-mode plan --output-format text --skip-trust\n"
-    return f"codex exec --cd . --sandbox read-only --ask-for-approval never \"$(cat {prompt_path})\"\n"
+        return f"{cmd} -p \"$(cat {prompt})\" --approval-mode plan --output-format text --skip-trust\n"
+    return f"{cmd} exec --cd . --sandbox read-only --ask-for-approval never \"$(cat {prompt})\"\n"
 
 
 def external_command(agent: str, binary: str, prompt: str) -> list[str]:

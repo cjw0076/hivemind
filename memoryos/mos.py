@@ -25,6 +25,9 @@ from .harness import (
     load_run,
     open_run_folder,
     format_onboarding,
+    format_settings,
+    format_settings_shell,
+    settings_report,
 )
 from .tui import print_status, run_tui
 
@@ -43,6 +46,13 @@ def main() -> None:
     agents_sub = agents_cmd.add_subparsers(dest="agents_cmd", required=True)
     detect_cmd = agents_sub.add_parser("detect", help="detect installed provider CLIs and runtime config")
     detect_cmd.add_argument("--json", action="store_true")
+
+    settings_cmd = sub.add_parser("settings", help="detect and persist production CLI settings")
+    settings_sub = settings_cmd.add_subparsers(dest="settings_cmd", required=True)
+    settings_detect_cmd = settings_sub.add_parser("detect", help="write provider/runtime settings profile")
+    settings_detect_cmd.add_argument("--json", action="store_true")
+    settings_shell_cmd = settings_sub.add_parser("shell", help="print shell exports for detected providers")
+    settings_shell_cmd.add_argument("--json", action="store_true")
 
     local_cmd = sub.add_parser("local", help="local runtime helpers")
     local_sub = local_cmd.add_subparsers(dest="local_cmd", required=True)
@@ -127,6 +137,23 @@ def main() -> None:
                 detail = item.get("version") or item.get("path") or item.get("reason", "")
                 print(f"{name}: {item.get('status')} {detail}")
             print(root / ".runs" / "provider_capabilities.json")
+        return
+    if args.cmd == "settings":
+        report = settings_report(root, write=True)
+        if args.settings_cmd == "shell":
+            if args.json:
+                import json
+
+                print(json.dumps(report.get("shell_exports", {}), ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(format_settings_shell(report))
+            return
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_settings(report))
         return
     if args.cmd == "local":
         if args.local_cmd == "routes":

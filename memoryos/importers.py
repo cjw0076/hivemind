@@ -12,6 +12,9 @@ from .extract import extract_from_text, source_name
 from .schema import Edge, Node, make_edge, stable_id
 
 
+PARSER_VERSION = "0.2.0"
+
+
 @dataclass(slots=True)
 class ImportResult:
     nodes: list[Node] = field(default_factory=list)
@@ -60,6 +63,7 @@ def import_markdown(path: Path) -> tuple[list[Node], list[Edge]]:
     extracted_nodes, extracted_edges = extract_from_text(obs, text, source)
     nodes.extend(extracted_nodes)
     edges.extend(extracted_edges)
+    stamp_parser_metadata(nodes, "markdown")
     return nodes, edges
 
 
@@ -181,6 +185,7 @@ def import_chatgpt_json(path: Path, data: Any, warnings: list[dict[str, Any]] | 
             nodes.extend(extracted_nodes)
             edges.extend(extracted_edges)
 
+    stamp_parser_metadata(nodes, "chatgpt")
     return nodes, edges
 
 
@@ -251,6 +256,7 @@ def import_grok_json(path: Path, data: Any, warnings: list[dict[str, Any]] | Non
         messages.sort(key=lambda item: (item.get("created_at") or "", item["id"]))
         add_messages(nodes, edges, conv_node, messages, source, "grok")
 
+    stamp_parser_metadata(nodes, "grok")
     return nodes, edges
 
 
@@ -289,6 +295,7 @@ def import_markdown_zip(path: Path, archive: zipfile.ZipFile, names: list[str]) 
         nodes.extend(extracted_nodes)
         edges.extend(extracted_edges)
 
+    stamp_parser_metadata(nodes, "markdown_zip")
     return nodes, edges
 
 
@@ -333,6 +340,7 @@ def import_linear_mapping_export(
         messages = flatten_mapping_messages(conv, platform)
         add_messages(nodes, edges, conv_node, messages, source, platform)
 
+    stamp_parser_metadata(nodes, platform)
     return nodes, edges
 
 
@@ -553,3 +561,9 @@ def warn(
     if index is not None:
         item["index"] = index
     warnings.append(item)
+
+
+def stamp_parser_metadata(nodes: list[Node], parser_name: str) -> None:
+    for node in nodes:
+        node.attrs.setdefault("parser_name", parser_name)
+        node.attrs.setdefault("parser_version", PARSER_VERSION)

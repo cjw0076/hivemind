@@ -10,6 +10,8 @@ python -m memoryos.mos doctor
 python -m memoryos.mos local status
 python -m memoryos.mos local setup
 python -m memoryos.mos agents detect
+python -m memoryos.mos settings detect
+eval "$(python -m memoryos.mos settings shell)"
 python -m memoryos.mos run "Build Draft Review screen"
 python -m memoryos.mos status
 python -m memoryos.mos tui
@@ -25,6 +27,14 @@ python -m memoryos.mos memory draft
 ```
 
 If installed as a package, `mos` points to the same command.
+
+For a fast local workbench loop:
+
+```bash
+scripts/mos-workbench.sh "your task"
+```
+
+This creates or reuses a run, persists provider/runtime settings, opens the context pack in `$EDITOR`, prepares Claude/Codex/Gemini artifacts, runs verification, and opens the TUI. Set `MOS_SKIP_EDIT=1` or `MOS_OPEN_TUI=0` for scripted runs.
 
 ## Onboarding
 
@@ -53,6 +63,15 @@ project/.memoryos/
 ```
 
 It also initializes `.runs/`, runs provider detection, writes `.runs/provider_capabilities.json`, scans local Ollama model manifests, writes `.memoryos/local_runtime.json`, and prints next actions.
+
+It also writes a production settings profile:
+
+```text
+~/.memoryos/settings_profile.json
+project/.memoryos/settings_profile.json
+```
+
+That profile tracks provider command paths, versions, roles, modes, local model inventory, warnings, and shell exports such as `MOS_CODEX_BIN`. This matters when a PATH wrapper is pinned ahead of the real provider binary. On this machine, `/home/user/bin/codex` is gated, while the usable Codex CLI is detected at `/home/user/.nvm/versions/node/v22.22.2/bin/codex`.
 
 ## TUI Keybindings
 
@@ -157,6 +176,8 @@ The installed provider commands currently visible to the harness are:
 - `claude`
 - `codex` (`exec` contract known; local execution currently gated)
 - `gemini` (`gemini --version` reported `0.40.1`)
+
+Use `python -m memoryos.mos settings detect` to refresh the profile after installing or changing provider CLIs. Use `eval "$(python -m memoryos.mos settings shell)"` before custom shell scripts that need the resolved binaries.
 
 ## Current Boundary
 
