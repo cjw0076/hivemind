@@ -63,10 +63,10 @@ python -m hivemind.hive doctor hardware
 python -m hivemind.hive local status
 python -m hivemind.hive local setup
 python -m hivemind.hive local setup --auto
-python -m hivemind.hive local benchmark --limit 1
+python -m hivemind.hive local benchmark --limit 1 --role json_normalizer
 python -m hivemind.hive local checker
 scripts/hive-local-benchmark.sh qwen3:1.7b
-HIVE_OLLAMA_MODE=docker scripts/hive-local-benchmark.sh qwen3:1.7b
+HIVE_LOCAL_BACKEND=ollama HIVE_OLLAMA_MODE=docker scripts/hive-local-benchmark.sh qwen3:1.7b
 python -m hivemind.hive agents detect
 python -m hivemind.hive agents roles
 python -m hivemind.hive settings detect
@@ -157,9 +157,9 @@ context phase as complete.
 commands expose production-readiness slices from `docs/hive_mind2.md`:
 
 ```bash
-hive doctor hardware     # CPU, RAM, GPU/VRAM, disk, Python, Node, Docker, Ollama, ports
+hive doctor hardware     # CPU, RAM, GPU/VRAM, disk, Python, Node, Docker, local adapter ports
 hive doctor providers    # provider capability registry and CLI/API availability
-hive doctor models       # Ollama/local model inventory and worker role assignments
+hive doctor models       # local backend inventory and worker role assignments
 hive doctor permissions  # project policy/check state and provider risk inventory
 hive doctor all          # combined production readiness report
 ```
@@ -175,9 +175,10 @@ hive agents explain claude.planner
 hive context build --for codex.executor
 hive local setup --auto
 hive local benchmark
+hive local benchmark --model qwen3:1.7b --role classify --role json_normalizer
 hive local checker
 hive local checker --execute
-npm run ollama:docker
+npm run backend:ollama:docker
 npm run benchmark:local
 hive audit
 hive workspace --layout dev
@@ -189,17 +190,33 @@ user/Claude/Codex/local-LLM loop as a reusable protocol. The quiet internal
 thread is `evolution of Single Human Intelligence`; treat it as product
 identity, not a scientific claim.
 
-Local benchmark setup can use either the workspace-local Ollama binary or Docker:
+Local benchmark setup uses the Hive Mind local backend protocol. Ollama is an
+optional adapter, not a required dependency. The current adapter can be selected
+with `HIVE_LOCAL_BACKEND`; `auto` chooses the first available backend with model
+inventory.
 
 ```bash
-scripts/hive-local-benchmark.sh qwen3:1.7b
-HIVE_OLLAMA_MODE=docker scripts/hive-local-benchmark.sh qwen3:1.7b
+hive local benchmark --backend auto --model phi4-mini --role json_normalizer
+HIVE_LOCAL_BACKEND=ollama scripts/hive-local-benchmark.sh qwen3:1.7b
+HIVE_LOCAL_BACKEND=ollama HIVE_OLLAMA_MODE=docker scripts/hive-local-benchmark.sh qwen3:1.7b
 ```
 
-The Docker path runs `ollama/ollama:latest` as `hivemind-ollama`, binds
+The optional Docker path runs `ollama/ollama:latest` as `hivemind-ollama`, binds
 `127.0.0.1:11434`, mounts `.local/ollama/models`, and adds `--gpus all` when
-`nvidia-smi` is available. It is an optional path; the default remains the
-workspace-local wrapper.
+`nvidia-smi` is available.
+
+Benchmarks can be role-specific. Use repeated `--role` values to test the same
+model against classifier, JSON normalization, memory extraction, capability
+extraction, log summary, diff review, handoff, and architecture prompts:
+
+```bash
+hive local benchmark \
+  --model qwen3:1.7b \
+  --model phi4-mini \
+  --role classify \
+  --role json_normalizer \
+  --role memory_extraction
+```
 
 `hive orchestrate` is the default prompt path. It asks the local router to split the request into a small agent society, prepares each provider/local worker artifact, writes `society_plan.json`, and reports which member owns which role. `hive ask` remains available for route-only debugging.
 
@@ -261,7 +278,7 @@ project/.hivemind/
   skills/
 ```
 
-It also initializes `.runs/`, runs provider detection, writes `.runs/provider_capabilities.json`, scans local Ollama model manifests, writes `.hivemind/local_runtime.json`, and prints next actions.
+It also initializes `.runs/`, runs provider detection, writes `.runs/provider_capabilities.json`, scans local backend model manifests, writes `.hivemind/local_runtime.json`, and prints next actions.
 
 It also writes a production settings profile:
 
@@ -333,20 +350,21 @@ For prompt-first work, use:
 python -m hivemind.hive ask "your task"
 ```
 
-`hive ask` creates or reuses a run, asks the local `intent_router` worker to decompose the prompt, writes `routing_plan.json`, and prepares the matching Claude/Codex/Gemini/local artifacts. If Ollama is unreachable, it writes a heuristic fallback route so the run remains usable instead of blocking.
+`hive ask` creates or reuses a run, asks the local `intent_router` worker to decompose the prompt, writes `routing_plan.json`, and prepares the matching Claude/Codex/Gemini/local artifacts. If the selected local backend is unreachable, it writes a heuristic fallback route so the run remains usable instead of blocking.
 
 Inside `hive tui`, press `n` to enter a fresh prompt directly. The TUI creates a new run and routes it through the same local intent router. Press `a` to re-route the current run.
 
-`hive invoke local --role ...` writes an artifact even when Ollama is unavailable. This keeps the run trace complete and makes infrastructure failures visible in the TUI instead of crashing the harness.
+`hive invoke local --role ...` writes an artifact even when the selected local backend is unavailable. This keeps the run trace complete and makes infrastructure failures visible in the TUI instead of crashing the harness.
 
-`hive local status` reports the local runtime without requiring hosted provider keys. `hive local setup` writes `.hivemind/local_runtime.json` with the detected wrapper, server state, and model manifests.
+`hive local status` reports local backend state without requiring hosted provider keys. `hive local setup` writes `.hivemind/local_runtime.json` with detected adapters, server state, and model manifests.
 
 DeepSeek and Qwen have two separate paths:
 
-- Local open-weight models through Ollama: no API key required.
+- Local open-weight models through a local backend: no API key required.
 - Hosted HTTP providers: require `DEEPSEEK_API_KEY` or `QWEN_API_KEY`.
 
-The current local manifests include `deepseek-coder:6.7b`, `deepseek-coder-v2:16b`, `qwen3:1.7b`, and `qwen3:8b`.
+The current local manifests are detected at runtime with `hive local status`; do
+not treat this document as the source of truth for pulled models.
 
 Supported local roles:
 
@@ -356,6 +374,9 @@ Supported local roles:
 - `memory`
 - `review`
 - `classify`
+- `json`
+- `json-normalizer`
+- `normalize`
 
 ## Provider Harness
 

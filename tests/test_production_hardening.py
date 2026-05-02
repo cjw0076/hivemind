@@ -82,20 +82,26 @@ class ProductionHardeningTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             with patch(
-                "hivemind.harness.benchmark_ollama_model",
+                "hivemind.harness.benchmark_local_model",
                 return_value={
                     "model": "qwen3:1.7b",
+                    "role": "json_normalizer",
+                    "runtime": "test",
                     "status": "completed",
                     "latency_ms": 123,
                     "json_valid": True,
-                    "parsed": {"ok": True, "confidence": 0.75},
+                    "schema_valid": True,
+                    "parsed": {"ok": True, "normalized": {"status": "ok"}, "confidence": 0.75},
+                    "raw_response": '{"ok": true, "normalized": {"status": "ok"}, "confidence": 0.75}',
+                    "parse_error": "",
                     "error": "",
                 },
             ):
-                report = local_benchmark_report(root, models=["qwen3:1.7b"], write=True)
+                report = local_benchmark_report(root, models=["qwen3:1.7b"], roles=["json_normalizer"], write=True)
 
             self.assertTrue((root / ".hivemind" / "local_benchmark.json").exists())
             self.assertEqual(report["json_validity"], 1.0)
+            self.assertEqual(report["roles_tested"], ["json_normalizer"])
             self.assertEqual(report["results"][0]["latency_ms"], 123)
 
 

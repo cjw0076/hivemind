@@ -391,3 +391,9 @@ Naming note as of 2026-05-02 12:24 KST:
 - Decision: Added a one-command benchmark script and an optional Docker Ollama launcher. Default remains workspace-local Ollama; Docker is available through `HIVE_OLLAMA_MODE=docker`.
 - Evidence: Added `scripts/hive-local-benchmark.sh`, `scripts/start-ollama-docker.sh`, npm scripts `benchmark:local` and `ollama:docker`, and docs. Verified shell syntax, `npm test`, and `scripts/hive-local-benchmark.sh qwen3:1.7b`; the script pulled `qwen3:1.7b` and benchmarked it. Result: latency around 524 ms after load, but JSON-validity failed because the model returned `{}` for the strict JSON smoke prompt.
 - Next: Benchmark `qwen3:8b` and coder models, then use measured JSON validity/latency to adjust route defaults instead of assuming small models are schema-safe.
+## 2026-05-02 14:57 KST - Codex
+
+- Context: User asked to benchmark local role models, keep `deepseek-coder-v2:16b` and `qwen3-coder:30b`, and remove any hard Ollama dependency.
+- Decision: Treat Ollama as an optional adapter behind `hive-local-backend-v1`; keep local model routing backend-agnostic and benchmark-driven.
+- Evidence: Pulled retained local models total about 53 GB; `phi4-mini` and `qwen3:8b` passed general JSON role suites, `deepseek-coder-v2:16b` passed diff/architecture, `qwen3-coder:30b` passed architecture. Tests passed.
+- Next: Add real llama.cpp/vLLM adapters or OpenAI-compatible local backend execution when needed; tune handoff/log-summary prompts before trusting coder models for those schemas.

@@ -1,120 +1,133 @@
 # Local LLM Workers
 
-MemoryOS uses local LLMs as a cheap cognitive worker layer, not as the final judge.
+Hive Mind uses local LLMs as a cheap worker layer, not as the final judge.
 
 ```text
-Local LLM = worker / filter / compressor
+Local LLM = worker / filter / compressor / first-pass reviewer
 Claude or GPT = judge / architect / synthesis
 Codex or Claude Code = executor / integration
-MemoryOS = durable memory and context provider
+Hive Mind = orchestration, routing, benchmark, policy, and run artifacts
+MemoryOS = accepted durable memory after review
+CapabilityOS = accepted technology/capability records after review
 ```
 
 ## Current Runtime State
 
-As of 2026-05-02 KST:
+Hive Mind depends on a backend protocol, not on one runtime:
 
-- `ollama`: installed locally at `.local/ollama/bin/ollama`.
+```text
+hive-local-backend-v1
+  -> render schema-first prompt
+  -> send to selected local backend adapter
+  -> parse JSON
+  -> validate role schema
+  -> record model, backend, latency, validity, and failure reason
+```
+
+Ollama is only the first convenient adapter. A production install may use
+Ollama, llama.cpp, vLLM, Transformers, LM Studio, or another OpenAI-compatible
+local server behind the same Hive Mind local worker interface.
+
+As of 2026-05-02 KST on this machine:
+
+- Active adapter for experiments: workspace-local Ollama.
 - `llama-server`: not installed.
 - `llama-cli`: not installed.
 - `llm-checker`: available through `npx`.
 - Hardware: 2x RTX 5090, 64 GiB total VRAM.
-- Pulled models: `qwen3:1.7b`, `qwen3:8b`, `deepseek-coder:6.7b`, `deepseek-coder-v2:16b`.
+- Pulled models are detected by `hive local status`; do not assume docs are current.
 
-Use the workspace-local wrappers so model paths stay inside this repo:
+Optional Ollama adapter helpers:
 
 ```bash
 scripts/start-ollama-local.sh
 scripts/ollama-local.sh list
+scripts/ollama-local.sh pull qwen3:1.7b
 scripts/hive-local-benchmark.sh qwen3:1.7b
-HIVE_OLLAMA_MODE=docker scripts/hive-local-benchmark.sh qwen3:1.7b
+HIVE_LOCAL_BACKEND=ollama HIVE_OLLAMA_MODE=docker scripts/hive-local-benchmark.sh qwen3:1.7b
 ```
 
 ## Worker Roles
 
-Use:
+Use Hive Mind commands:
 
 ```bash
-python -m memoryos.cli local-workers list
-python -m memoryos.cli local-workers status
+python -m hivemind.hive local routes
+python -m hivemind.hive local setup --auto
+python -m hivemind.hive local benchmark --role json_normalizer --model qwen3:1.7b
 ```
 
 Current workers:
 
 - `classifier`: short snippet -> routing, memory type candidates, escalation hints.
-- `memory_extractor`: conversation segment -> reviewable memory draft JSON.
+- `json_normalizer`: rough local output -> strict JSON for downstream schemas.
+- `memory_extractor`: conversation segment -> reviewable MemoryOS draft JSON.
 - `context_compressor`: retrieved context -> compact Claude/Codex handoff pack.
 - `handoff_drafter`: request + context -> implementation handoff draft.
 - `log_summarizer`: run logs/test output -> change summary and memory candidates.
 - `capability_extractor`: README/docs -> CapabilityOS TechnologyCard draft.
 - `diff_reviewer`: git diff/test output -> first-pass risk review.
 
-## Model Routing
+## Role Model Matrix
 
-Use several local models by task difficulty:
+This is the intended routing policy before benchmark calibration:
 
-| Complexity | Model | Use |
-| --- | --- | --- |
-| tiny | `qwen3:1.7b` | simple tags and duplicate candidates only; avoid for schema-critical JSON |
-| `fast` / `default` | `qwen3:8b` | memory extraction, context compression, summaries, handoff drafts |
-| coding default | `deepseek-coder:6.7b` | code/test log summarization and error triage |
-| `strong` | `deepseek-coder-v2:16b` | harder local reasoning, design comparison, local review drafts |
+| Role | Primary local model | Fallback | Escalation |
+| --- | --- | --- | --- |
+| fast classification | `phi4-mini` | `qwen3:1.7b` only for non-critical fast pass | rare |
+| JSON normalizer | `phi4-mini` | `qwen3:8b` | schema failure |
+| memory extraction | `phi4-mini` / `qwen3:8b` | `qwen3:1.7b` for simple snippets | Claude for decisions/conflicts |
+| capability extraction | `phi4-mini` / `qwen3:8b` | `qwen2.5-coder:7b` for docs | Claude for top items |
+| code log summary | `deepseek-coder:6.7b` | `qwen2.5-coder:7b` | Codex when fixes are needed |
+| diff review draft | `deepseek-coder-v2:16b` | `qwen2.5-coder:14b` | Claude for high-risk diffs |
+| handoff draft | `deepseek-coder-v2:16b` | `qwen3-coder` if available | Claude final review |
+| local architecture draft | `deepseek-coder-v2:16b` | `qwen3-coder:30b` | Claude final review |
+| implementation | none | none | Codex / Claude Code |
+| final product judgment | none | none | Claude / user |
 
-CLI workers accept `--complexity fast|default|strong`, or an explicit `--model`.
+Calibration notes from the first local benchmark run:
 
-The preferred interface is role-based:
+- `qwen3:1.7b` was fast but failed strict schemas across tested roles.
+- `qwen3:4b` failed JSON parsing in this adapter setup.
+- `phi4-mini` passed classify, JSON normalization, memory extraction, and capability extraction.
+- `qwen3:8b` passed the same general roles but was slower.
+- `deepseek-coder-v2:16b` passed diff review and architecture; handoff JSON was truncated in the smoke test.
+- `qwen3-coder:30b` passed architecture; handoff JSON was truncated in the smoke test.
 
-```bash
-python -m memoryos.cli local classify --input docs/local_llm_use.md
-python -m memoryos.cli local extract-memory --input docs/local_llm_use.md
-python -m memoryos.cli local extract-capability --input docs/local_llm_use.md
-python -m memoryos.cli local compress-context --input runs/work_items/INTEGRATED_EXECUTION_PLAN.md
-python -m memoryos.cli local draft-handoff --input runs/work_items/INTEGRATED_EXECUTION_PLAN.md --complexity strong
-python -m memoryos.cli local summarize-log --input runs/work_items/INTEGRATED_EXECUTION_PLAN.md
-python -m memoryos.cli local review-diff --input runs/local_workers/diff.txt --complexity strong
-```
+## Benchmark Path
 
-## Prompt Rendering
-
-Render a schema-first prompt without calling a model:
-
-```bash
-python -m memoryos.cli local-workers prompt memory_extractor \
-  --input docs/localllm.md \
-  --max-chars 8000 \
-  --out runs/local_workers/localllm_memory_extractor.prompt.txt
-```
-
-This is useful even before Ollama is installed. Claude/Codex can inspect or reuse the prompt.
-
-## Ollama Runtime Path
-
-Once Ollama is installed and a model is pulled:
+`hive local benchmark` now runs role-specific suites, not only one generic JSON smoke prompt:
 
 ```bash
-scripts/start-ollama-local.sh
-scripts/ollama-local.sh pull qwen3:8b
-python -m memoryos.cli local-workers run memory_extractor \
-  --input docs/localllm.md \
-  --model qwen3:8b \
-  --out runs/local_workers/localllm_memory_draft.json
+python -m hivemind.hive local benchmark \
+  --model qwen3:1.7b \
+  --model phi4-mini \
+  --backend auto \
+  --role classify \
+  --role json_normalizer \
+  --role memory_extraction \
+  --timeout 120
 ```
 
-Or route by complexity:
+Supported benchmark roles:
 
-```bash
-python -m memoryos.cli local compress-context \
-  --input docs/localllm.md \
-  --complexity fast
+- `classify`
+- `json_normalizer`
+- `memory_extraction`
+- `capability_extraction`
+- `log_summary`
+- `diff_review`
+- `handoff`
+- `architecture`
+
+Results are written to:
+
+```text
+.hivemind/local_benchmark.json
+.hivemind/local_model_profile.json
 ```
 
-Recommended initial models from `llm-checker`:
-
-- General / cheap worker: `qwen3:8b`.
-- Coding-oriented worker: `deepseek-coder:6.7b`.
-- Larger local reasoning worker: `deepseek-coder-v2:16b`.
-- Reading / lightweight classification: `qwen3:1.7b`.
-
-Smoke-test outputs are written under `runs/local_workers/`.
+The profile stores per-model, per-role latency and schema validity so routing can later move from a static matrix to measured policy.
 
 ## Escalation Rules
 

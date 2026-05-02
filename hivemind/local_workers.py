@@ -1,13 +1,14 @@
 """Local LLM worker prompts and runtime adapters.
 
-This module keeps local LLM usage schema-first and optional. The MemoryOS
-pipeline can render prompts without a runtime, and can call Ollama when it is
-available on the machine.
+This module keeps local LLM usage schema-first and optional. The Hive Mind
+pipeline can render prompts without a runtime, and can call a configured local
+backend when one is available on the machine.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import urllib.error
 import urllib.request
@@ -35,7 +36,7 @@ WORKERS: dict[str, WorkerSpec] = {
         fast_model="qwen3:8b",
         strong_model="deepseek-coder-v2:16b",
         system=(
-            "You are LocalIntentRouter for MemoryOS. Decompose the user's prompt into a small, "
+            "You are LocalIntentRouter for Hive Mind. Decompose the user's prompt into a small, "
             "safe harness plan. Route work to local workers, Claude planner/reviewer, Codex executor, "
             "and Gemini reviewer by role. Do not execute code. Return valid JSON only."
         ),
@@ -61,11 +62,11 @@ WORKERS: dict[str, WorkerSpec] = {
     "classifier": WorkerSpec(
         name="classifier",
         purpose="Classify short snippets into task, project, memory type, and escalation hints.",
-        default_model="qwen3:1.7b",
+        default_model="phi4-mini",
         fast_model="qwen3:1.7b",
-        strong_model="qwen3:8b",
+        strong_model="phi4-mini",
         system=(
-            "You are LocalClassifier for MemoryOS. Classify short text only. "
+            "You are LocalClassifier for Hive Mind. Classify short text only. "
             "Do not summarize or decide. Return valid JSON only."
         ),
         output_schema={
@@ -77,14 +78,32 @@ WORKERS: dict[str, WorkerSpec] = {
             "escalation_reason": "",
         },
     ),
+    "json_normalizer": WorkerSpec(
+        name="json_normalizer",
+        purpose="Normalize rough local output into strict JSON for downstream schemas.",
+        default_model="phi4-mini",
+        fast_model="qwen3:1.7b",
+        strong_model="phi4-mini",
+        system=(
+            "You are LocalJsonNormalizer for Hive Mind. Convert rough input into strict JSON only. "
+            "Do not add claims. Preserve uncertainty and include confidence."
+        ),
+        output_schema={
+            "ok": True,
+            "normalized": {},
+            "confidence": 0.0,
+            "should_escalate": False,
+            "escalation_reason": "",
+        },
+    ),
     "memory_extractor": WorkerSpec(
         name="memory_extractor",
         purpose="Extract reviewable memory drafts from a conversation or note segment.",
-        default_model="qwen3:8b",
-        fast_model="qwen3:8b",
-        strong_model="deepseek-coder-v2:16b",
+        default_model="phi4-mini",
+        fast_model="qwen3:1.7b",
+        strong_model="qwen3:8b",
         system=(
-            "You are LocalMemoryExtractor for MemoryOS. Extract only draft memory objects. "
+            "You are LocalMemoryExtractor for Hive Mind. Extract only draft memory objects. "
             "Do not make final decisions. Preserve uncertainty and raw references. "
             "Return valid JSON only."
         ),
@@ -107,10 +126,10 @@ WORKERS: dict[str, WorkerSpec] = {
         name="context_compressor",
         purpose="Compress retrieved memory/context into a small handoff pack for Claude/Codex.",
         default_model="qwen3:8b",
-        fast_model="qwen3:8b",
-        strong_model="deepseek-coder-v2:16b",
+        fast_model="phi4-mini",
+        strong_model="qwen3:8b",
         system=(
-            "You are LocalContextCompressor for MemoryOS. Compress context without adding new claims. "
+            "You are LocalContextCompressor for Hive Mind. Compress context without adding new claims. "
             "Keep decisions, constraints, source IDs, risks, and open questions. Return valid JSON only."
         ),
         output_schema={
@@ -129,11 +148,11 @@ WORKERS: dict[str, WorkerSpec] = {
     "handoff_drafter": WorkerSpec(
         name="handoff_drafter",
         purpose="Draft an implementation handoff before Codex edits the repo.",
-        default_model="qwen3:8b",
+        default_model="deepseek-coder-v2:16b",
         fast_model="qwen3:8b",
         strong_model="deepseek-coder-v2:16b",
         system=(
-            "You are LocalHandoffDrafter for MemoryOS. Draft a concrete engineering handoff. "
+            "You are LocalHandoffDrafter for Hive Mind. Draft a concrete engineering handoff. "
             "Do not claim the plan is final. Return valid JSON only."
         ),
         output_schema={
@@ -154,10 +173,10 @@ WORKERS: dict[str, WorkerSpec] = {
         name="log_summarizer",
         purpose="Summarize run logs, diffs, and test output into memory update candidates.",
         default_model="deepseek-coder:6.7b",
-        fast_model="qwen3:1.7b",
+        fast_model="qwen2.5-coder:7b",
         strong_model="deepseek-coder-v2:16b",
         system=(
-            "You are LocalLogSummarizer for MemoryOS. Summarize what changed, what passed, "
+            "You are LocalLogSummarizer for Hive Mind. Summarize what changed, what passed, "
             "what failed, and what should be remembered. Return valid JSON only."
         ),
         output_schema={
@@ -171,9 +190,9 @@ WORKERS: dict[str, WorkerSpec] = {
     "capability_extractor": WorkerSpec(
         name="capability_extractor",
         purpose="Draft CapabilityOS technology cards from README/docs text.",
-        default_model="qwen3:8b",
+        default_model="phi4-mini",
         fast_model="qwen3:8b",
-        strong_model="deepseek-coder-v2:16b",
+        strong_model="qwen2.5-coder:7b",
         system=(
             "You are LocalCapabilityExtractor for CapabilityOS. Extract tool capabilities, "
             "setup steps, risks, compatible runtimes, and workflow fit. Return valid JSON only."
@@ -197,10 +216,10 @@ WORKERS: dict[str, WorkerSpec] = {
         name="diff_reviewer",
         purpose="Review a git diff and test output for risks before Claude/Codex final review.",
         default_model="deepseek-coder-v2:16b",
-        fast_model="deepseek-coder:6.7b",
+        fast_model="qwen2.5-coder:14b",
         strong_model="deepseek-coder-v2:16b",
         system=(
-            "You are LocalDiffReviewer for MemoryOS. Review diffs as a first-pass risk scanner. "
+            "You are LocalDiffReviewer for Hive Mind. Review diffs as a first-pass risk scanner. "
             "Focus on behavioral regressions, schema changes, security/privacy risks, and missing tests. "
             "Return valid JSON only."
         ),
@@ -323,16 +342,23 @@ def run_worker(
     worker_name: str,
     input_text: str,
     model: str | None = None,
-    runtime: str = "ollama",
+    runtime: str = "auto",
     base_url: str = "http://127.0.0.1:11434",
     source_ref: str = "manual",
 ) -> dict[str, Any]:
+    runtime = resolve_local_runtime(runtime)
     if runtime != "ollama":
-        raise ValueError(f"Unsupported local worker runtime: {runtime}")
+        raise ValueError(f"Unsupported local worker runtime adapter: {runtime}")
     spec = get_worker(worker_name)
     chosen_model = model or spec.default_model
     prompt = render_prompt(worker_name, input_text, source_ref=source_ref)
     return call_ollama_generate(base_url=base_url, model=chosen_model, prompt=prompt)
+
+
+def resolve_local_runtime(runtime: str = "auto") -> str:
+    if runtime == "auto":
+        return os.environ.get("HIVE_LOCAL_BACKEND") or os.environ.get("HIVE_LOCAL_RUNTIME") or "ollama"
+    return runtime
 
 
 def get_worker(worker_name: str) -> WorkerSpec:
@@ -380,7 +406,7 @@ def call_ollama_generate(base_url: str, model: str, prompt: str) -> dict[str, An
             body = json.loads(response.read().decode("utf-8"))
     except urllib.error.URLError as exc:
         raise RuntimeError(
-            f"Could not reach Ollama at {base_url}. Install/start Ollama and pull the model first."
+            f"Could not reach the Ollama adapter at {base_url}. Start that adapter or set HIVE_LOCAL_BACKEND to another supported runtime."
         ) from exc
 
     raw = body.get("response", "")

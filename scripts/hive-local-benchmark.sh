@@ -5,8 +5,14 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 MODEL="${1:-${HIVE_BENCH_MODEL:-qwen3:1.7b}}"
+BACKEND="${HIVE_LOCAL_BACKEND:-ollama}"
 MODE="${HIVE_OLLAMA_MODE:-local}"
 TIMEOUT="${HIVE_BENCH_TIMEOUT:-90}"
+
+if [[ "$BACKEND" != "ollama" ]]; then
+  python -m hivemind.hive local benchmark --backend "$BACKEND" --model "$MODEL" --timeout "$TIMEOUT"
+  exit 0
+fi
 
 case "$MODE" in
   docker)
@@ -52,4 +58,4 @@ if ! curl -fsS http://127.0.0.1:11434/api/tags | grep -q "\"name\":\"$MODEL\""; 
   fi
 fi
 
-python -m hivemind.hive local benchmark --model "$MODEL" --timeout "$TIMEOUT"
+python -m hivemind.hive local benchmark --backend ollama --model "$MODEL" --timeout "$TIMEOUT"

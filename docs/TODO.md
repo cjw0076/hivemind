@@ -17,7 +17,7 @@ Sources: `VG-03`, `VG-04`, `VG-05`, `VG-13`.
 - [x] Add local LLM worker prompt/CLI layer before runtime installation.
 - [x] Add production-minimum `hive init` onboarding for global/project config, provider detection, and next actions.
 - [x] Split local open-weight DeepSeek/Qwen status from hosted `deepseek_api`/`qwen_api` key checks.
-- [x] Add `hive local status/setup` for Ollama wrapper, server state, and local model manifests.
+- [x] Add `hive local status/setup` for local backend adapters, server state, and local model manifests.
 - [x] Include local LLM model manifest detection in `hive init` onboarding output.
 - [x] Stabilize `hive` run artifact schemas: task, handoff, run state, verification, memory drafts, final report.
 - [x] Add canonical `.runs` protocol spec for the Hive Mind run kernel.
@@ -47,7 +47,7 @@ Work order: finish the `hive` operator loop before deeper MemoryOS/CapabilityOS 
 - [x] Add artifact freshness, producer, phase class, and validation metadata to run-board/TUI status.
 - [x] Remove current `mos` naming from the Hive Mind CLI boundary so MemoryOS remains a sibling project.
 - [x] Add doctor scopes: `hive doctor hardware|providers|models|permissions|all`.
-- [x] Add hardware profile output: CPU, RAM, GPU/VRAM, disk, Python, Node, Docker, Ollama, provider CLI paths, network, and key ports.
+- [x] Add hardware profile output: CPU, RAM, GPU/VRAM, disk, Python, Node, Docker, local adapter status, provider CLI paths, network, and key ports.
 - [x] Embed the user/Claude/Codex/local-LLM working method as a project skill protocol.
 - [x] Add `evolution of Single Human Intelligence` as a quiet internal product thread, not a scientific claim.
 - [x] Expand provider result schema with command, output, timing, changed files, commands run, tests run, artifacts, risk, policy, and memory/capability refs.
@@ -131,12 +131,15 @@ Sources: `VG-01`, `VG-08`, `VG-12`.
 
 Sources: `VG-05`, `VG-03`, `VG-04`.
 
-- [ ] Define route table for classify, extract-memory, extract-capability, compress-context, draft-handoff, summarize-log, and review-diff.
-- [ ] Store primary model, fallback model, complexity, expected schema, and escalation rule for each role.
-- [ ] Add schema validation for worker outputs.
-- [ ] Add `confidence`, `should_escalate`, and `escalation_reason` to worker draft schemas.
-- [ ] Add MemoryOS, CapabilityOS, and code-log benchmark fixtures.
-- [ ] Record model, latency, output validity, and failure reason for each worker run.
+- [x] Define route table for classify, extract-memory, extract-capability, compress-context, draft-handoff, summarize-log, and review-diff.
+- [x] Store primary model, fallback model, complexity, expected schema, and escalation rule for each role.
+- [x] Add schema validation for worker outputs.
+- [x] Add `confidence`, `should_escalate`, and `escalation_reason` to worker draft schemas.
+- [x] Add role-specific MemoryOS, CapabilityOS, and code-log benchmark prompts.
+- [x] Record model, latency, output validity, and failure reason for each worker run.
+- [x] Decouple local worker runtime from Ollama through `hive-local-backend-v1`.
+- [x] Record first local model benchmark summary in `docs/LOCAL_MODEL_BENCHMARK.md`.
+- [ ] Add corpus-backed benchmark fixtures for longer MemoryOS, CapabilityOS, and code-log samples.
 
 ## Audit Work
 
@@ -193,7 +196,7 @@ Sources: `VG-03`, `VG-04`, `VG-06`.
 Sources: `VG-02`, `VG-04`, `VG-13`.
 
 - [ ] Define `TechnologyCard`, `Capability`, `WorkflowRecipe`, `ProviderRuntime`, `QualityProfile`, `Risk`, and `LegacyRelation` schemas.
-- [ ] Seed provider/runtime records for qwen local workers, DeepSeek code workers, Claude, Codex, Gemini, and Ollama.
+- [ ] Seed provider/runtime records for qwen local workers, DeepSeek code workers, Claude, Codex, Gemini, and local backend adapters.
 - [ ] Store `extract-capability` output as draft CapabilityOS records only.
 - [ ] Add first workflow recipe: `hive planning -> Codex implementation -> local summarize -> MemoryOS memory draft`.
 - [ ] Add legacy comparisons for raw chat, manual shared folder, screenshot-only, and local-model-only workflows.

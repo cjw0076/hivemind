@@ -217,14 +217,14 @@ def format_onboarding(report: dict[str, Any]) -> str:
         detail = provider.get("version") or provider.get("path") or provider.get("reason", "")
         lines.append(f"{icon} {name}: {provider.get('status')} {detail}")
     local_runtime = report.get("local_runtime") or {}
-    ollama = local_runtime.get("ollama") or {}
+    backend = active_local_backend(local_runtime)
     lines.extend(["", "Local Models:"])
-    models = ollama.get("models") or []
+    models = backend.get("models") or []
     if models:
         for model in models:
             lines.append(f"✓ {model}")
     else:
-        lines.append("○ no local model manifests found")
+        lines.append("○ no local backend model manifests found")
     missing = local_runtime.get("missing_recommended_models") or []
     if missing:
         lines.append("Missing recommended:")
@@ -671,6 +671,7 @@ def detect_agents(root: Path, write: bool = True) -> dict[str, Any]:
         "claude": probe_command("claude", ["--version"], roles=["planner", "reviewer", "claim-auditor"]),
         "codex": probe_command("codex", ["--version"], roles=["executor", "test-fixer", "diff-reviewer"], mode="execute_supported"),
         "gemini": probe_command("gemini", ["--version"], roles=["reviewer", "alternate-planner", "multimodal-reviewer"]),
+        "local_backend": probe_local_backend(root),
         "ollama": probe_ollama(root),
         "deepseek_api": probe_env_provider("deepseek_api", "DEEPSEEK_API_KEY", roles=["cheap-critic", "batch-summarizer", "code-review-draft"]),
         "qwen_api": probe_env_provider("qwen_api", "QWEN_API_KEY", roles=["open-coder-reviewer", "cheap-planner", "capability-extractor"]),
@@ -724,6 +725,9 @@ def build_settings_profile(
     path_codex = shutil.which("codex") or ""
     if codex_path and path_codex and codex_path != path_codex:
         warnings.append(f"codex PATH resolves to {path_codex}, but usable binary is {codex_path}")
+    backend = active_local_backend(local_runtime) if isinstance(local_runtime, dict) else {}
+    if backend.get("path"):
+        shell_exports["HIVE_LOCAL_BACKEND_BIN"] = backend["path"]
     ollama = (local_runtime.get("ollama") or {}) if isinstance(local_runtime, dict) else {}
     if ollama.get("path"):
         shell_exports["HIVE_OLLAMA_BIN"] = ollama["path"]
@@ -856,7 +860,8 @@ def hardware_report(root: Path) -> dict[str, Any]:
         },
         "node": probe_binary_version("node", ["--version"]),
         "docker": probe_binary_version("docker", ["--version"]),
-        "ollama": probe_binary_version("ollama", ["--version"]),
+        "ollama_adapter": probe_binary_version("ollama", ["--version"]),
+        "llama_cpp_adapter": probe_binary_version("llama-cli", ["--version"]),
     }
     warnings = []
     if not gpus:
@@ -865,10 +870,10 @@ def hardware_report(root: Path) -> dict[str, Any]:
         warnings.append("node is unavailable")
     if runtime["docker"].get("status") != "available":
         warnings.append("docker is unavailable")
-    if runtime["ollama"].get("status") != "available":
-        warnings.append("ollama binary is unavailable")
+    if runtime["ollama_adapter"].get("status") != "available" and runtime["llama_cpp_adapter"].get("status") != "available":
+        warnings.append("no local model adapter binary found on PATH; optional workspace adapters may still work")
     ports = {
-        "ollama": probe_tcp_port("127.0.0.1", 11434),
+        "local_ollama_adapter": probe_tcp_port("127.0.0.1", 11434),
         "dev_8000": probe_tcp_port("127.0.0.1", 8000),
         "dev_8080": probe_tcp_port("127.0.0.1", 8080),
     }
@@ -904,7 +909,8 @@ def hardware_report(root: Path) -> dict[str, Any]:
 
 def models_report(root: Path) -> dict[str, Any]:
     local_runtime = local_runtime_report(root, write=True)
-    ollama = local_runtime.get("ollama") or {}
+    backend = active_local_backend(local_runtime)
+    present = set(backend.get("models") or [])
     routes = worker_route_table()
     role_assignments = []
     for role, route in routes.items():
@@ -916,13 +922,13 @@ def models_report(root: Path) -> dict[str, Any]:
                 "primary": (route.get("models") or {}).get("default"),
                 "fallback": (route.get("models") or {}).get("fast"),
                 "selected": selected,
-                "available": selected in set(ollama.get("models") or []),
+                "available": local_model_available(selected, present),
             }
         )
     return {
         "schema_version": 1,
         "generated_at": now_iso(),
-        "status": "ready" if ollama.get("models") else "needs_setup",
+        "status": "ready" if backend.get("models") else "needs_setup",
         "local_runtime": local_runtime,
         "role_assignments": role_assignments,
     }
@@ -930,8 +936,8 @@ def models_report(root: Path) -> dict[str, Any]:
 
 def local_model_profile(root: Path, write: bool = True) -> dict[str, Any]:
     local_runtime = local_runtime_report(root, write=True)
-    ollama = local_runtime.get("ollama") or {}
-    present = set(ollama.get("models") or [])
+    backend = active_local_backend(local_runtime)
+    present = set(backend.get("models") or [])
     routes = worker_route_table()
     models: dict[str, dict[str, Any]] = {}
     for role, route in routes.items():
@@ -940,18 +946,20 @@ def local_model_profile(root: Path, write: bool = True) -> dict[str, Any]:
             item = models.setdefault(
                 model,
                 {
-                    "available": model in present,
+                    "available": local_model_available(model, present),
                     "recommended_roles": [],
                     "json_validity": None,
                     "latency_ms": None,
                     "benchmark_status": "not_run",
+                    "benchmarks_by_role": {},
                 },
             )
             item["recommended_roles"].append(f"{role}:{complexity}")
     profile = {
         "schema_version": 1,
         "generated_at": now_iso(),
-        "runtime": "ollama",
+        "runtime": backend.get("id") or local_runtime.get("active_backend") or "none",
+        "runtime_protocol": "hive-local-backend-v1",
         "status": "ready" if present else "needs_setup",
         "models": models,
         "role_assignments": models_report(root).get("role_assignments", []),
@@ -1118,25 +1126,32 @@ def format_llm_checker_report(report: dict[str, Any]) -> str:
 def local_benchmark_report(
     root: Path,
     models: list[str] | None = None,
+    roles: list[str] | None = None,
+    backend: str = "auto",
     limit: int = 4,
     timeout: int = 90,
     write: bool = True,
 ) -> dict[str, Any]:
     runtime = local_runtime_report(root, write=True)
-    ollama = runtime.get("ollama") or {}
-    available = list(ollama.get("models") or [])
+    active = resolve_benchmark_backend(runtime, backend)
+    backend_info = (runtime.get("backends") or {}).get(active, {})
+    available = list(backend_info.get("models") or [])
     selected = models or available[:limit]
+    selected_roles = roles or ["json_normalizer"]
     results = []
     for model in selected:
-        results.append(benchmark_ollama_model(model, timeout=timeout))
-    valid = [item for item in results if item.get("json_valid")]
+        for role in selected_roles:
+            results.append(benchmark_local_model(model, role=role, backend=active, timeout=timeout))
+    valid = [item for item in results if item.get("schema_valid")]
     report = {
         "schema_version": 1,
         "generated_at": now_iso(),
-        "runtime": "ollama",
-        "server": ollama.get("server"),
+        "runtime": active,
+        "runtime_protocol": "hive-local-backend-v1",
+        "server": backend_info.get("server"),
         "status": "completed" if results else "needs_setup",
         "models_tested": selected,
+        "roles_tested": selected_roles,
         "json_validity": (len(valid) / len(results)) if results else 0.0,
         "results": results,
         "working_method": WORKING_METHOD_PHRASE,
@@ -1149,37 +1164,72 @@ def local_benchmark_report(
         for result in results:
             model_entry = (profile.get("models") or {}).get(result.get("model"))
             if model_entry is not None:
-                model_entry["json_validity"] = 1.0 if result.get("json_valid") else 0.0
+                model_entry["json_validity"] = 1.0 if result.get("schema_valid") else 0.0
                 model_entry["latency_ms"] = result.get("latency_ms")
                 model_entry["benchmark_status"] = result.get("status")
+                role = result.get("role") or "unknown"
+                model_entry.setdefault("benchmarks_by_role", {})[role] = {
+                    "schema_valid": result.get("schema_valid"),
+                    "json_valid": result.get("json_valid"),
+                    "latency_ms": result.get("latency_ms"),
+                    "status": result.get("status"),
+                    "error": result.get("error", ""),
+                }
         write_json(project_dir / "local_model_profile.json", profile)
     return report
 
 
-def benchmark_ollama_model(model: str, timeout: int = 90) -> dict[str, Any]:
+def resolve_benchmark_backend(runtime: dict[str, Any], requested: str = "auto") -> str:
+    if requested != "auto":
+        return requested
+    return runtime.get("active_backend") or "none"
+
+
+def benchmark_local_model(model: str, role: str = "json_normalizer", backend: str = "auto", timeout: int = 90) -> dict[str, Any]:
+    backend = backend if backend != "auto" else os.environ.get("HIVE_LOCAL_BACKEND", "ollama")
+    if backend == "ollama":
+        return benchmark_ollama_model(model, role=role, timeout=timeout)
+    return {
+        "model": model,
+        "role": role,
+        "runtime": backend,
+        "status": "skipped_backend_not_supported",
+        "latency_ms": 0,
+        "json_valid": False,
+        "schema_valid": False,
+        "parsed": {},
+        "raw_response": "",
+        "parse_error": "",
+        "error": f"Local backend adapter '{backend}' is not implemented yet.",
+    }
+
+
+def benchmark_ollama_model(model: str, role: str = "json_normalizer", timeout: int = 90) -> dict[str, Any]:
     server_models = ollama_server_models()
-    if server_models is not None and model not in server_models:
+    if server_models is not None and not local_model_available(model, set(server_models)):
         return {
             "model": model,
+            "role": role,
+            "runtime": "ollama",
             "status": "skipped_model_not_loaded",
             "latency_ms": 0,
             "json_valid": False,
+            "schema_valid": False,
             "parsed": {},
             "error": (
-                f"{model} is not loaded in the running Ollama server. "
-                "Start the workspace server with scripts/start-ollama-local.sh or pull/load the model first."
+                f"{model} is not loaded in the running Ollama adapter. "
+                "Start an Ollama-compatible adapter or choose another HIVE_LOCAL_BACKEND."
             ),
         }
-    prompt = (
-        "Return valid JSON only. No markdown. "
-        'Use exactly this shape: {"ok": true, "task": "json_validity_smoke", "confidence": 0.75}.'
-    )
+    suite = benchmark_suite(role)
+    prompt = suite["prompt"]
     payload = {
         "model": model,
         "prompt": prompt,
         "stream": False,
         "format": "json",
-        "options": {"temperature": 0.0, "num_predict": 80},
+        "keep_alive": "0s",
+        "options": {"temperature": 0.0, "num_ctx": 2048, "num_predict": 80},
     }
     started = time.monotonic()
     try:
@@ -1199,11 +1249,15 @@ def benchmark_ollama_model(model: str, timeout: int = 90) -> dict[str, Any]:
             parsed = {}
             parse_error = str(exc)
         json_valid = isinstance(parsed, dict) and parsed.get("ok") is True and "confidence" in parsed
+        schema_valid = benchmark_schema_valid(parsed, suite)
         return {
             "model": model,
+            "role": role,
+            "runtime": "ollama",
             "status": "completed",
             "latency_ms": int((time.monotonic() - started) * 1000),
             "json_valid": json_valid,
+            "schema_valid": schema_valid,
             "parsed": parsed,
             "raw_response": raw[:2000],
             "parse_error": parse_error,
@@ -1212,14 +1266,98 @@ def benchmark_ollama_model(model: str, timeout: int = 90) -> dict[str, Any]:
     except Exception as exc:
         return {
             "model": model,
+            "role": role,
+            "runtime": "ollama",
             "status": "failed",
             "latency_ms": int((time.monotonic() - started) * 1000),
             "json_valid": False,
+            "schema_valid": False,
             "parsed": {},
             "raw_response": "",
             "parse_error": "",
             "error": str(exc),
         }
+
+
+def benchmark_suite(role: str) -> dict[str, Any]:
+    suites = {
+        "classify": {
+            "required": ["task_type", "project", "confidence"],
+            "prompt": (
+                "Return valid JSON only. Classify this snippet for Hive Mind.\n"
+                "Snippet: `Fix provider result validation and add tests.`\n"
+                'Shape: {"ok": true, "task_type": "implementation", "project": "Hive Mind", "confidence": 0.8}.'
+            ),
+        },
+        "json_normalizer": {
+            "required": ["normalized", "confidence"],
+            "prompt": (
+                "Return valid JSON only. Normalize rough input into strict JSON.\n"
+                "Input: status ok; owner local; needs review false.\n"
+                'Shape: {"ok": true, "normalized": {"status": "ok", "owner": "local", "needs_review": false}, "confidence": 0.8}.'
+            ),
+        },
+        "memory_extraction": {
+            "required": ["memory_drafts"],
+            "prompt": (
+                "Return valid JSON only. Extract reviewable memory drafts.\n"
+                "Text: User decided Hive Mind owns orchestration while MemoryOS owns accepted memory.\n"
+                'Shape: {"ok": true, "memory_drafts": [{"type": "decision", "content": "...", "origin": "user", "confidence": 0.8, "raw_refs": ["bench"]}], "needs_human_or_claude_review": false}.'
+            ),
+        },
+        "capability_extraction": {
+            "required": ["technology_card"],
+            "prompt": (
+                "Return valid JSON only. Extract a CapabilityOS technology card.\n"
+                "Text: llm-checker recommends local models based on hardware and can calibrate policies.\n"
+                'Shape: {"ok": true, "technology_card": {"name": "llm-checker", "category": "local-model-eval", "capabilities": ["recommend"], "risks": [], "confidence": 0.8}}.'
+            ),
+        },
+        "log_summary": {
+            "required": ["changed", "verification"],
+            "prompt": (
+                "Return valid JSON only. Summarize this log.\n"
+                "Log: npm test passed 20 tests. qwen3:1.7b failed strict JSON with raw response {}.\n"
+                'Shape: {"ok": true, "changed": ["..."], "verification": ["..."], "unresolved": []}.'
+            ),
+        },
+        "diff_review": {
+            "required": ["risk_summary", "findings", "confidence"],
+            "prompt": (
+                "Return valid JSON only. Review this diff summary.\n"
+                "Diff: added shell script that may pull models and start Docker if requested.\n"
+                'Shape: {"ok": true, "risk_summary": "low", "findings": [], "missing_tests": [], "confidence": 0.8}.'
+            ),
+        },
+        "handoff": {
+            "required": ["handoff"],
+            "prompt": (
+                "Return valid JSON only. Draft an implementation handoff.\n"
+                "Task: Add role-specific local benchmark suites.\n"
+                'Shape: {"ok": true, "handoff": {"objective": "...", "steps": ["..."], "acceptance_criteria": ["..."], "risks": []}}.'
+            ),
+        },
+        "architecture": {
+            "required": ["architecture", "risks"],
+            "prompt": (
+                "Return valid JSON only. Draft local architecture notes.\n"
+                "Topic: Hive Mind routes local models by role and escalates to Claude/Codex.\n"
+                'Shape: {"ok": true, "architecture": {"components": ["router", "benchmark", "policy"]}, "risks": [], "confidence": 0.8}.'
+            ),
+        },
+    }
+    return suites.get(role, suites["json_normalizer"])
+
+
+def benchmark_schema_valid(parsed: dict[str, Any], suite: dict[str, Any]) -> bool:
+    if not isinstance(parsed, dict):
+        return False
+    if parsed.get("ok") is not True:
+        return False
+    for key in suite.get("required", []):
+        if key not in parsed:
+            return False
+    return True
 
 
 def ollama_server_models() -> list[str] | None:
@@ -1229,6 +1367,16 @@ def ollama_server_models() -> list[str] | None:
         return [item.get("name", "") for item in body.get("models", []) if item.get("name")]
     except Exception:
         return None
+
+
+def local_model_available(model: str, present: set[str]) -> bool:
+    if model in present:
+        return True
+    if ":" not in model and f"{model}:latest" in present:
+        return True
+    if model.endswith(":latest") and model.removesuffix(":latest") in present:
+        return True
+    return False
 
 
 def format_local_benchmark(report: dict[str, Any]) -> str:
@@ -1242,8 +1390,11 @@ def format_local_benchmark(report: dict[str, Any]) -> str:
         "Results:",
     ]
     for item in report.get("results") or []:
-        marker = "✓" if item.get("json_valid") else "!"
-        lines.append(f"{marker} {item.get('model')}: {item.get('status')} latency_ms={item.get('latency_ms')} json_valid={item.get('json_valid')}")
+        marker = "✓" if item.get("schema_valid") else "!"
+        lines.append(
+            f"{marker} {item.get('model')} [{item.get('role')}]: {item.get('status')} "
+            f"latency_ms={item.get('latency_ms')} schema_valid={item.get('schema_valid')}"
+        )
         if item.get("error"):
             lines.append(f"  error: {item.get('error')}")
     lines.extend(["", f"Thread: {report.get('working_method')}"])
@@ -1821,12 +1972,20 @@ def format_doctor_scope(report: dict[str, Any]) -> str:
     if "models" in reports:
         models = reports["models"]
         local_runtime = models.get("local_runtime") or {}
-        ollama = local_runtime.get("ollama") or {}
-        lines.extend(["", "Models:", f"Ollama server: {ollama.get('server')}", f"Model source: {ollama.get('model_source')}"])
-        for model in ollama.get("models") or []:
+        backend = active_local_backend(local_runtime)
+        lines.extend(
+            [
+                "",
+                "Models:",
+                f"Active backend: {local_runtime.get('active_backend')}",
+                f"Backend status: {backend.get('status')} server={backend.get('server', 'n/a')}",
+                f"Model source: {backend.get('model_source')}",
+            ]
+        )
+        for model in backend.get("models") or []:
             lines.append(f"✓ {model}")
-        if not ollama.get("models"):
-            lines.append("○ no local model manifests found")
+        if not backend.get("models"):
+            lines.append("○ no local backend model manifests found")
         missing = local_runtime.get("missing_recommended_models") or []
         if missing:
             lines.append("Missing recommended:")
@@ -2046,6 +2205,16 @@ def probe_ollama(root: Path) -> dict[str, Any]:
     }
 
 
+def probe_local_backend(root: Path) -> dict[str, Any]:
+    """Backend-agnostic local model runtime facade.
+
+    Ollama is only one adapter behind this facade. The rest of Hive Mind should
+    depend on this protocol shape, not on Ollama-specific commands.
+    """
+    runtime = local_runtime_report(root, write=False, _skip_facade=True)
+    return active_local_backend(runtime)
+
+
 def read_ollama_manifest_models(root: Path) -> list[str]:
     manifests = root / ".local" / "ollama" / "models" / "manifests" / "registry.ollama.ai" / "library"
     if not manifests.exists():
@@ -2057,18 +2226,29 @@ def read_ollama_manifest_models(root: Path) -> list[str]:
     return models
 
 
-def local_runtime_report(root: Path, write: bool = False) -> dict[str, Any]:
+def local_runtime_report(root: Path, write: bool = False, _skip_facade: bool = False) -> dict[str, Any]:
     ollama = probe_ollama(root)
-    recommended = ["qwen3:1.7b", "qwen3:8b", "deepseek-coder:6.7b", "deepseek-coder-v2:16b"]
-    present = set(ollama.get("models") or [])
-    missing = [model for model in recommended if model not in present]
+    backends = {
+        "ollama": ollama,
+        "llama_cpp": probe_cli_backend("llama_cpp", "llama-cli", roles=["local-worker", "benchmark"]),
+        "vllm": probe_http_backend("vllm", "http://127.0.0.1:8000/v1/models", roles=["local-worker", "benchmark"]),
+    }
+    active_backend = select_active_backend(backends)
+    active = backends.get(active_backend, {})
+    recommended = ["qwen3:1.7b", "phi4-mini", "qwen3:8b", "deepseek-coder:6.7b", "deepseek-coder-v2:16b", "qwen3-coder:30b"]
+    present = set(active.get("models") or [])
+    missing = [model for model in recommended if not local_model_available(model, present)]
     report = {
+        "schema_version": 1,
         "generated_at": now_iso(),
+        "protocol": "hive-local-backend-v1",
+        "active_backend": active_backend,
+        "backends": backends,
         "ollama": ollama,
         "recommended_models": recommended,
         "missing_recommended_models": missing,
         "open_weight_note": (
-            "DeepSeek and Qwen can run locally through Ollama/open weights without API keys. "
+            "DeepSeek and Qwen can run locally through optional local backends without API keys. "
             "DEEPSEEK_API_KEY and QWEN_API_KEY are only needed for hosted HTTP providers."
         ),
     }
@@ -2080,20 +2260,27 @@ def local_runtime_report(root: Path, write: bool = False) -> dict[str, Any]:
 
 
 def format_local_runtime(report: dict[str, Any]) -> str:
-    ollama = report["ollama"]
+    backend = active_local_backend(report)
     lines = [
         "Hive Mind Local Runtime",
         "",
-        f"Ollama wrapper: {ollama.get('status')} {ollama.get('path') or ''}",
-        f"Ollama server: {ollama.get('server')}",
-        f"Model source: {ollama.get('model_source')}",
+        f"Protocol: {report.get('protocol')}",
+        f"Active backend: {report.get('active_backend')}",
+        f"Backend status: {backend.get('status')} {backend.get('path') or backend.get('command') or ''}",
+        f"Backend server: {backend.get('server', 'n/a')}",
+        f"Model source: {backend.get('model_source')}",
         "",
         "Models:",
     ]
-    for model in ollama.get("models") or []:
+    for model in backend.get("models") or []:
         lines.append(f"✓ {model}")
-    if not ollama.get("models"):
-        lines.append("○ no local model manifests found")
+    if not backend.get("models"):
+        lines.append("○ no local backend model manifests found")
+    backends = report.get("backends") or {}
+    if backends:
+        lines.extend(["", "Adapters:"])
+        for name, item in backends.items():
+            lines.append(f"- {name}: {item.get('status')} mode={item.get('mode')} server={item.get('server', 'n/a')}")
     lines.extend(["", "Missing recommended models:"])
     missing = report.get("missing_recommended_models") or []
     if missing:
@@ -2103,6 +2290,78 @@ def format_local_runtime(report: dict[str, Any]) -> str:
         lines.append("✓ none")
     lines.extend(["", report["open_weight_note"]])
     return "\n".join(lines)
+
+
+def probe_cli_backend(name: str, binary: str, roles: list[str]) -> dict[str, Any]:
+    found = shutil.which(binary)
+    return {
+        "id": name,
+        "kind": "local_runtime",
+        "status": "available" if found else "unavailable",
+        "command": binary,
+        "path": found,
+        "server": "n/a",
+        "models": [],
+        "manifest_models": [],
+        "model_source": "none",
+        "roles": roles,
+        "mode": "local_runtime",
+        "risks": ["adapter_not_integrated"] if found else ["not_installed", "adapter_not_integrated"],
+    }
+
+
+def probe_http_backend(name: str, models_url: str, roles: list[str]) -> dict[str, Any]:
+    models: list[str] = []
+    server = "unreachable"
+    try:
+        with urllib.request.urlopen(models_url, timeout=2) as response:
+            body = json.loads(response.read().decode("utf-8"))
+        raw_models = body.get("data") or body.get("models") or []
+        for item in raw_models:
+            if isinstance(item, dict) and item.get("id"):
+                models.append(str(item["id"]))
+            elif isinstance(item, str):
+                models.append(item)
+        server = "running"
+    except Exception:
+        server = "unreachable"
+    return {
+        "id": name,
+        "kind": "local_runtime",
+        "status": "available" if server == "running" else "unavailable",
+        "command": models_url,
+        "path": None,
+        "server": server,
+        "models": models,
+        "manifest_models": models,
+        "model_source": "server" if models else "none",
+        "roles": roles,
+        "mode": "local_runtime",
+        "risks": ["openai_compatible_adapter", "model_load_failures_possible"],
+    }
+
+
+def select_active_backend(backends: dict[str, dict[str, Any]]) -> str:
+    requested = os.environ.get("HIVE_LOCAL_BACKEND") or os.environ.get("HIVE_LOCAL_RUNTIME")
+    if requested and requested in backends:
+        return requested
+    for name, item in backends.items():
+        if item.get("status") == "available" and item.get("models"):
+            return name
+    for name, item in backends.items():
+        if item.get("status") == "available":
+            return name
+    return "none"
+
+
+def active_local_backend(runtime: dict[str, Any]) -> dict[str, Any]:
+    active = runtime.get("active_backend")
+    backends = runtime.get("backends") or {}
+    if active in backends:
+        return backends[active]
+    if runtime.get("ollama"):
+        return runtime["ollama"]
+    return {"id": "none", "status": "unavailable", "models": [], "model_source": "none", "server": "n/a"}
 
 
 def local_routes_report() -> dict[str, Any]:
@@ -2194,7 +2453,7 @@ def format_git_diff_report(report: dict[str, Any]) -> str:
 
 def review_diff(root: Path, run_id: str | None = None) -> Path:
     paths, _ = load_run(root, run_id)
-    ensure_ollama_server(root)
+    ensure_local_backend(root)
     diff = run_git(root, ["diff", "--", "."])["stdout"]
     diff_path = paths.artifacts / "git_diff.patch"
     diff_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2316,7 +2575,7 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
     """Route one user prompt through the local intent router and prepare provider artifacts."""
     paths = create_run(root, prompt, project="Hive Mind", task_type="routed") if run_id is None else load_run(root, run_id)[0]
     paths.local_dir.mkdir(parents=True, exist_ok=True)
-    ensure_ollama_server(root)
+    ensure_local_backend(root)
     router_input = (
         "# User Prompt\n"
         f"{prompt.strip()}\n\n"
@@ -2333,8 +2592,9 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
     set_agent_status(paths, "local-intent-router", "running")
     append_event(paths, "agent_started", {"agent": "local", "role": "intent-router", "worker": "intent_router"})
     model = choose_model("intent_router", complexity)
+    local_runtime = local_runtime_report(root, write=True).get("active_backend", "none")
     try:
-        worker_output = run_worker("intent_router", router_input, model=model, source_ref="user_prompt")
+        worker_output = run_worker("intent_router", router_input, model=model, runtime=local_runtime, source_ref="user_prompt")
         parsed = worker_output.get("parsed") if isinstance(worker_output.get("parsed"), dict) else {}
         validation = validate_worker_result("intent_router", worker_output)
         if validation["valid"]:
@@ -2355,7 +2615,7 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
             "should_escalate": True,
             "escalation_reason": f"local intent router failed; used heuristic fallback: {exc}",
         }
-        worker_output = {"runtime": "fallback", "model": model, "parsed": parsed, "raw": "", "error": str(exc)}
+        worker_output = {"runtime": local_runtime, "model": model, "parsed": parsed, "raw": "", "error": str(exc)}
         router_status = "fallback"
         route_source = "heuristic_fallback"
         actions = normalize_router_actions(parsed.get("actions"))
@@ -2562,7 +2822,13 @@ def format_routing_plan(plan: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def ensure_ollama_server(root: Path) -> None:
+def ensure_local_backend(root: Path) -> None:
+    runtime = local_runtime_report(root, write=False)
+    backend = runtime.get("active_backend") or "none"
+    if backend != "ollama":
+        return
+    if os.environ.get("HIVE_LOCAL_AUTOSTART", "0") not in {"1", "true", "yes"}:
+        return
     try:
         with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=1):
             return
@@ -2830,6 +3096,9 @@ def invoke_local(root: Path, role: str, run_id: str | None = None, complexity: s
         "review": "diff_reviewer",
         "diff-reviewer": "diff_reviewer",
         "classify": "classifier",
+        "json": "json_normalizer",
+        "json-normalizer": "json_normalizer",
+        "normalize": "json_normalizer",
     }
     worker = role_to_worker.get(role)
     if not worker:
@@ -2843,8 +3112,9 @@ def invoke_local(root: Path, role: str, run_id: str | None = None, complexity: s
     set_agent_status(paths, agent_name, "running")
     append_agent_log(paths, "local", role, f"started worker={worker} model={model} source={source_ref}")
     append_event(paths, "agent_started", {"agent": "local", "role": role, "worker": worker})
+    local_runtime = local_runtime_report(root, write=True).get("active_backend", "none")
     try:
-        worker_output = run_worker(worker, input_text, model=model, source_ref=source_ref)
+        worker_output = run_worker(worker, input_text, model=model, runtime=local_runtime, source_ref=source_ref)
         validation = validate_worker_result(worker, worker_output)
         result = {
             "schema_version": 1,
@@ -2852,7 +3122,7 @@ def invoke_local(root: Path, role: str, run_id: str | None = None, complexity: s
             "role": role,
             "status": "completed",
             "provider_mode": "local_runtime",
-            "runtime": "ollama",
+            "runtime": worker_output.get("runtime", os.environ.get("HIVE_LOCAL_BACKEND", "auto")),
             "worker": worker,
             "model": model,
             "source_ref": source_ref,
@@ -2873,7 +3143,7 @@ def invoke_local(root: Path, role: str, run_id: str | None = None, complexity: s
             "role": role,
             "status": "failed",
             "provider_mode": "local_runtime",
-            "runtime": "ollama",
+            "runtime": local_runtime,
             "worker": worker,
             "model": model,
             "source_ref": source_ref,
@@ -3288,7 +3558,7 @@ def external_command(agent: str, binary: str, prompt: str) -> list[str]:
 
 
 def choose_local_input(paths: RunPaths, role: str) -> Path:
-    if role in {"context", "context-compressor", "memory", "memory-curator", "classify"}:
+    if role in {"context", "context-compressor", "memory", "memory-curator", "classify", "json", "json-normalizer", "normalize"}:
         return paths.context_pack
     if role in {"handoff", "handoff-drafter"}:
         return paths.task
@@ -3312,6 +3582,9 @@ def local_agent_name(role: str) -> str:
         "review": "local-diff-reviewer",
         "diff-reviewer": "local-diff-reviewer",
         "classify": "local-classifier",
+        "json": "local-json-normalizer",
+        "json-normalizer": "local-json-normalizer",
+        "normalize": "local-json-normalizer",
     }.get(role, f"local-{role}")
 
 

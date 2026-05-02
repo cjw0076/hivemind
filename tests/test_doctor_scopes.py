@@ -37,11 +37,16 @@ class DoctorScopesTest(unittest.TestCase):
             self.assertEqual(report["schema_version"], 1)
             self.assertIn("python", report["runtime"])
             self.assertEqual(report["provider_cli_paths"]["codex"]["path"], "/usr/bin/codex")
-            self.assertIn("ollama", report["ports"])
+            self.assertIn("local_ollama_adapter", report["ports"])
 
     def test_doctor_scope_all_combines_providers_hardware_models_and_permissions(self) -> None:
         local_runtime = {
             "generated_at": "test",
+            "protocol": "hive-local-backend-v1",
+            "active_backend": "ollama",
+            "backends": {
+                "ollama": {"models": ["qwen3:8b"], "server": "running", "model_source": "server", "status": "available"}
+            },
             "ollama": {"models": ["qwen3:8b"], "server": "running", "model_source": "server"},
             "recommended_models": ["qwen3:8b"],
             "missing_recommended_models": [],

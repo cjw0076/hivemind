@@ -208,6 +208,8 @@ def main(argv: list[str] | None = None) -> None:
     local_routes_cmd.add_argument("--json", action="store_true")
     local_benchmark_cmd = local_sub.add_parser("benchmark", help="run local model JSON-validity and latency smoke benchmarks")
     local_benchmark_cmd.add_argument("--model", action="append", dest="models", help="model to benchmark; repeatable")
+    local_benchmark_cmd.add_argument("--role", action="append", dest="roles", help="benchmark role suite; repeatable")
+    local_benchmark_cmd.add_argument("--backend", default="auto", help="local backend adapter, default: auto")
     local_benchmark_cmd.add_argument("--limit", type=int, default=4)
     local_benchmark_cmd.add_argument("--timeout", type=int, default=90)
     local_benchmark_cmd.add_argument("--json", action="store_true")
@@ -472,7 +474,7 @@ def main(argv: list[str] | None = None) -> None:
             else:
                 for name, route in report["routes"].items():
                     models = route["models"]
-                print(f"{name}: fast={models['fast']} default={models['default']} strong={models['strong']}")
+                    print(f"{name}: fast={models['fast']} default={models['default']} strong={models['strong']}")
             return
         if args.local_cmd == "checker":
             report = llm_checker_report(root, category=args.category, use_npx=args.use_npx, execute=args.execute, write=True)
@@ -486,7 +488,7 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"Wrote {root / '.hivemind' / 'llm_checker_report.json'}")
             return
         if args.local_cmd == "benchmark":
-            report = local_benchmark_report(root, models=args.models, limit=args.limit, timeout=args.timeout, write=True)
+            report = local_benchmark_report(root, models=args.models, roles=args.roles, backend=args.backend, limit=args.limit, timeout=args.timeout, write=True)
             if args.json:
                 import json
 
@@ -517,7 +519,7 @@ def main(argv: list[str] | None = None) -> None:
             if args.local_cmd == "setup":
                 print("")
                 print(f"Wrote {root / '.hivemind' / 'local_runtime.json'}")
-                print("To start the local server:")
+                print("Optional Ollama adapter startup:")
                 print("  scripts/start-ollama-local.sh")
         return
     if args.cmd == "run":

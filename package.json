@@ -8,6 +8,7 @@
   },
   "scripts": {
     "doctor": "python -m hivemind.hive doctor",
+    "backend:ollama:docker": "bash scripts/start-ollama-docker.sh",
     "ollama:docker": "bash scripts/start-ollama-docker.sh",
     "benchmark:local": "bash scripts/hive-local-benchmark.sh",
     "install:python": "python -m pip install --user -e .",
