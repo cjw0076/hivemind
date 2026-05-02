@@ -97,6 +97,22 @@ Sources: `VG-03`, `VG-04`, `VG-06`, `VG-13`.
 - [ ] Add frame-anchor drift checks for active claim shape and forbidden language before accepting position notes.
 - [ ] Add source-read registry that can flag shared source input with divergent agent interpretations.
 
+## Layered Chair Runtime
+
+Sources: `VG-03`, `VG-04`, `VG-05`, `VG-12`, `VG-14`, `VG-15`.
+
+Source: `docs/HIVE_MIND_GAPS.md` section "Header Role Decomposition and Per-Layer Provider Selection".
+
+- [ ] Define chair layer artifact schemas: `DispatcherState`, `VerifierCheck`, `WorkingAgentTurn`, `RefereeDecision`, `NorthStarAudit`, and `ConflictReview`.
+- [ ] Implement L0 dispatcher as code-first state machine for rounds, fronts, turns, timeouts, artifact arrival, and next-speaker scheduling.
+- [ ] Implement L1 verifier checks for schema validity, process launch hygiene, stale artifact detection, forbidden-language scans, and file/scope checks.
+- [ ] Add provider-family metadata to provider capabilities so L2/L3/L5 can enforce model-family heterogeneity.
+- [ ] Add role routing policy: L0 code/local-only, L1 code/local/cheap-hosted, L2 frontier workers, L3 different-family referee, L4 long-context auditor, L5 different-family conflict reviewer.
+- [ ] Add `hive chair status` to show active layer, front, turn owner, pending verifier checks, and next escalation.
+- [ ] Add `hive chair audit` for event-triggered North-Star audits on front close, claim wording changes, frame edits, and publish gates.
+- [ ] Add `hive chair assign` dry-run to explain which provider family will be used for each layer and why.
+- [ ] Add tests for monolithic-header prevention: L0 cannot make content judgments, L3/L5 cannot reuse the active working-agent family unless explicitly overridden.
+
 ## Hive Mind Gap Closure
 
 Sources: `VG-01`, `VG-03`, `VG-06`, `VG-14`.

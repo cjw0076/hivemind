@@ -439,3 +439,10 @@ Naming note as of 2026-05-02 12:24 KST:
 - Decision: Confirmed the active TUI process was blocked inside an Ollama-backed local intent-router call, then made TUI submissions run in a background thread and moved the default intent router model from `qwen3:8b` to `qwen3:1.7b` with a 30s timeout.
 - Evidence: `curl /api/ps` showed `qwen3:8b` loaded and `.runs/run_20260502_161613_a038a0/events.jsonl` had only `agent_started` for `intent-router`. Added tests for background submit dispatch and intent-router default/timeout.
 - Next: Restart any already-running TUI session to pick up the non-blocking submit loop; existing sessions cannot be hot-patched.
+
+## 2026-05-02 16:28 KST - Codex
+
+- Context: User asked whether to record and task the new header/chair decomposition analysis.
+- Decision: Accepted the decomposition as product architecture, but framed it as a layered chair runtime rather than a monolithic header LLM. Added `VG-15 Layered Chair Runtime` and a TODO section for L0 dispatcher, L1 verifier, L2 working agents, L3 referee, L4 North-Star auditor, and L5 conflict reviewer.
+- Evidence: `docs/HIVE_MIND_GAPS.md` and `../memoryOS/docs/shared/HIVE_MIND_GAPS.md` are both 798 lines with no diff; the new section is a synchronized shared source. Updated `docs/VISION_GRAPH.md` and `docs/TODO.md`.
+- Next: Implement the L0/L1 slice first: code-first dispatcher state, verifier checks, provider-family metadata, and monolithic-header prevention tests.

@@ -705,3 +705,94 @@ The adversarial-debate layer is a Hive Mind responsibility, but it consumes from
 ### One-line conclusion
 
 > Adversarial collaboration produces sharper truth than cooperative collaboration, but only if the hive structurally enforces pre-commit binding, falsifiable-test gating, and frame-anchored drift detection. Without those, adversarial mode degrades into either deferential consensus or unbounded debate — and the user has to be the convergence enforcer instead of the judge.
+
+---
+
+## Header Role Decomposition and Per-Layer Provider Selection
+
+*Author: Claude (claude-opus-4-7), 2026-05-02 KST.*
+*Trigger: User asked whether the header's role is too important and which LLM provider fits each level.*
+
+The earlier sections describe what Hive Mind must do. This section answers a structural question: **should the "chair" be a single agent?** Answer: no. Make it thin. Slice judgment-heavy work into specialized roles invoked on demand, each with a model class that matches its task.
+
+The user wore five hats this session: dispatcher, verifier, referee, North-Star auditor, conflict reviewer. A monolithic header would do all of these badly. Six-layer split:
+
+### Layer 0 — Dispatcher (orchestration only, no judgment)
+
+- Tasks: route messages, write timestamped channel entries, enforce turn timeouts, manage `Front` and `Round` state machine, fire `Verifier` on artifact arrival.
+- LLM judgment required: none. Pure code, optionally with a tiny LLM for natural-language status messages.
+- **Provider: code / local 7-8B if a model is needed at all.** Llama-3.1-8B-Instruct, Qwen-2.5-7B, or Phi-3-mini. Runs on the local 5090s with zero API cost.
+- Why cheap: deterministic operations dominate; ambiguity belongs to higher layers.
+
+### Layer 1 — Verifier (schema, hygiene, forbidden-language, file checks)
+
+- Tasks: validate artifact JSON schema, grep position notes against `paper4_frame.md` forbidden list, check `ps`/STAT for launch hygiene (no-nohup detection), timestamp-based liveness check, file-existence cross-checks.
+- LLM judgment required: light. Most of this is grep + AST + ps parsing. LLM only for fuzzy checks like "does this paragraph still match the locked claim shape."
+- **Provider: Haiku 4.5 or local 14B (Qwen-2.5-14B).** Or just code where possible.
+- Why cheap: high call frequency, low per-call cognition.
+
+### Layer 2 — Working agents (the actual debaters / implementers)
+
+- Tasks: write code, file position notes, propose experiments, push back on each other.
+- LLM judgment required: maximum.
+- **Provider: frontier-class, and *deliberately heterogeneous*.** Claude Opus 4.7 + GPT-5/Codex + (optionally Gemini 2.5 Pro). Different families produce different blind spots, which is exactly what adversarial mode harvests.
+- **Critical rule: never run two working agents from the same family.** Two Claudes debating each other share priors; the friction degenerates into stylistic agreement. The session's value depended on Claude and Codex being from different providers.
+
+### Layer 3 — Referee (procedural judgment: did the front actually close?)
+
+- Tasks: invoked only when working agents dispute whether the convergence rule is satisfied. Decides: was the falsifiable test cheap and well-formed? Did the result actually fire one row of the pre-commit table? Is a push-back legitimate or venting?
+- LLM judgment required: high but procedural, not content-deep.
+- **Provider: frontier-class, *different family from both working agents*.** If Claude + Codex are debating, the referee is Gemini 2.5 Pro or a third independent Claude/GPT with explicit referee prompt. Bias-independence matters.
+- Cost shape: rare invocation, expensive per call. Amortized cheap.
+
+### Layer 4 — North Star auditor (long-window drift detection)
+
+- Tasks: every N rounds, read the entire `comms_log.md` + active `FrameAnchor` doc + position files, and answer: "are we still converging on the locked claim, or drifting toward a different paper?" Flag forbidden-language leaks across the whole session, not just the last entry.
+- LLM judgment required: high, with **long-context as binding constraint**.
+- **Provider: long-context frontier.** Claude Opus 1M (this session's model) or Gemini 2.5 Pro 2M. 200k-context models are insufficient once a research session crosses several days of `comms_log.md`.
+- Cost shape: periodic (1× per ~10 rounds, or 1× per day). Expensive single call, amortized.
+
+### Layer 5 — Conflict reviewer (content-level contradictions)
+
+- Tasks: when working agents produce factually contradictory claims (e.g., Claude says "calibration curve," Codex says "boundary result"), frame the contradiction precisely and propose the cheapest disambiguating test. Hands the test back to working agents.
+- LLM judgment required: deep content reasoning + neutrality.
+- **Provider: frontier, again *different family from the participants*.** Same bias-independence rule as the referee. The reviewer can be the same model instance as the referee with a different system prompt, but it must not be one of the working agents.
+- Cost shape: invoked on detected contradiction. Expensive but rare.
+
+### Heterogeneity rule (the one rule the hive must enforce structurally)
+
+> Across Layers 2, 3, 5, use at least three different model families. Two-family setups collapse into pairwise bias. Three-family setups give triangulation: any two agreeing against the third produces a real signal.
+
+In practice for this user's setup:
+- Working agents: Claude Opus 4.7 + GPT-5/Codex (already in place)
+- Referee + Reviewer: Gemini 2.5 Pro (third family) — currently absent
+- Auditor: Claude Opus 1M (long context) — same family as a working agent, acceptable because auditor is procedural-content rather than debate participant
+
+### Cost / call-frequency summary
+
+| Layer | Per-call cost | Calls per session | Total session cost driver |
+|---|---|---|---|
+| 0 Dispatcher | ~0 | many | negligible |
+| 1 Verifier | low | many | low |
+| 2 Working | high | many | **dominant** |
+| 3 Referee | high | rare | low-mid |
+| 4 Auditor | very high | periodic | mid |
+| 5 Reviewer | high | rare | low-mid |
+
+The dominant spend is Layer 2. Optimizations should not target Layers 0/1 — they're already cheap. They should target Layer 2 throughput (parallelism) and Layer 4 cadence (don't re-audit every turn).
+
+### What this means for the user's question "header role is too important?"
+
+The user's intuition is correct: a monolithic header is too important and becomes a bottleneck and a single point of bias. The fix is **not a smarter header**. The fix is **a thin Layer-0 dispatcher plus four specialized judgment roles invoked on demand**, each with a model class that matches its task.
+
+The user (= today's de facto header) wore all five judgment hats. The implementation order to relieve them:
+
+1. Automate Layer 0 + Layer 1 first (deterministic, cheap, immediate relief).
+2. Add Layer 4 next (periodic North Star check; catches drift the user otherwise has to feel).
+3. Add Layer 3 + Layer 5 last (on-demand judgment; rare but high-leverage).
+
+Layers 0 and 1 absorb most of the user's polling and verification load. Layer 4 catches what the user currently catches by gut. Layers 3 and 5 are the safety net for the cases where adversarial mode genuinely jams.
+
+### One-line conclusion
+
+> The header should not be one strong agent. It should be a thin code-or-small-LLM dispatcher plus four specialized frontier-LLM roles invoked on demand, with at least three model families participating across the working + judging layers — otherwise the hive collapses into a single-agent bottleneck wearing the user's hat.
