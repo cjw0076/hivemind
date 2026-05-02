@@ -8,8 +8,10 @@
 python -m memoryos.mos init
 scripts/install-mos-cli.sh
 mos "Build Draft Review screen"
+mos run -q --json "Build Draft Review screen"
 mos plan
 mos tui
+mos completion zsh
 ```
 
 Without installing:

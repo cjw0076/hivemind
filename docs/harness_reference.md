@@ -9,6 +9,31 @@
 6. CLI → Desktop 확장 구조
 ```
 
+## Current `mos` Implementation Notes
+
+Implemented now:
+
+```bash
+mos
+mos "task"
+mos ask "task"
+mos run -q --json "task"
+mos plan
+mos tui
+mos completion zsh
+```
+
+Reference-driven next CLI targets:
+
+```text
+- slash commands / REPL shell inspired by OpenClaude and Open Codex
+- installer flags: mos init --no-tui --skills=yes --mcp=yes
+- provider adapter registry beyond claude/codex/gemini/local
+- markdown rules/checks under .memoryos/checks/
+- git-first diff/check/commit summary loop inspired by Aider and Continue
+- GitHub issue/PR runner later, after local run artifacts stabilize
+```
+
 아래 프로젝트들을 우선순위로 보면 좋아.
 
 ---

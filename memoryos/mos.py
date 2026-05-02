@@ -55,13 +55,14 @@ COMMANDS = {
     "verify",
     "summarize",
     "memory",
+    "completion",
 }
 
 
 def normalize_argv(argv: list[str]) -> list[str]:
     """Allow provider-style prompt entry: `mos "build this"` -> `mos ask "build this"`."""
     if not argv:
-        return argv
+        return ["tui"] if sys.stdin.isatty() and sys.stdout.isatty() else ["--help"]
     if argv[0] in {"-h", "--help", "--version"}:
         return argv
     if argv[0] == "--root":
@@ -86,6 +87,9 @@ def main(argv: list[str] | None = None) -> None:
 
     init_cmd = sub.add_parser("init", help="initialize MemoryOS onboarding state")
     init_cmd.add_argument("--json", action="store_true")
+    init_cmd.add_argument("--no-tui", action="store_true", help="non-interactive init; accepted for installer compatibility")
+    init_cmd.add_argument("--skills", choices=["yes", "no"], default="no", help="prepare skill config placeholders")
+    init_cmd.add_argument("--mcp", choices=["yes", "no"], default="no", help="prepare MCP config placeholders")
     doctor_cmd = sub.add_parser("doctor", help="check MemoryOS runtime health")
     doctor_cmd.add_argument("--json", action="store_true")
 
@@ -114,6 +118,8 @@ def main(argv: list[str] | None = None) -> None:
     run_cmd.add_argument("task", help="user task/request")
     run_cmd.add_argument("--project", default="MemoryOS")
     run_cmd.add_argument("--type", default="implementation", dest="task_type")
+    run_cmd.add_argument("-q", "--quiet", action="store_true", help="only print the run id/path")
+    run_cmd.add_argument("--json", action="store_true")
 
     ask_cmd = sub.add_parser("ask", help="route one prompt through local intent decomposition")
     ask_cmd.add_argument("prompt", help="user prompt/task")
@@ -160,6 +166,9 @@ def main(argv: list[str] | None = None) -> None:
     memory_sub = memory_cmd.add_subparsers(dest="memory_cmd", required=True)
     draft_cmd = memory_sub.add_parser("draft", help="create memory_drafts.json")
     draft_cmd.add_argument("--run-id")
+
+    completion_cmd = sub.add_parser("completion", help="print shell completion script")
+    completion_cmd.add_argument("shell", choices=["bash", "zsh", "fish"])
 
     args = parser.parse_args(argv)
     root = Path(args.root).resolve()
@@ -238,7 +247,15 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.cmd == "run":
         paths = create_run(root, args.task, project=args.project, task_type=args.task_type)
-        print(paths.run_dir)
+        if args.json:
+            import json
+
+            indent = None if args.quiet else 2
+            print(json.dumps({"run_id": paths.run_id, "run_dir": paths.run_dir.as_posix()}, ensure_ascii=False, indent=indent))
+        elif args.quiet:
+            print(paths.run_id)
+        else:
+            print(paths.run_dir)
         return
     if args.cmd == "ask":
         print(ask_router(root, args.prompt, run_id=args.run_id, complexity=args.complexity))
@@ -294,6 +311,40 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "memory" and args.memory_cmd == "draft":
         print(build_memory_draft(root, args.run_id))
         return
+    if args.cmd == "completion":
+        print_completion(args.shell)
+        return
+
+
+def print_completion(shell: str) -> None:
+    commands = " ".join(sorted(COMMANDS))
+    if shell == "bash":
+        print(
+            f"""_mos_completion() {{
+  local cur="${{COMP_WORDS[COMP_CWORD]}}"
+  if [[ $COMP_CWORD -eq 1 ]]; then
+    COMPREPLY=( $(compgen -W "{commands}" -- "$cur") )
+  fi
+}}
+complete -F _mos_completion mos"""
+        )
+        return
+    if shell == "zsh":
+        print(
+            f"""#compdef mos
+_mos() {{
+  local -a commands
+  commands=({commands})
+  if (( CURRENT == 2 )); then
+    _describe 'command' commands
+  fi
+}}
+compdef _mos mos"""
+        )
+        return
+    if shell == "fish":
+        for command in sorted(COMMANDS):
+            print(f"complete -c mos -f -n '__fish_use_subcommand' -a {command}")
 
 
 if __name__ == "__main__":

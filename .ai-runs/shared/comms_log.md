@@ -195,3 +195,10 @@
 - Decision: Made `mos` installable with `scripts/install-mos-cli.sh`, fixed setuptools package discovery, and added provider-style shorthand so `mos "task"` routes through `mos ask`.
 - Evidence: Editable install succeeded to `/home/user/.local/bin/mos`; verified `mos --version`, `mos doctor`, `mos "CLI shorthand smoke route"`, `mos plan`, `mos status`, py_compile, and unit tests.
 - Next: Continue CLI hardening around provider execution controls, better TUI layout, and install/onboarding polish.
+
+## 2026-05-02 10:20 KST - Codex
+
+- Context: User provided harness/CLI references: OpenClaude, OpenCode, oh-my-opencode, Open Codex, Codex CLI, Aider, Goose, Continue, rules repos, and CLI-Anything.
+- Decision: Added the reference-driven CLI backlog and implemented the smallest ergonomics directly: `mos` no-arg TUI entry, `mos run -q --json`, `mos completion bash|zsh|fish`, and installer-compatible `mos init --no-tui --skills=yes --mcp=yes` flags.
+- Evidence: Verified `mos run -q --json "CLI quiet json smoke"`, `mos completion zsh`, `mos init --no-tui --skills=yes --mcp=yes --json`, py_compile, and unit tests.
+- Next: Implement slash-command shell, markdown checks, git diff/check/commit loop, and provider adapter registry stubs.

@@ -27,6 +27,7 @@ Sources: `VG-03`, `VG-04`, `VG-05`, `VG-13`.
 - [x] Add parser warnings instead of failing entire imports on one malformed record.
 - [x] Persist production settings profile during onboarding so provider paths, local model inventory, and shell exports are tracked.
 - [x] Add prompt-first `mos ask` local intent routing that decomposes work into Claude/Codex/Gemini/local artifacts.
+- [x] Install `mos` as a real CLI and support provider-style shorthand: `mos "task"`.
 
 ## Harness Runtime
 
@@ -41,6 +42,11 @@ Sources: `VG-03`, `VG-04`, `VG-13`.
 - [x] Add `memoryos import-run .runs/<run_id>` or equivalent draft import path.
 - [x] Add `mos settings detect/shell` and `scripts/mos-workbench.sh` for context editing plus fast provider artifact preparation.
 - [x] Add TUI prompt routing controls: `n` for new prompt and `a` for auto-routing the current run.
+- [x] Add `mos run -q --json` and shell completion script generation for bash/zsh/fish.
+- [ ] Add interactive slash-command shell for `mos` inspired by OpenClaude/Open Codex.
+- [ ] Add `.memoryos/checks/*.md` markdown-as-agent-check policy files inspired by Continue.
+- [ ] Add git-first diff/check/commit summary loop inspired by Aider.
+- [ ] Add adapter registry stubs for opencode, goose, OpenClaude-compatible runtimes.
 
 ## Parser Work
 
