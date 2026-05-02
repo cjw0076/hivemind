@@ -20,6 +20,7 @@ graph TD
   V11[Import Parser Substrate]
   V12[Claim Discipline / Audit]
   V13[Production Packaging]
+  V14[Learning Operator Loop]
 
   V0 --> V1
   V0 --> V2
@@ -32,6 +33,9 @@ graph TD
   V1 --> V7
   V2 --> V4
   V2 --> V13
+  V3 --> V14
+  V14 --> V1
+  V14 --> V6
   V7 --> V8
   V8 --> V9
   V1 --> V10
@@ -56,12 +60,14 @@ graph TD
 | VG-11 | Import Parser Substrate | Official exports and local files become durable normalized nodes with provenance. | `memoryOS.md`, `EXPORT_PARSERS.md`, `MEMORYOS_MVP.md`, `docs/split/memoryOS/part-007-parser-and-mcp-workflow.md` | `../memoryOS/memoryos/cli.py`; `TODO.md` Parser Work. |
 | VG-12 | Claim Discipline / Audit | Separate evidence-backed claims from speculative/unsupported claims, preserve disagreement and stale decisions. | `AGENTS.md`, `NORTHSTAR.md`, `ARCHITECTURE.md`, `MYWORLD_IDEA_EXCERPTS.md` | `memoryos audit`; `TODO.md` Audit Work and Schema Work. |
 | VG-13 | Production Packaging | Installable local-first `hive` product wrapping MemoryOS, CapabilityOS, MCP, providers, and local runtime. | `make_production.md`, `hive_mind2.md`, `TUI_HARNESS.md`, `PROVIDER_HARNESS_GUIDE.md` | `hive init`, `hive doctor`, `hive local status/setup`; `TODO.md` Harness Runtime, Production Hardening, and Security/Product. |
+| VG-14 | Learning Operator Loop | Close the loop from accepted MemoryOS context into Hive runs, chaired provider debate, verification, conflict records, and reviewed memory drafts for the next run. | `HIVE_MIND_GAPS.md` mirrored from `../memoryOS/docs/shared/HIVE_MIND_GAPS.md`, `GAP_CLOSURE_IMPLEMENTATION.md`, `HIVE_WORKING_METHOD.md`, `agent_society.md` | `hive debate`, `hive gaps`, `hive next`; `TODO.md` Hive Mind Gap Closure and Provider Debate And Convergence. |
 
 ## Source Families
 
 | Family | Files | Use when |
 | --- | --- | --- |
 | Current execution | `TUI_HARNESS.md`, `PROVIDER_HARNESS_GUIDE.md`, `LOCAL_LLM_WORKERS.md`, `make_production.md`, `hive_mind2.md`, `cli_help.md` | Changing `hive`, provider invocation, onboarding, local workers. |
+| Shared gap reports | `HIVE_MIND_GAPS.md` mirrored from `../memoryOS/docs/shared/HIVE_MIND_GAPS.md` | Prioritizing Hive Mind work discovered from multi-agent MemoryOS runs. |
 | Product direction | `final.md`, `capabilityOS.md`, `agent_society.md`, `ui_future.md`, `ecosystem.md`, `for_future_agent.md`, `optima.md` | Planning product architecture, future UI, workflow/capability maps. |
 | Memory substrate | `memoryOS.md`, `MEMORYOS_MVP.md`, `EXPORT_PARSERS.md`, `ARCHITECTURE.md` | Changing import, graph, parser, audit, memory review. |
 | Research substrate | `goen_resonance.md`, `my_world.md`, `MYWORLD_IDEA_EXCERPTS.md` | Reasoning about Dipeen, GoEN, ontology plasticity, claim boundaries. |

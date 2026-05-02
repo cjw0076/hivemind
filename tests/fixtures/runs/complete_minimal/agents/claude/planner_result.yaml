@@ -1,0 +1,27 @@
+schema_version: 1
+provider: claude
+agent: claude
+role: planner
+status: prepared
+provider_mode: prepare_only
+permission_mode: plan
+prompt_path: complete_minimal/agents/claude/planner_prompt.md
+command_path: complete_minimal/agents/claude/command.txt
+stdout_path: complete_minimal/agents/claude/stdout.txt
+stderr_path: complete_minimal/agents/claude/stderr.txt
+output_path: complete_minimal/agents/claude/output.md
+returncode:
+started_at: ""
+finished_at: ""
+duration_ms:
+files_changed: []
+commands_run: []
+tests_run: []
+artifacts_created:
+  - complete_minimal/agents/claude/planner_prompt.md
+  - complete_minimal/agents/claude/command.txt
+  - complete_minimal/agents/claude/output.md
+risk_level: low
+policy_violations: []
+memory_refs_used: []
+capability_refs_used: []

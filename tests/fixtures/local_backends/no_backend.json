@@ -1,0 +1,7 @@
+{
+  "protocol": "hive-local-backend-v1",
+  "active_backend": "none",
+  "backends": {},
+  "recommended_models": ["phi4-mini"],
+  "missing_recommended_models": ["phi4-mini"]
+}

@@ -1534,6 +1534,271 @@ def run_audit_report(root: Path, run_id: str | None = None) -> dict[str, Any]:
     }
 
 
+def close_gap_loop(root: Path, run_id: str | None = None) -> dict[str, Any]:
+    """Build the artifacts needed to close the MemoryOS-side Hive Mind gaps."""
+    paths, _ = load_run(root, run_id)
+    memory_context = build_memory_context_artifact(root, paths.run_id)
+    semantic_verification = build_semantic_verification_artifact(root, paths.run_id)
+    handoff_quality = build_handoff_quality_artifact(root, paths.run_id)
+    routing_evidence = build_routing_evidence_artifact(root, paths.run_id)
+    conflict_set = build_conflict_set_artifact(root, paths.run_id)
+    operator_decisions = build_operator_decisions_artifact(root, paths.run_id)
+    report = {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "run_id": paths.run_id,
+        "source": "docs/HIVE_MIND_GAPS.md",
+        "status": "ready",
+        "artifacts": {
+            "memory_context": memory_context["path"],
+            "semantic_verification": semantic_verification["path"],
+            "handoff_quality": handoff_quality["path"],
+            "routing_evidence": routing_evidence["path"],
+            "conflict_set": conflict_set["path"],
+            "operator_decisions": operator_decisions["path"],
+        },
+        "next_actions": operator_decisions.get("decisions", []),
+        "working_method": WORKING_METHOD_PHRASE,
+    }
+    gap_path = paths.artifacts / "gap_closure.json"
+    write_json(gap_path, report)
+    add_state_artifact(paths, "gap_closure", gap_path)
+    append_hive_activity(paths, "hive-mind", "gap_closure_ready", "Built gap-closure artifacts from HIVE_MIND_GAPS.", {"artifact": gap_path.relative_to(root).as_posix()})
+    update_state(paths, phase="gap_closure", status="ready")
+    return report
+
+
+def build_memory_context_artifact(root: Path, run_id: str | None = None) -> dict[str, Any]:
+    paths, state = load_run(root, run_id)
+    memoryos_root = root.parent / "memoryOS"
+    memoryos_cli = memoryos_root / "memoryos" / "cli.py"
+    status = "available" if memoryos_cli.exists() else "planned"
+    artifact = {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "run_id": paths.run_id,
+        "gap": "pre_run_memory_context",
+        "status": status,
+        "memoryos_root": memoryos_root.as_posix(),
+        "accepted_memories_used": [],
+        "open_questions": [
+            "Which MemoryOS context command should be the canonical pre-run entrypoint?",
+            "Which accepted memories require human approval before inclusion in Hive context?",
+        ],
+        "planned_command": f'memoryos context build --for hive --task {json.dumps(state.get("user_request", ""), ensure_ascii=False)}',
+        "raw_refs": ["docs/HIVE_MIND_GAPS.md", paths.context_pack.relative_to(root).as_posix()],
+    }
+    path = paths.artifacts / "memory_context.json"
+    write_json(path, artifact)
+    add_state_artifact(paths, "memory_context", path)
+    append_event(paths, "memory_context_built", {"artifact": path.relative_to(root).as_posix(), "status": status})
+    return {"path": path.relative_to(root).as_posix(), "artifact": artifact}
+
+
+def build_semantic_verification_artifact(root: Path, run_id: str | None = None) -> dict[str, Any]:
+    paths, state = load_run(root, run_id)
+    handoff = safe_load_yaml(paths.handoff)
+    acceptance = handoff.get("acceptance_criteria") if isinstance(handoff, dict) else []
+    changed_files = git_changed_files(root)
+    checks = [
+        {"id": "objective_present", "status": "pass" if state.get("user_request") else "fail", "evidence": state.get("user_request", "")},
+        {"id": "acceptance_criteria_present", "status": "pass" if acceptance else "warn", "evidence": acceptance or []},
+        {"id": "changed_files_recorded", "status": "pass" if changed_files else "manual", "evidence": changed_files},
+        {"id": "provider_results_present", "status": "pass" if list((paths.run_dir / "agents").glob("*/*_result.yaml")) else "warn", "evidence": [p.relative_to(root).as_posix() for p in sorted((paths.run_dir / "agents").glob("*/*_result.yaml"))]},
+    ]
+    status = "pass" if all(item["status"] == "pass" for item in checks[:2]) else "needs_review"
+    artifact = {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "run_id": paths.run_id,
+        "gap": "semantic_verification",
+        "status": status,
+        "checks": checks,
+        "claim": "Artifact checks are necessary but not sufficient; this file records objective/scope/acceptance evidence for review.",
+        "raw_refs": ["docs/HIVE_MIND_GAPS.md", paths.task.relative_to(root).as_posix(), paths.handoff.relative_to(root).as_posix()],
+    }
+    path = paths.artifacts / "semantic_verification.json"
+    write_json(path, artifact)
+    add_state_artifact(paths, "semantic_verification", path)
+    append_event(paths, "semantic_verification_created", {"artifact": path.relative_to(root).as_posix(), "status": status})
+    return {"path": path.relative_to(root).as_posix(), "artifact": artifact}
+
+
+def build_handoff_quality_artifact(root: Path, run_id: str | None = None) -> dict[str, Any]:
+    paths, _ = load_run(root, run_id)
+    handoff = safe_load_yaml(paths.handoff)
+    required = {
+        "objective": handoff.get("objective") if isinstance(handoff, dict) else None,
+        "constraints": handoff.get("constraints") if isinstance(handoff, dict) else None,
+        "acceptance_criteria": handoff.get("acceptance_criteria") if isinstance(handoff, dict) else None,
+        "risks": handoff.get("risks") if isinstance(handoff, dict) else None,
+        "files_or_domains": handoff.get("files_or_domains") or handoff.get("files") if isinstance(handoff, dict) else None,
+        "suggested_commands": handoff.get("suggested_commands") if isinstance(handoff, dict) else None,
+        "suggested_tests": handoff.get("suggested_tests") if isinstance(handoff, dict) else None,
+    }
+    checks = [
+        {"field": field, "status": "pass" if value else "warn", "value": value or []}
+        for field, value in required.items()
+    ]
+    status = "pass" if all(item["status"] == "pass" for item in checks[:3]) else "needs_review"
+    artifact = {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "run_id": paths.run_id,
+        "gap": "handoff_quality_gate",
+        "status": status,
+        "checks": checks,
+        "required_for_strong_handoff": list(required),
+        "raw_refs": ["docs/HIVE_MIND_GAPS.md", paths.handoff.relative_to(root).as_posix()],
+    }
+    path = paths.artifacts / "handoff_quality.json"
+    write_json(path, artifact)
+    add_state_artifact(paths, "handoff_quality", path)
+    append_event(paths, "handoff_quality_created", {"artifact": path.relative_to(root).as_posix(), "status": status})
+    return {"path": path.relative_to(root).as_posix(), "artifact": artifact}
+
+
+def build_routing_evidence_artifact(root: Path, run_id: str | None = None) -> dict[str, Any]:
+    paths, state = load_run(root, run_id)
+    plan_path = paths.run_dir / "routing_plan.json"
+    plan = json.loads(plan_path.read_text(encoding="utf-8")) if plan_path.exists() else {"actions": []}
+    providers = detect_agents(root, write=True).get("providers") or {}
+    local_profile = local_model_profile(root, write=False)
+    evidence = []
+    for action in plan.get("actions") or []:
+        provider = action.get("provider")
+        role = action.get("role")
+        provider_info = providers.get(provider, {}) if provider != "local" else {"status": "available", "mode": "local_runtime"}
+        evidence.append(
+            {
+                "provider": provider,
+                "role": role,
+                "reason": action.get("reason", ""),
+                "task_type": state.get("task_type"),
+                "provider_status": provider_info.get("status"),
+                "provider_mode": provider_info.get("mode"),
+                "risk": "medium" if role in {"executor", "reviewer", "debate_review"} else "low",
+                "local_profile_ref": ".hivemind/local_model_profile.json" if provider == "local" else "",
+            }
+        )
+    artifact = {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "run_id": paths.run_id,
+        "gap": "routing_evidence",
+        "status": "pass" if evidence else "needs_routing",
+        "route_source": plan.get("route_source", "missing"),
+        "local_profile_status": local_profile.get("status"),
+        "assignments": evidence,
+        "raw_refs": ["docs/HIVE_MIND_GAPS.md", plan_path.relative_to(root).as_posix() if plan_path.exists() else paths.task.relative_to(root).as_posix()],
+    }
+    path = paths.artifacts / "routing_evidence.json"
+    write_json(path, artifact)
+    add_state_artifact(paths, "routing_evidence", path)
+    append_event(paths, "routing_evidence_created", {"artifact": path.relative_to(root).as_posix(), "assignments": len(evidence)})
+    return {"path": path.relative_to(root).as_posix(), "artifact": artifact}
+
+
+def build_conflict_set_artifact(root: Path, run_id: str | None = None) -> dict[str, Any]:
+    paths, _ = load_run(root, run_id)
+    results = []
+    for result_path in sorted((paths.run_dir / "agents").glob("*/*_result.yaml")):
+        data = safe_load_yaml(result_path)
+        output_path = data.get("output_path") if isinstance(data, dict) else ""
+        preview = ""
+        if output_path and (root / output_path).exists():
+            preview = (root / output_path).read_text(encoding="utf-8", errors="replace").strip()[:800]
+        results.append(
+            {
+                "agent": data.get("agent"),
+                "role": data.get("role"),
+                "status": data.get("status"),
+                "risk_level": data.get("risk_level", "unknown"),
+                "result_path": result_path.relative_to(root).as_posix(),
+                "output_preview": preview,
+            }
+        )
+    status_groups: dict[str, list[str]] = {}
+    for item in results:
+        status_groups.setdefault(str(item.get("status")), []).append(str(item.get("agent")))
+    conflicts = []
+    if len(status_groups) > 1:
+        conflicts.append({"type": "status_disagreement", "groups": status_groups})
+    high_risk = [item for item in results if item.get("risk_level") == "high"]
+    if high_risk:
+        conflicts.append({"type": "high_risk_provider_result", "items": high_risk})
+    artifact = {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "run_id": paths.run_id,
+        "gap": "cross_agent_conflict",
+        "status": "needs_review" if conflicts else "clear",
+        "results": results,
+        "conflicts": conflicts,
+        "reviewer_assignment": "claude.reviewer" if conflicts else "",
+        "resolution_states": ["accepted", "rejected", "superseded", "needs_more_evidence"],
+        "raw_refs": ["docs/HIVE_MIND_GAPS.md"],
+    }
+    path = paths.artifacts / "conflict_set.json"
+    write_json(path, artifact)
+    add_state_artifact(paths, "conflict_set", path)
+    append_event(paths, "conflict_set_created", {"artifact": path.relative_to(root).as_posix(), "conflicts": len(conflicts)})
+    return {"path": path.relative_to(root).as_posix(), "artifact": artifact}
+
+
+def build_operator_decisions_artifact(root: Path, run_id: str | None = None) -> dict[str, Any]:
+    paths, state = load_run(root, run_id)
+    board = run_board(root, paths.run_id)
+    artifacts = state.get("artifacts") or {}
+    decisions = []
+    for name in ["memory_context", "semantic_verification", "handoff_quality", "routing_evidence", "conflict_set"]:
+        rel = artifacts.get(name)
+        if not rel:
+            decisions.append({"priority": "P0", "command": f"hive gaps --run-id {paths.run_id}", "reason": f"{name} artifact is missing"})
+    conflict_path = artifacts.get("conflict_set")
+    if conflict_path and (root / conflict_path).exists():
+        conflict = json.loads((root / conflict_path).read_text(encoding="utf-8"))
+        if conflict.get("status") == "needs_review":
+            decisions.append({"priority": "P0", "command": f"hive invoke claude --role reviewer --run-id {paths.run_id}", "reason": "cross-agent conflict needs review"})
+    next_action = board.get("next") or {}
+    if next_action.get("command"):
+        decisions.append({"priority": "P1", "command": next_action.get("command"), "reason": next_action.get("reason")})
+    if not decisions:
+        decisions.append({"priority": "P2", "command": f"hive summarize --run-id {paths.run_id}", "reason": "gap artifacts are present; summarize or continue"})
+    artifact = {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "run_id": paths.run_id,
+        "gap": "operator_decision_surface",
+        "status": "ready",
+        "decisions": decisions,
+        "chair": "Hive Mind",
+        "raw_refs": ["docs/HIVE_MIND_GAPS.md", paths.state.relative_to(root).as_posix()],
+    }
+    path = paths.artifacts / "operator_decisions.json"
+    write_json(path, artifact)
+    add_state_artifact(paths, "operator_decisions", path)
+    append_event(paths, "operator_decisions_created", {"artifact": path.relative_to(root).as_posix(), "decisions": len(decisions)})
+    return {"path": path.relative_to(root).as_posix(), "artifact": artifact, "decisions": decisions}
+
+
+def format_gap_closure_report(report: dict[str, Any]) -> str:
+    lines = [
+        f"Hive Mind Gap Closure: {report.get('run_id')}",
+        f"Source: {report.get('source')}",
+        f"Status: {report.get('status')}",
+        "",
+        "Artifacts:",
+    ]
+    for name, path in (report.get("artifacts") or {}).items():
+        lines.append(f"- {name}: {path}")
+    lines.extend(["", "Next Decisions:"])
+    for item in report.get("next_actions") or []:
+        lines.append(f"- [{item.get('priority')}] {item.get('command')} - {item.get('reason')}")
+    lines.extend(["", f"Thread: {report.get('working_method')}"])
+    return "\n".join(lines)
+
+
 def format_run_audit(report: dict[str, Any]) -> str:
     lines = [f"Hive Mind Audit: {report.get('run_id')}", "", f"Status: {report.get('status')}"]
     validation = report.get("validation") or {}
@@ -2576,9 +2841,12 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
     paths = create_run(root, prompt, project="Hive Mind", task_type="routed") if run_id is None else load_run(root, run_id)[0]
     paths.local_dir.mkdir(parents=True, exist_ok=True)
     ensure_local_backend(root)
+    method_profile = load_operator_method_profile(root)
     router_input = (
         "# User Prompt\n"
         f"{prompt.strip()}\n\n"
+        "# Operator Method Profile\n"
+        f"{method_profile}\n\n"
         "# Available Harness Roles\n"
         "- local/context: compress context for handoff\n"
         "- local/handoff: draft implementation handoff\n"
@@ -2767,6 +3035,178 @@ def orchestrate_prompt(
     return report
 
 
+def debate_topic(
+    root: Path,
+    topic: str,
+    run_id: str | None = None,
+    participants: list[str] | None = None,
+    execute: bool = False,
+) -> dict[str, Any]:
+    """Run a provider deliberation barrier: first opinions, review, convergence."""
+    selected = participants or ["claude", "gemini", "codex"]
+    allowed = {"claude", "gemini", "codex"}
+    invalid = sorted(set(selected) - allowed)
+    if invalid:
+        raise ValueError(f"Unsupported debate participants: {', '.join(invalid)}")
+
+    paths = create_run(root, f"Provider debate: {topic}", project="Hive Mind", task_type="deliberation") if run_id is None else load_run(root, run_id)[0]
+    topic_path = paths.run_dir / "debate_topic.md"
+    topic_path.write_text(f"# Debate Topic\n\n{topic.strip()}\n", encoding="utf-8")
+    add_state_artifact(paths, "debate_topic", topic_path)
+    append_transcript(paths, "Debate", f"Topic recorded at `{topic_path.relative_to(root).as_posix()}`")
+
+    rounds: list[dict[str, Any]] = []
+    round1 = run_debate_round(root, paths, selected, "debate_initial", execute=execute)
+    rounds.append(round1)
+    snapshot1 = write_debate_snapshot(root, paths, "debate_round1.md", topic, round1)
+    append_context_section(paths, "Debate Round 1 Snapshot", snapshot1.read_text(encoding="utf-8"))
+
+    round2 = run_debate_round(root, paths, selected, "debate_review", execute=execute)
+    rounds.append(round2)
+    snapshot2 = write_debate_snapshot(root, paths, "debate_round2.md", topic, round2)
+
+    convergence = write_debate_convergence(root, paths, topic, rounds)
+    report_path = paths.run_dir / "debate_report.json"
+    report = {
+        "schema_version": 1,
+        "run_id": paths.run_id,
+        "topic": topic,
+        "participants": selected,
+        "execute_requested": execute,
+        "barrier": "all_participants_processed_before_convergence",
+        "rounds": rounds,
+        "artifacts": {
+            "topic": topic_path.relative_to(root).as_posix(),
+            "round1": snapshot1.relative_to(root).as_posix(),
+            "round2": snapshot2.relative_to(root).as_posix(),
+            "convergence": convergence.relative_to(root).as_posix(),
+        },
+        "next": {"command": f"hive transcript --run-id {paths.run_id}", "reason": "inspect debate and convergence artifacts"},
+    }
+    write_json(report_path, report)
+    add_state_artifact(paths, "debate_report", report_path)
+    append_event(paths, "debate_convergence_created", {"artifact": convergence.relative_to(root).as_posix(), "participants": selected})
+    append_hive_activity(
+        paths,
+        "hive-mind",
+        "debate_converged",
+        f"{len(selected)} participants processed through two debate rounds",
+        {"debate_report": report_path.relative_to(root).as_posix()},
+    )
+    update_state(paths, phase="deliberation", status="ready")
+    return report
+
+
+def run_debate_round(root: Path, paths: RunPaths, participants: list[str], role: str, execute: bool) -> dict[str, Any]:
+    results: list[dict[str, Any]] = []
+    for participant in participants:
+        result_path = invoke_external_agent(
+            root,
+            participant,
+            role,
+            run_id=paths.run_id,
+            execute=execute and participant != "codex",
+        )
+        result = yaml.safe_load(result_path.read_text(encoding="utf-8")) or {}
+        output_path = result.get("output_path")
+        output_text = ""
+        if isinstance(output_path, str) and output_path and (root / output_path).exists():
+            output_text = (root / output_path).read_text(encoding="utf-8", errors="replace")
+        results.append(
+            {
+                "participant": participant,
+                "role": role,
+                "status": result.get("status", "unknown"),
+                "provider_mode": result.get("provider_mode", "unknown"),
+                "result_path": result_path.relative_to(root).as_posix(),
+                "output_path": output_path or "",
+                "has_output": bool(output_text.strip()),
+                "output_preview": output_text.strip()[:1200],
+            }
+        )
+    append_event(paths, "debate_round_created", {"role": role, "participants": participants})
+    return {"role": role, "barrier": "complete", "participants": results}
+
+
+def write_debate_snapshot(root: Path, paths: RunPaths, filename: str, topic: str, round_report: dict[str, Any]) -> Path:
+    path = paths.run_dir / filename
+    lines = [f"# {round_report.get('role')} Snapshot", "", f"Topic: {topic}", ""]
+    for item in round_report.get("participants") or []:
+        lines.append(f"## {item.get('participant')}")
+        lines.append(f"- status: {item.get('status')}")
+        lines.append(f"- result: `{item.get('result_path')}`")
+        if item.get("output_path"):
+            lines.append(f"- output: `{item.get('output_path')}`")
+        preview = item.get("output_preview") or "(prepared; no executed output)"
+        lines.extend(["", preview, ""])
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    add_state_artifact(paths, filename.removesuffix(".md"), path)
+    return path
+
+
+def write_debate_convergence(root: Path, paths: RunPaths, topic: str, rounds: list[dict[str, Any]]) -> Path:
+    path = paths.run_dir / "debate_convergence.md"
+    participants = sorted({item.get("participant") for round_report in rounds for item in round_report.get("participants", []) if item.get("participant")})
+    completed = [
+        item
+        for round_report in rounds
+        for item in round_report.get("participants", [])
+        if item.get("status") == "completed"
+    ]
+    prepared = [
+        item
+        for round_report in rounds
+        for item in round_report.get("participants", [])
+        if item.get("status") == "prepared"
+    ]
+    lines = [
+        "# Debate Convergence",
+        "",
+        f"Topic: {topic}",
+        "",
+        "## Barrier",
+        "",
+        "All selected participants reached a terminal prepared/completed/failed result before this convergence artifact was written.",
+        "",
+        "## Participants",
+        "",
+    ]
+    for participant in participants:
+        lines.append(f"- {participant}")
+    lines.extend(
+        [
+            "",
+            "## Convergence",
+            "",
+            "- Treat completed provider outputs as evidence.",
+            "- Treat prepared-only participants as pending manual or later CLI execution.",
+            "- Resolve by comparing concrete risks, acceptance criteria, and reversible next actions.",
+            "",
+            "## Status",
+            "",
+            f"- completed outputs: {len(completed)}",
+            f"- prepared outputs: {len(prepared)}",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    add_state_artifact(paths, "debate_convergence", path)
+    return path
+
+
+def append_context_section(paths: RunPaths, title: str, body: str) -> None:
+    with paths.context_pack.open("a", encoding="utf-8") as f:
+        f.write(f"\n## {title}\n\n{body.rstrip()}\n")
+
+
+def add_state_artifact(paths: RunPaths, name: str, path: Path) -> None:
+    state = json.loads(paths.state.read_text(encoding="utf-8"))
+    artifacts = state.get("artifacts") if isinstance(state.get("artifacts"), dict) else {}
+    artifacts[name] = path.relative_to(paths.root).as_posix()
+    state["artifacts"] = artifacts
+    state["updated_at"] = now_iso()
+    write_json(paths.state, state)
+
+
 def format_orchestration_report(report: dict[str, Any]) -> str:
     lines = [
         f"Hive Mind Society: {report.get('run_id')}",
@@ -2783,6 +3223,37 @@ def format_orchestration_report(report: dict[str, Any]) -> str:
         if member.get("reason"):
             lines.append(f"  reason: {member.get('reason')}")
         lines.append(f"  command: {member.get('command')}")
+    next_action = report.get("next") or {}
+    lines.extend(["", "Next:", f"  {next_action.get('command')}", f"  Reason: {next_action.get('reason')}"])
+    return "\n".join(lines)
+
+
+def format_debate_report(report: dict[str, Any]) -> str:
+    lines = [
+        f"Hive Mind Debate: {report.get('run_id')}",
+        f"Topic: {report.get('topic')}",
+        f"Barrier: {report.get('barrier')}",
+        "",
+        "Participants:",
+    ]
+    for participant in report.get("participants") or []:
+        lines.append(f"- {participant}")
+    for round_report in report.get("rounds") or []:
+        lines.extend(["", f"Round: {round_report.get('role')}"])
+        for item in round_report.get("participants") or []:
+            marker = "output" if item.get("has_output") else "prepared"
+            lines.append(f"- {item.get('participant')}: {item.get('status')} ({marker}) -> {item.get('result_path')}")
+    artifacts = report.get("artifacts") or {}
+    lines.extend(
+        [
+            "",
+            "Artifacts:",
+            f"- report: {report.get('run_id')}/debate_report.json",
+            f"- round1: {artifacts.get('round1')}",
+            f"- round2: {artifacts.get('round2')}",
+            f"- convergence: {artifacts.get('convergence')}",
+        ]
+    )
     next_action = report.get("next") or {}
     lines.extend(["", "Next:", f"  {next_action.get('command')}", f"  Reason: {next_action.get('reason')}"])
     return "\n".join(lines)
@@ -3509,6 +3980,8 @@ def build_external_prompt(paths: RunPaths, state: dict[str, Any], agent: str, ro
         "planner": "Create a concise implementation handoff with risks, files, acceptance criteria, and unresolved questions.",
         "reviewer": "Review the current run artifacts for risk, missing tests, overclaims, and next actions.",
         "executor": "Implement only the scoped task. Update result artifacts with changed files, commands, and unresolved issues.",
+        "debate_initial": "Give your independent position on the debate topic. Include assumptions, risks, and what would change your mind.",
+        "debate_review": "Review the first-round debate snapshot. Name agreements, disagreements, weak evidence, and the best convergence point.",
     }.get(role, "Work only through structured artifacts and return a concise result.")
     return (
         f"# Hive Mind Harness Prompt\n\n"
@@ -3534,6 +4007,22 @@ def build_external_prompt(paths: RunPaths, state: dict[str, Any], agent: str, ro
 def resolve_provider_binary(root: Path, agent: str) -> str | None:
     provider = detect_agents(root, write=True)["providers"].get(agent, {})
     return provider.get("path") or shutil.which(agent)
+
+
+def load_operator_method_profile(root: Path) -> str:
+    candidates = [
+        root / "docs" / "OPERATOR_METHOD_PROFILE.md",
+        root / "docs" / "HIVE_WORKING_METHOD.md",
+    ]
+    for path in candidates:
+        if path.exists():
+            text = path.read_text(encoding="utf-8", errors="replace").strip()
+            return text[:5000]
+    return (
+        "Classify intent first, decompose into concrete tasks, preserve disagreement, "
+        "let Claude critique/planning and Codex execution stay separate, verify with commands, "
+        "then write memory-ready artifacts."
+    )
 
 
 def suggest_external_command(agent: str, prompt_path: Path, root: Path | None = None) -> str:
@@ -3884,4 +4373,9 @@ def format_simple_yaml(data: Any, indent: int = 0) -> str:
 def open_run_folder(paths: RunPaths) -> None:
     print(paths.run_dir)
     if os.environ.get("DISPLAY"):
-        os.system(f'xdg-open "{paths.run_dir}" >/dev/null 2>&1 &')
+        subprocess.Popen(
+            ["xdg-open", str(paths.run_dir)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )

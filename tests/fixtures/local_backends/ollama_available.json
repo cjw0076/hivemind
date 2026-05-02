@@ -1,0 +1,20 @@
+{
+  "protocol": "hive-local-backend-v1",
+  "active_backend": "ollama",
+  "backends": {
+    "ollama": {
+      "id": "ollama",
+      "status": "available",
+      "server": "running",
+      "models": ["phi4-mini", "qwen3:8b"],
+      "risks": ["local_resource_pressure"]
+    },
+    "llama_cpp": {
+      "id": "llama_cpp",
+      "status": "unavailable",
+      "risks": ["adapter_not_integrated"]
+    }
+  },
+  "recommended_models": ["phi4-mini", "qwen3:8b"],
+  "missing_recommended_models": []
+}

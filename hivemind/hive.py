@@ -54,9 +54,11 @@ from .harness import (
     format_run_board,
     format_settings,
     format_settings_shell,
+    format_debate_report,
     format_orchestration_report,
     settings_report,
     ask_router,
+    debate_topic,
     orchestrate_prompt,
     checks_report,
     agent_icon,
@@ -65,8 +67,10 @@ from .harness import (
     format_checks_run,
     format_git_diff_report,
     format_hive_activity,
+    format_gap_closure_report,
     load_routing_plan,
     git_diff_report,
+    close_gap_loop,
     review_diff,
     run_checks,
     run_board,
@@ -87,6 +91,7 @@ COMMANDS = {
     "run",
     "ask",
     "orchestrate",
+    "debate",
     "status",
     "board",
     "events",
@@ -112,6 +117,7 @@ COMMANDS = {
     "commit-summary",
     "audit",
     "workspace",
+    "gaps",
     "log",
     "prompt",
     "next",
@@ -236,6 +242,12 @@ def main(argv: list[str] | None = None) -> None:
     orchestrate_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="default")
     orchestrate_cmd.add_argument("--execute", action="store_true", help="execute supported non-Codex providers instead of only preparing artifacts")
     orchestrate_cmd.add_argument("--json", action="store_true")
+    debate_cmd = sub.add_parser("debate", help="run a provider debate with first-pass, review, and convergence artifacts")
+    debate_cmd.add_argument("topic", help="topic or decision to debate")
+    debate_cmd.add_argument("--run-id")
+    debate_cmd.add_argument("--participant", action="append", choices=["claude", "gemini", "codex"], help="provider participant; repeatable")
+    debate_cmd.add_argument("--execute", action="store_true", help="execute supported non-Codex providers and wait at each round barrier")
+    debate_cmd.add_argument("--json", action="store_true")
 
     status_cmd = sub.add_parser("status", help="show current run status")
     status_cmd.add_argument("--run-id")
@@ -262,6 +274,10 @@ def main(argv: list[str] | None = None) -> None:
     next_cmd = sub.add_parser("next", help="show next recommended command")
     next_cmd.add_argument("--run-id")
     next_cmd.add_argument("--json", action="store_true")
+
+    gaps_cmd = sub.add_parser("gaps", help="build gap-closure artifacts from docs/HIVE_MIND_GAPS.md")
+    gaps_cmd.add_argument("--run-id")
+    gaps_cmd.add_argument("--json", action="store_true")
 
     tui_cmd = sub.add_parser("tui", help="open the run status TUI")
     tui_cmd.add_argument("--run-id")
@@ -546,6 +562,15 @@ def main(argv: list[str] | None = None) -> None:
         else:
             print(format_orchestration_report(report))
         return
+    if args.cmd == "debate":
+        report = debate_topic(root, args.topic, run_id=args.run_id, participants=args.participant, execute=args.execute)
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_debate_report(report))
+        return
     if args.cmd == "status":
         if args.json:
             print_status(root, run_id=args.run_id, json_output=True)
@@ -583,18 +608,28 @@ def main(argv: list[str] | None = None) -> None:
         run_tui(root, run_id=args.run_id, view="artifacts", control=False)
         return
     if args.cmd == "next":
-        board = run_board(root, args.run_id)
+        report = close_gap_loop(root, args.run_id)
         if args.json:
             import json
 
-            print(json.dumps(board.get("next", {}), ensure_ascii=False, indent=2, sort_keys=True))
+            print(json.dumps(report.get("next_actions", []), ensure_ascii=False, indent=2, sort_keys=True))
         else:
-            next_action = board.get("next", {})
+            actions = report.get("next_actions", [])
+            next_action = actions[0] if actions else {}
             print("Next recommended action:")
             print(f"  {next_action.get('command')}")
             print("")
             print("Reason:")
             print(f"  {next_action.get('reason')}")
+        return
+    if args.cmd == "gaps":
+        report = close_gap_loop(root, args.run_id)
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_gap_closure_report(report))
         return
     if args.cmd == "tui":
         run_tui(root, run_id=args.run_id, view=args.view, control=not args.observer)

@@ -13,7 +13,8 @@ CapabilityOS = accepted technology/capability records after review
 
 ## Current Runtime State
 
-Hive Mind depends on a backend protocol, not on one runtime:
+Hive Mind depends on a backend protocol, not on one runtime. The adapter
+contract lives in `LOCAL_BACKEND_CONTRACT.md`:
 
 ```text
 hive-local-backend-v1

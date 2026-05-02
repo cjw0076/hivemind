@@ -1,0 +1,8 @@
+schema_version: 1
+danger_modes:
+  allowed: true
+roles:
+  codex.executor:
+    repo_write: true
+    shell: true
+    memory_commit: true

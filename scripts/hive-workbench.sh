@@ -16,6 +16,8 @@ elif [[ ! -s .runs/current ]]; then
 fi
 
 "$PYTHON" -m hivemind.hive settings detect >/dev/null
+# `settings shell` emits only shlex-quoted export statements from the local
+# settings profile. Keep that contract in harness.py if adding new values.
 eval "$("$PYTHON" -m hivemind.hive settings shell)"
 
 if [[ "${HIVE_START_OLLAMA:-1}" == "1" ]]; then

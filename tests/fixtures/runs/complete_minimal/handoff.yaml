@@ -1,0 +1,7 @@
+from_agent: harness
+to_agent: claude
+objective: "fixture complete task"
+constraints:
+  - Use structured artifacts.
+acceptance_criteria:
+  - Validation passes.

@@ -12,6 +12,17 @@ class RunValidationTest(unittest.TestCase):
         report = validate_run_artifacts(fixture_root / "minimal_valid", fixture_root)
         self.assertEqual(report["verdict"], "pass", report["issues"])
 
+    def test_complete_minimal_fixture_with_provider_result_passes(self) -> None:
+        fixture_root = Path("tests/fixtures/runs")
+        report = validate_run_artifacts(fixture_root / "complete_minimal", fixture_root)
+        self.assertEqual(report["verdict"], "pass", report["issues"])
+
+    def test_invalid_provider_result_fixture_fails(self) -> None:
+        fixture_root = Path("tests/fixtures/runs")
+        report = validate_run_artifacts(fixture_root / "invalid_provider_result", fixture_root)
+        self.assertEqual(report["verdict"], "needs_review")
+        self.assertFalse(report["checks"]["provider_results_schema_valid"])
+
     def test_created_run_passes_after_verify(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

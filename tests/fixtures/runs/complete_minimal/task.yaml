@@ -1,0 +1,7 @@
+run_id: complete_minimal
+user_request: "fixture complete task"
+project: Hive Mind
+task_type: implementation
+goal: "Validate a complete minimal run with provider result."
+priority: high
+status: planned

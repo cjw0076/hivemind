@@ -7,9 +7,15 @@
 *.pid
 
 # raw/private imports and generated memory stores
-data/
+.env
+*.env
+data/*
+!data/README.md
 memory/processed/
 ontology/edges.jsonl
+*.gguf
+*.safetensors
+*.bin
 
 # generated run outputs; keep curated work-item docs
 runs/*

@@ -8,6 +8,11 @@ PORT="${OLLAMA_PORT:-11434}"
 MODELS_DIR="${OLLAMA_MODELS_DIR:-$ROOT_DIR/.local/ollama/models}"
 GPU_ARGS=()
 
+if [[ ! "$PORT" =~ ^[0-9]+$ ]] || (( PORT < 1 || PORT > 65535 )); then
+  echo "OLLAMA_PORT must be an integer from 1 to 65535." >&2
+  exit 1
+fi
+
 mkdir -p "$MODELS_DIR"
 
 if command -v nvidia-smi >/dev/null 2>&1; then

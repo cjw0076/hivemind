@@ -30,6 +30,14 @@ ALLOWED_EVENT_TYPES = {
     "commit_summary_created",
     "control_lock_acquired",
     "control_lock_released",
+    "debate_round_created",
+    "debate_convergence_created",
+    "memory_context_built",
+    "semantic_verification_created",
+    "handoff_quality_created",
+    "routing_evidence_created",
+    "conflict_set_created",
+    "operator_decisions_created",
 }
 
 RUN_ARTIFACT_SPEC = {

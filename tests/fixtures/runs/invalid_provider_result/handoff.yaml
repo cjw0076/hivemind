@@ -1,0 +1,7 @@
+from_agent: harness
+to_agent: claude
+objective: "invalid provider fixture"
+constraints:
+  - Use structured artifacts.
+acceptance_criteria:
+  - Validation fails on provider result.

@@ -1,11 +1,16 @@
 from pathlib import Path
+import json
 import tempfile
 import unittest
+
+import yaml
 
 from hivemind.harness import (
     agent_roles_report,
     build_context_pack_for_role,
+    close_gap_loop,
     create_run,
+    debate_topic,
     invoke_external_agent,
     llm_checker_report,
     local_benchmark_report,
@@ -56,6 +61,49 @@ class ProductionHardeningTest(unittest.TestCase):
             self.assertTrue((root / ".hivemind" / "local_model_profile.json").exists())
             self.assertIn("role_assignments", report)
             self.assertIn("models", report)
+
+    def test_policy_fixtures_capture_safe_and_unsafe_danger_modes(self) -> None:
+        fixture_root = Path("tests/fixtures/policies")
+        safe = yaml.safe_load((fixture_root / "default_policy.yaml").read_text(encoding="utf-8"))
+        unsafe = yaml.safe_load((fixture_root / "invalid_danger_mode.yaml").read_text(encoding="utf-8"))
+
+        self.assertFalse(safe["danger_modes"]["allowed"])
+        self.assertTrue(unsafe["danger_modes"]["allowed"])
+
+    def test_local_backend_fixtures_use_backend_protocol(self) -> None:
+        fixture_root = Path("tests/fixtures/local_backends")
+        available = json.loads((fixture_root / "ollama_available.json").read_text(encoding="utf-8"))
+        unavailable = json.loads((fixture_root / "no_backend.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(available["protocol"], "hive-local-backend-v1")
+        self.assertEqual(available["backends"]["ollama"]["status"], "available")
+        self.assertIn("phi4-mini", unavailable["missing_recommended_models"])
+
+    def test_debate_prepare_only_writes_barrier_and_convergence_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = debate_topic(root, "choose safer release gate", participants=["claude", "gemini"], execute=False)
+
+            self.assertEqual(report["barrier"], "all_participants_processed_before_convergence")
+            self.assertTrue((root / ".runs" / report["run_id"] / "debate_convergence.md").exists())
+            self.assertTrue(all(round_report["barrier"] == "complete" for round_report in report["rounds"]))
+
+    def test_gap_closure_writes_learning_operator_loop_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "close hive mind gaps", project="Hive Mind")
+            report = close_gap_loop(root, paths.run_id)
+
+            self.assertEqual(report["status"], "ready")
+            for name in [
+                "memory_context",
+                "semantic_verification",
+                "handoff_quality",
+                "routing_evidence",
+                "conflict_set",
+                "operator_decisions",
+            ]:
+                self.assertTrue((root / report["artifacts"][name]).exists(), name)
 
     def test_prepared_provider_result_uses_expanded_schema(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

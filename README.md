@@ -1,5 +1,8 @@
 # Hive Mind
 
+Status: public alpha. Do not present this repository as production-grade until
+the production gates in `docs/TODO.md` are fully green.
+
 Hive Mind is a local swarm harness for existing provider CLIs and local LLM workers.
 
 It coordinates installed tools such as Claude, Codex, Gemini, and Ollama-backed local workers into one shared run state. It does not replace provider CLIs; it wraps them into a user-governed blackboard loop.

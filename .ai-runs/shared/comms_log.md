@@ -397,3 +397,17 @@ Naming note as of 2026-05-02 12:24 KST:
 - Decision: Treat Ollama as an optional adapter behind `hive-local-backend-v1`; keep local model routing backend-agnostic and benchmark-driven.
 - Evidence: Pulled retained local models total about 53 GB; `phi4-mini` and `qwen3:8b` passed general JSON role suites, `deepseek-coder-v2:16b` passed diff/architecture, `qwen3-coder:30b` passed architecture. Tests passed.
 - Next: Add real llama.cpp/vLLM adapters or OpenAI-compatible local backend execution when needed; tune handoff/log-summary prompts before trusting coder models for those schemas.
+
+## 2026-05-02 15:24 KST - Codex
+
+- Context: User asked to finish remaining public-release work, call Claude for a security check first, then switch GitHub from private to public when the gate is clean. User also proposed provider debate/convergence and copying the Claude Max/Codex Pro working method into intent routing.
+- Decision: Added a public release gate, ran Claude security review, fixed all blocking/high/medium findings, added a redacted operator method profile, and implemented `hive debate` as a provider first-opinion/review/convergence artifact loop.
+- Evidence: Claude initially returned NO-GO for missing LICENSE and unsafe `xdg-open`; fixed with MIT `LICENSE`, list-based `subprocess.Popen`, explicit env/model/data ignores, `data/README.md`, workbench eval contract comment, and Ollama Docker port validation. `scripts/public-release-check.sh` passed with 25 tests, `git diff --check`, `hive doctor all`, tracked secret scan, and private path scan. Session stores identified as `~/.codex/sessions`, `~/.codex/history.jsonl`, `~/.claude/projects`, `~/.claude/sessions`, and `~/.claude/history.jsonl`; raw sessions remain private.
+- Next: Commit, push, switch GitHub visibility public, then continue with structured disagreement extraction and convergence scoring.
+
+## 2026-05-02 15:35 KST - Codex
+
+- Context: User clarified that `docs/HIVE_MIND_GAPS.md` is mirrored from `../memoryOS/docs/shared/HIVE_MIND_GAPS.md`, asked to make Hive Mind able to resolve those gaps, and said Hive Mind is the chair.
+- Decision: Marked `HIVE_MIND_GAPS.md` as a MemoryOS shared mirror, added `VG-14 Learning Operator Loop`, documented the chair model, and implemented `hive gaps` plus an upgraded `hive next` that builds gap-closure artifacts before choosing the next operator action.
+- Evidence: Added `docs/GAP_CLOSURE_IMPLEMENTATION.md`; `hive gaps` writes `memory_context.json`, `semantic_verification.json`, `handoff_quality.json`, `routing_evidence.json`, `conflict_set.json`, `operator_decisions.json`, and `gap_closure.json`. Smoke verified `hive gaps --json` and `hive next --json`; tests now pass at 26. Claude re-review returned GO for public alpha after security fixes.
+- Next: Replace the placeholder MemoryOS context command with the sibling repo's canonical context builder, then add real disagreement extraction and convergence scoring.

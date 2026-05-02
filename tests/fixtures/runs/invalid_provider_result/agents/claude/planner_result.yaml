@@ -1,0 +1,5 @@
+agent: claude
+role: planner
+status: weird
+provider_mode: unknown
+risk_level: severe

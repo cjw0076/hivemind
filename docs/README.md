@@ -1,5 +1,8 @@
 # MyWorld / Hive Mind Docs
 
+Status: public alpha docs. Public-facing claims must stay alpha-scoped until
+the production gates in `TODO.md` are green.
+
 Start here. This directory contains both current implementation docs and large source-vault notes.
 
 ## Read First

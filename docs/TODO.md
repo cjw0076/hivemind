@@ -60,7 +60,51 @@ Work order: finish the `hive` operator loop before deeper MemoryOS/CapabilityOS 
 - [x] Add real local model benchmark prompts with measured JSON validity and latency.
 - [x] Add optional `llm-checker` adapter plan without vendoring upstream code.
 - [x] Add test coverage for expanded provider results, policy gates, context packs, and local model profiles.
-- [ ] Add expanded on-disk fixtures for invalid provider results, policy gates, local model profiles, and complete minimal runs.
+- [x] Add expanded on-disk fixtures for invalid provider results, policy gates, local model profiles, and complete minimal runs.
+
+## Public Release Gate
+
+Sources: `VG-03`, `VG-04`, `VG-05`, `VG-13`.
+
+Do not switch the GitHub repository from private to public until this gate is green.
+
+- [x] Keep GitHub visibility private until all public-release blockers are resolved.
+- [x] Run and archive `npm test`, `git diff --check`, and `hive doctor all`.
+- [x] Run local secret/privacy scan over tracked files and resolve any credential, token, raw export, or personal data exposure.
+- [x] Invoke Claude reviewer for public-release security review and resolve all high/medium findings.
+- [x] Add expanded on-disk fixtures for invalid provider results, policy gates, local backend profiles, and complete minimal runs.
+- [x] Document `hive-local-backend-v1` adapter contract and mark non-Ollama adapters as planned/stubbed until implemented.
+- [x] Ensure README and docs say `Status: private alpha` or `public alpha`, with no production-grade claim before production gates pass.
+- [x] Verify `.gitignore` excludes `.runs/`, `.hivemind/`, `.local/`, raw exports, generated memory stores, and model files.
+- [x] Add a public-release checklist command or script that reproduces the release gate.
+- [x] Switch GitHub repository visibility to public only after the above checks pass.
+
+## Provider Debate And Convergence
+
+Sources: `VG-03`, `VG-04`, `VG-06`, `VG-13`.
+
+- [x] Add redacted operator method profile for intent routing and task decomposition system context.
+- [x] Add `hive debate <topic>` for provider first opinions, review round, and convergence artifacts.
+- [x] Define Hive Mind as the chair that controls turn order, barriers, disagreement records, convergence, and next action.
+- [ ] Add disagreement extraction from executed provider outputs into a structured `disagreements.json`.
+- [ ] Add convergence scoring: evidence strength, reversibility, risk, and user-preference fit.
+- [ ] Add TUI view for active debate rounds and participant readiness.
+- [ ] Add MemoryOS draft extraction from debate convergence only after human review.
+
+## Hive Mind Gap Closure
+
+Sources: `VG-01`, `VG-03`, `VG-06`, `VG-14`.
+
+Source mirror: `docs/HIVE_MIND_GAPS.md` from `../memoryOS/docs/shared/HIVE_MIND_GAPS.md`.
+
+- [x] Add pre-run MemoryOS context build integration so each Hive run records accepted memories used.
+- [x] Upgrade verification from artifact checks to objective, scope, acceptance, and trust checks.
+- [x] Add handoff quality gates for objective, files/domains, constraints, acceptance criteria, risks, commands, tests, and raw refs.
+- [x] Record routing evidence: task type, risk, required tools, provider availability, latency/cost, past performance, user preference, and local confidence.
+- [x] Add cross-agent conflict set artifacts with reviewer assignment and accepted/rejected/superseded resolution.
+- [x] Refine `hive next` into a prioritized operator decision surface grounded in run state.
+- [ ] Replace placeholder MemoryOS context command with the sibling repo's canonical command after MemoryOS exposes it.
+- [ ] Add semantic verifier LLM review for high-risk runs.
 
 ## Harness Runtime
 
@@ -236,6 +280,9 @@ Sources: `VG-12`, `VG-13`.
 - [ ] Add private project exclusion.
 - [ ] Draft privacy principles: no training on user uploads, export/delete always available.
 - [ ] Design optional encrypted backup.
+- [ ] Add `run_id` format validation as post-alpha hardening.
+- [ ] Redact env var names from public status JSON where practical.
+- [ ] Add secret scrubbing for captured subprocess output artifacts.
 
 ## Documentation
 

@@ -1,0 +1,16 @@
+schema_version: 1
+danger_modes:
+  allowed: false
+roles:
+  claude.planner:
+    repo_write: false
+    shell: false
+    memory_commit: false
+  codex.executor:
+    repo_write: true
+    shell: true
+    memory_commit: false
+  local.memory:
+    repo_write: false
+    shell: false
+    memory_commit: false

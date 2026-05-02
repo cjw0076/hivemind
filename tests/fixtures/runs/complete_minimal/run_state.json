@@ -1,0 +1,32 @@
+{
+  "agents": [
+    {
+      "name": "claude",
+      "status": "prepared"
+    }
+  ],
+  "artifacts": {
+    "context_pack": "complete_minimal/context_pack.md",
+    "events": "complete_minimal/events.jsonl",
+    "final_report": "complete_minimal/final_report.md",
+    "handoff": "complete_minimal/handoff.yaml",
+    "memory_drafts": "complete_minimal/memory_drafts.json",
+    "task": "complete_minimal/task.yaml",
+    "transcript": "complete_minimal/transcript.md",
+    "verification": "complete_minimal/verification.yaml"
+  },
+  "context": {
+    "active_decisions": 0,
+    "memories_used": 0,
+    "open_questions": 0
+  },
+  "created_at": "2026-05-02T00:00:00+09:00",
+  "latest_event": "agent_prepared",
+  "phase": "planned",
+  "project": "Hive Mind",
+  "run_id": "complete_minimal",
+  "status": "planned",
+  "task_type": "implementation",
+  "updated_at": "2026-05-02T00:00:01+09:00",
+  "user_request": "fixture complete task"
+}

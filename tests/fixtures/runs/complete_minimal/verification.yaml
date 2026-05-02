@@ -1,0 +1,7 @@
+schema_version: 1
+run_id: "complete_minimal"
+verdict: "not_run"
+checks: {}
+issues: []
+event_taxonomy: []
+risk_level: "unknown"

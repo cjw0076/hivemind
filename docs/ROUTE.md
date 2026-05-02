@@ -31,6 +31,8 @@ Use these when changing code:
 - `cli_help.md` - local captured CLI help for Claude, Gemini, Codex.
 - `make_production.md` - installable `hive` target.
 - `hive_mind2.md` - production-readiness gap analysis for `hive` hardening.
+- `HIVE_MIND_GAPS.md` - MemoryOS-side shared reference for closing Hive Mind's learning operator loop.
+- `GAP_CLOSURE_IMPLEMENTATION.md` - implemented gap-closure artifacts and remaining limits.
 - `HIVE_WORKING_METHOD.md` - user/Claude/Codex/local-LLM working method as Hive Mind product protocol.
 - `THIRD_PARTY_INTEGRATIONS.md` - optional adapter and license boundary notes.
 
@@ -58,6 +60,7 @@ Do not read these fully by default. Prefer the split mirrors under `docs/split/`
 
 - `my_world.md` - largest raw MyWorld source context.
 - `memoryOS.md` - raw MemoryOS source discussion and implementation handoffs.
+- `HIVE_MIND_GAPS.md` - mirrored from `../memoryOS/docs/shared/HIVE_MIND_GAPS.md`; use for Hive Mind gap priorities, not raw MemoryOS state.
 - `goen_resonance.md` - GoEN/Dipeen/ontology-plasticity framing.
 - `MYWORLD_IDEA_EXCERPTS.md` - curated excerpts and guardrails extracted from `my_world.md`.
 - `SOURCE_LINKS.md` - source inventory.

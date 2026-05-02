@@ -1,0 +1,32 @@
+{
+  "agents": [
+    {
+      "name": "claude",
+      "status": "prepared"
+    }
+  ],
+  "artifacts": {
+    "context_pack": "invalid_provider_result/context_pack.md",
+    "events": "invalid_provider_result/events.jsonl",
+    "final_report": "invalid_provider_result/final_report.md",
+    "handoff": "invalid_provider_result/handoff.yaml",
+    "memory_drafts": "invalid_provider_result/memory_drafts.json",
+    "task": "invalid_provider_result/task.yaml",
+    "transcript": "invalid_provider_result/transcript.md",
+    "verification": "invalid_provider_result/verification.yaml"
+  },
+  "context": {
+    "active_decisions": 0,
+    "memories_used": 0,
+    "open_questions": 0
+  },
+  "created_at": "2026-05-02T00:00:00+09:00",
+  "latest_event": "run_created",
+  "phase": "planned",
+  "project": "Hive Mind",
+  "run_id": "invalid_provider_result",
+  "status": "planned",
+  "task_type": "implementation",
+  "updated_at": "2026-05-02T00:00:00+09:00",
+  "user_request": "invalid provider fixture"
+}

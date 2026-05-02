@@ -1,0 +1,7 @@
+run_id: invalid_provider_result
+user_request: "invalid provider fixture"
+project: Hive Mind
+task_type: implementation
+goal: "Validate provider result failure handling."
+priority: high
+status: planned
