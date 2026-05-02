@@ -80,6 +80,7 @@ Inside `python -m memoryos.mos tui`:
 ```text
 q  quit
 r  refresh
+e  edit context_pack.md in $EDITOR
 l  invoke local context compressor
 c  create Claude planner prompt
 x  create Codex executor prompt

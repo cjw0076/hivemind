@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import curses
 import json
+import os
+import subprocess
 import textwrap
 import time
 from pathlib import Path
@@ -15,6 +17,7 @@ from .harness import (
     build_memory_draft,
     build_summary,
     build_verification,
+    append_event,
     invoke_external_agent,
     invoke_local,
     load_run,
@@ -41,7 +44,7 @@ def draw_loop(screen, root: Path, run_id: str | None) -> None:
         except Exception as exc:  # TUI should show recoverable state instead of crashing.
             add_line(screen, 1, 2, "MemoryOS Harness", curses.A_BOLD)
             add_wrapped(screen, 3, 2, width - 4, str(exc))
-        footer = "q quit  r refresh  l local  c claude  x codex  g gemini  v verify  s summary  m memory"
+        footer = "q quit  r refresh  e edit-context  l local  c claude  x codex  g gemini  v verify  s summary  m memory"
         add_line(screen, height - 2, 2, truncate(footer, max(10, width - 4)), curses.A_DIM)
         add_line(screen, height - 1, 2, truncate(message, max(10, width - 4)), curses.A_DIM)
         screen.refresh()
@@ -49,14 +52,16 @@ def draw_loop(screen, root: Path, run_id: str | None) -> None:
         if key in {ord("q"), ord("Q"), 27}:
             return
         if key != -1:
-            message = handle_key(root, run_id, key)
+            message = handle_key(screen, root, run_id, key)
         time.sleep(0.5)
 
 
-def handle_key(root: Path, run_id: str | None, key: int) -> str:
+def handle_key(screen, root: Path, run_id: str | None, key: int) -> str:
     try:
         if key in {ord("r"), ord("R")}:
             return "refreshed"
+        if key in {ord("e"), ord("E")}:
+            return edit_context_pack(screen, root, run_id)
         if key in {ord("l"), ord("L")}:
             path = invoke_local(root, "context", run_id=run_id, complexity="default")
             return f"local context -> {path}"
@@ -81,6 +86,24 @@ def handle_key(root: Path, run_id: str | None, key: int) -> str:
     except Exception as exc:
         return f"error: {exc}"
     return "unknown key"
+
+
+def edit_context_pack(screen, root: Path, run_id: str | None) -> str:
+    paths, _ = load_run(root, run_id)
+    editor = os.environ.get("EDITOR") or os.environ.get("VISUAL") or "nano"
+    curses.def_prog_mode()
+    curses.endwin()
+    try:
+        completed = subprocess.run([editor, paths.context_pack.as_posix()], cwd=root)
+    finally:
+        curses.reset_prog_mode()
+        curses.curs_set(0)
+        screen.nodelay(True)
+        screen.clear()
+    if completed.returncode == 0:
+        append_event(paths, "context_edited", {"artifact": paths.context_pack.relative_to(root).as_posix()})
+        return f"context edited -> {paths.context_pack}"
+    return f"context editor exited {completed.returncode}: {paths.context_pack}"
 
 
 def draw_state(

@@ -174,3 +174,10 @@
 - Decision: Treated the issue as a PATH/provider resolution problem, not a session lock. Added persisted settings profiles and a fast workbench script so production CLI onboarding records usable provider binaries, local model state, shell exports, and warnings.
 - Evidence: `mos doctor` now detects Codex through `/home/user/.nvm/versions/node/v22.22.2/bin/codex` while warning that `/home/user/bin/codex` is gated. Added `mos settings detect`, `mos settings shell`, and `scripts/mos-workbench.sh`; verified py_compile, unit tests, `mos init`, `mos settings shell`, and a smoke workbench run.
 - Next: Keep Codex execution prepare-only until the non-interactive contract is safe; continue parser/schema TODOs after this settings layer is committed.
+
+## 2026-05-02 10:02 KST - Codex
+
+- Context: User asked whether `python -m memoryos.mos tui` is the right entrypoint because there was no context input window.
+- Decision: Kept `mos tui` as the status/control surface and added an `e` keybinding that opens the current run `context_pack.md` in `$EDITOR`, then logs `context_edited`.
+- Evidence: Updated `memoryos/tui.py` and `docs/TUI_HARNESS.md`; verified py_compile, unit tests, and `mos status`.
+- Next: Consider an inline text-input panel later, but `$EDITOR` is the stable minimum for now.
