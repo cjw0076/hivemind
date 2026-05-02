@@ -425,3 +425,10 @@ Naming note as of 2026-05-02 12:24 KST:
 - Decision: Made the always-visible `hive>` line a real composer buffer. Direct printable keys now edit the prompt, Enter submits it, Backspace edits it, and Esc clears it; view hotkeys still work when the composer is empty.
 - Evidence: Added `tests/test_tui_composer.py` for printable input, Enter submit, Backspace, and Esc behavior. Updated `docs/TUI_HARNESS.md` keybindings to match the new composer behavior.
 - Next: Add UTF-8/Hangul composer support if Korean prompt entry inside curses becomes a target workflow.
+
+## 2026-05-02 16:13 KST - Codex
+
+- Context: User asked for natural Hangul prompt input, provider-CLI-like composer controls such as Ctrl+C/Ctrl+V, and comparison verification for the updated `docs/HIVE_MIND_GAPS.md`.
+- Decision: Upgraded the TUI composer to a UTF-8 wide-character line editor and moved printable keys to prompt text first, with F1-F8 and slash commands handling view changes.
+- Evidence: Added cursor-aware `ComposerState`, `get_wch()` input draining, Ctrl+A/E/U/K/W/C/D/V, clipboard adapter support, `/view`, `/quit`, and tests for Hangul, q/digit prompt starts, paste, cursor editing, and function-key views. `diff -u docs/HIVE_MIND_GAPS.md ../memoryOS/docs/shared/HIVE_MIND_GAPS.md` returned no differences.
+- Next: Implement the new P18 adversarial-research gaps as runtime artifacts: pre-commit table, front state machine, turn arbitration, source-read registry, frame-anchor checks, run supervisor, and git guard.

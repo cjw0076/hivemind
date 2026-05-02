@@ -294,17 +294,24 @@ That profile tracks provider command paths, versions, roles, modes, local model 
 Inside `python -m hivemind.hive tui`:
 
 ```text
-q  quit
-1-8  switch views
-type text  edit the always-visible hive> composer
+F1-F8  switch views
+type text  edit the always-visible hive> composer, including UTF-8/Hangul text
 enter  submit the composer
-backspace  edit the composer
-esc  clear the composer
+left/right  move within the composer
+home/end or ctrl-a/ctrl-e  jump to start/end
+backspace/delete  edit the composer
+ctrl-u/ctrl-k  clear before/after cursor
+ctrl-w  delete previous word
+ctrl-c or esc  cancel the composer
+ctrl-v  paste from the system clipboard when wl-paste, xclip, xsel, or pbpaste is available
+ctrl-d  quit when the composer is empty
 /command  run a slash command from the composer
-?  show keybinding hint
+/view board|events|transcript|agents|artifacts|memory|society|diff  switch views
+/quit  quit
+F10  show keybinding hint
 ```
 
-Large terminals render the dashboard as a control plane: run/health summary, pipeline, agents, artifacts, latest events, next actions, keybar, and an always-visible `hive>` composer. The TUI is interactive: type a normal prompt directly at `hive>` and press Enter to create and route a new run, or type slash commands such as `/verify`, `/memory`, `/summary`, `/diff`, `/local`, `/claude`, `/codex`, and `/gemini`.
+Large terminals render the dashboard as a control plane: run/health summary, pipeline, agents, artifacts, latest events, next actions, keybar, and an always-visible `hive>` composer. The TUI is interactive: type a normal prompt directly at `hive>` and press Enter to create and route a new run, or type slash commands such as `/verify`, `/memory`, `/summary`, `/diff`, `/local`, `/claude`, `/codex`, and `/gemini`. Printable keys are treated as prompt text first, so prompts can naturally start with `q`, digits, punctuation, or Hangul.
 
 The TUI does not try to be the final desktop UI. It is an operational control surface for driving agent work through run artifacts: pipeline first, agent aware, artifact driven, audit friendly.
 

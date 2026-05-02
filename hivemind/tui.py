@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import curses
 import json
+import locale
 import os
+import shutil
 import subprocess
 import textwrap
 import time
+import unicodedata
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 
@@ -35,10 +39,30 @@ from .harness import (
 
 TUI_VIEWS = {"board", "events", "transcript", "agents", "artifacts", "memory", "society", "diff"}
 
+CTRL_A = "\x01"
+CTRL_C = "\x03"
+CTRL_D = "\x04"
+CTRL_E = "\x05"
+CTRL_K = "\x0b"
+CTRL_U = "\x15"
+CTRL_V = "\x16"
+CTRL_W = "\x17"
+
+
+@dataclass(frozen=True)
+class ComposerState:
+    text: str = ""
+    cursor: int = 0
+
+    def clamp(self) -> "ComposerState":
+        cursor = max(0, min(self.cursor, len(self.text)))
+        return ComposerState(self.text, cursor)
+
 
 def run_tui(root: Path, run_id: str | None = None, view: str = "board", control: bool = True) -> None:
     if view not in TUI_VIEWS:
         raise SystemExit(f"unknown TUI view: {view}")
+    locale.setlocale(locale.LC_ALL, "")
     lock: dict[str, Any] | None = None
     if control:
         lock = acquire_control_lock(root, run_id)
@@ -54,12 +78,14 @@ def run_tui(root: Path, run_id: str | None = None, view: str = "board", control:
 
 
 def draw_loop(screen, root: Path, run_id: str | None, initial_view: str, control: bool, lock_session_id: str | None) -> None:
+    curses.raw()
     curses.curs_set(0)
     init_theme()
+    screen.keypad(True)
     screen.nodelay(True)
     message = "ready"
     view = initial_view
-    composer = ""
+    composer = ComposerState()
     while True:
         screen.erase()
         height, width = screen.getmaxyx()
@@ -80,51 +106,152 @@ def draw_loop(screen, root: Path, run_id: str | None, initial_view: str, control
             add_wrapped(screen, 3, 2, width - 4, str(exc))
         draw_global_composer(screen, height, width, message, view, control, composer)
         screen.refresh()
-        key = screen.getch()
-        if key in {ord("q"), ord("Q"), 27} and not composer:
-            return
-        if key != -1:
-            if not composer:
-                next_view = view_for_key(key)
+        for key in read_input_events(screen):
+            if not composer.text:
+                key_code = ord(key) if isinstance(key, str) and len(key) == 1 else key
+                next_view = view_for_key(key_code) if isinstance(key_code, int) else None
                 if next_view:
                     view = next_view
                     message = f"view -> {view}"
-                    time.sleep(0.5)
                     continue
-                if key in {ord("?")}:
-                    message = handle_key(screen, root, run_id, key, control)
-                    time.sleep(0.5)
+                if key_code == key_f(10):
+                    message = handle_key(screen, root, run_id, ord("?"), control)
                     continue
             composer_action, composer = update_composer(composer, key)
             if composer_action == "submit":
-                message = submit_composer(root, run_id, composer, control)
-                composer = ""
-            elif composer_action == "clear":
-                message = "composer cleared"
-            elif composer_action == "editing":
-                message = "typing prompt; Enter submits, Esc clears"
-            else:
-                if key in {10, 13, curses.KEY_ENTER, ord("/")}:
-                    prefix = "/" if key == ord("/") else ""
-                    message = prompt_and_route(screen, root, run_id=run_id, prefix=prefix)
+                local_action = handle_local_composer_command(composer.text)
+                if local_action.get("action") == "quit":
+                    return
+                if local_action.get("action") == "view":
+                    view = str(local_action["view"])
+                    message = f"view -> {view}"
                 else:
-                    message = handle_key(screen, root, run_id, key, control)
-        time.sleep(0.5)
+                    message = submit_composer(root, run_id, composer.text, control)
+                composer = ComposerState()
+            elif composer_action == "cancel":
+                message = "composer cancelled"
+            elif composer_action == "quit":
+                return
+            elif composer_action == "clipboard_unavailable":
+                message = "clipboard unavailable; use terminal paste or install wl-paste/xclip/xsel"
+            elif composer_action == "editing":
+                message = "typing prompt; Enter submits, Ctrl+C cancels, Ctrl+V pastes"
+            else:
+                key_code = ord(key) if isinstance(key, str) and len(key) == 1 else key
+                if key_code in {10, 13, curses.KEY_ENTER}:
+                    message = prompt_and_route(screen, root, run_id=run_id)
+                else:
+                    message = handle_key(screen, root, run_id, key_code if isinstance(key_code, int) else -1, control)
+        time.sleep(0.05)
 
 
-def update_composer(composer: str, key: int) -> tuple[str | None, str]:
-    """Return `(action, new_text)` for the always-visible TUI composer."""
-    if key in {10, 13, curses.KEY_ENTER}:
-        return ("submit", composer) if composer.strip() else (None, composer)
-    if key == 27:
-        return "clear", ""
-    if key in {curses.KEY_BACKSPACE, 127, 8}:
-        return ("editing", composer[:-1]) if composer else (None, composer)
+def read_input_events(screen, limit: int = 512) -> list[int | str]:
+    events: list[int | str] = []
+    for _ in range(limit):
+        try:
+            key = screen.get_wch()
+        except curses.error:
+            break
+        events.append(key)
+    return events
+
+
+def update_composer(
+    composer: ComposerState | str,
+    key: int | str,
+    clipboard_reader: Callable[[], str | None] | None = None,
+) -> tuple[str | None, ComposerState]:
+    """Return `(action, state)` for the always-visible TUI composer."""
+    state = composer if isinstance(composer, ComposerState) else ComposerState(str(composer), len(str(composer)))
+    state = state.clamp()
+    text = state.text
+    cursor = state.cursor
+    reader = clipboard_reader or read_clipboard_text
+
+    if key in {10, 13, curses.KEY_ENTER, "\n", "\r"}:
+        return ("submit", state) if text.strip() else (None, state)
+    if key in {27, "\x1b"}:
+        return ("cancel", ComposerState())
+    if key in {CTRL_C}:
+        return "cancel", ComposerState()
+    if key in {CTRL_D}:
+        if not text:
+            return "quit", state
+        return "editing", ComposerState(text[:cursor] + text[cursor + 1 :], cursor).clamp()
+    if key in {curses.KEY_LEFT}:
+        return ("editing", ComposerState(text, cursor - 1).clamp()) if cursor > 0 else (None, state)
+    if key in {curses.KEY_RIGHT}:
+        return ("editing", ComposerState(text, cursor + 1).clamp()) if cursor < len(text) else (None, state)
+    if key in {curses.KEY_HOME, CTRL_A}:
+        return ("editing", ComposerState(text, 0)) if cursor else (None, state)
+    if key in {curses.KEY_END, CTRL_E}:
+        return ("editing", ComposerState(text, len(text))) if cursor != len(text) else (None, state)
+    if key in {curses.KEY_BACKSPACE, 127, 8, "\x7f", "\b"}:
+        if cursor <= 0:
+            return None, state
+        return "editing", ComposerState(text[: cursor - 1] + text[cursor:], cursor - 1)
     if key == curses.KEY_DC:
-        return "editing", ""
-    if 32 <= key <= 126:
-        return "editing", composer + chr(key)
-    return None, composer
+        if cursor >= len(text):
+            return None, state
+        return "editing", ComposerState(text[:cursor] + text[cursor + 1 :], cursor)
+    if key in {CTRL_U}:
+        return ("editing", ComposerState(text[cursor:], 0)) if cursor else (None, state)
+    if key in {CTRL_K}:
+        return ("editing", ComposerState(text[:cursor], cursor)) if cursor < len(text) else (None, state)
+    if key in {CTRL_W}:
+        start = previous_word_start(text, cursor)
+        return ("editing", ComposerState(text[:start] + text[cursor:], start)) if start != cursor else (None, state)
+    if key in {CTRL_V}:
+        pasted = reader()
+        if not pasted:
+            return "clipboard_unavailable", state
+        cleaned = normalize_paste_text(pasted)
+        if not cleaned:
+            return None, state
+        return "editing", ComposerState(text[:cursor] + cleaned + text[cursor:], cursor + len(cleaned))
+    if isinstance(key, str) and key and all(is_printable_input(ch) for ch in key):
+        return "editing", ComposerState(text[:cursor] + key + text[cursor:], cursor + len(key))
+    if isinstance(key, int) and 32 <= key <= 126:
+        ch = chr(key)
+        return "editing", ComposerState(text[:cursor] + ch + text[cursor:], cursor + 1)
+    return None, state
+
+
+def previous_word_start(text: str, cursor: int) -> int:
+    index = max(0, min(cursor, len(text)))
+    while index > 0 and text[index - 1].isspace():
+        index -= 1
+    while index > 0 and not text[index - 1].isspace():
+        index -= 1
+    return index
+
+
+def is_printable_input(ch: str) -> bool:
+    return ch in {"\t"} or (ch.isprintable() and unicodedata.category(ch)[0] != "C")
+
+
+def normalize_paste_text(text: str) -> str:
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    return " ".join(line.strip() for line in normalized.splitlines() if line.strip()).strip()
+
+
+def read_clipboard_text() -> str | None:
+    commands = [
+        ["wl-paste", "-n"],
+        ["xclip", "-selection", "clipboard", "-o"],
+        ["xsel", "-b", "-o"],
+        ["pbpaste"],
+    ]
+    for command in commands:
+        if shutil.which(command[0]) is None:
+            continue
+        try:
+            completed = subprocess.run(command, text=True, capture_output=True, timeout=1)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if completed.returncode == 0 and completed.stdout:
+            return completed.stdout
+    return None
 
 
 def submit_composer(root: Path, run_id: str | None, prompt: str, control: bool = True) -> str:
@@ -144,15 +271,44 @@ def submit_composer(root: Path, run_id: str | None, prompt: str, control: bool =
 
 def view_for_key(key: int) -> str | None:
     return {
-        ord("1"): "board",
-        ord("2"): "events",
-        ord("3"): "transcript",
-        ord("4"): "agents",
-        ord("5"): "artifacts",
-        ord("6"): "memory",
-        ord("7"): "society",
-        ord("8"): "diff",
+        key_f(1): "board",
+        key_f(2): "events",
+        key_f(3): "transcript",
+        key_f(4): "agents",
+        key_f(5): "artifacts",
+        key_f(6): "memory",
+        key_f(7): "society",
+        key_f(8): "diff",
     }.get(key)
+
+
+def key_f(index: int) -> int:
+    return curses.KEY_F0 + index
+
+
+def handle_local_composer_command(prompt: str) -> dict[str, Any]:
+    parts = prompt.strip().split()
+    if not parts:
+        return {}
+    name = parts[0].lower()
+    if name in {"/quit", "/exit"}:
+        return {"action": "quit"}
+    if name == "/view" and len(parts) > 1:
+        view = {
+            "1": "board",
+            "2": "events",
+            "3": "transcript",
+            "4": "agents",
+            "5": "artifacts",
+            "6": "memory",
+            "7": "society",
+            "8": "diff",
+        }.get(parts[1].lower(), parts[1].lower())
+        if view in TUI_VIEWS:
+            return {"action": "view", "view": view}
+    if name in {"/board", "/events", "/transcript", "/agents", "/artifacts", "/memory", "/society", "/diff"}:
+        return {"action": "view", "view": name[1:]}
+    return {}
 
 
 def handle_key(screen, root: Path, run_id: str | None, key: int, control: bool = True) -> str:
@@ -198,7 +354,7 @@ def handle_key(screen, root: Path, run_id: str | None, key: int, control: bool =
             report = git_diff_report(root, run_id=run_id)
             return f"diff -> {report.get('path')} ({len(report.get('changed_files') or [])} files)"
         if key in {ord("h"), ord("H"), ord("?")}:
-            return "views: 1 board 2 events 3 transcript 4 agents 5 artifacts 6 memory 7 society 8 diff"
+            return "views: F1 board F2 events F3 transcript F4 agents F5 artifacts F6 memory F7 society F8 diff"
     except Exception as exc:
         return f"error: {exc}"
     return "unknown key"
@@ -234,7 +390,7 @@ def handle_tui_command(root: Path, run_id: str | None, command: str) -> str:
     parts = command.split()
     name = parts[0].lower()
     if name in {"/help", "/h", "/?"}:
-        return "commands: /ask task, /route, /verify, /memory, /summary, /diff, /local, /claude, /codex, /gemini"
+        return "commands: /ask task, /route, /verify, /memory, /summary, /diff, /local, /claude, /codex, /gemini, /view, /quit"
     if name == "/ask" and len(parts) > 1:
         report = orchestrate_prompt(root, " ".join(parts[1:]), run_id=None, complexity="default")
         return f"society plan -> {report.get('run_id')} ({len(report.get('members') or [])} members)"
@@ -395,19 +551,37 @@ def draw_state(
     draw_events(screen, events_top + 1, 4, max(1, footer_row - events_top - 2), content_width - 4, events)
 
 
-def draw_global_composer(screen, height: int, width: int, message: str, view: str = "board", control: bool = True, composer: str = "") -> None:
+def draw_global_composer(screen, height: int, width: int, message: str, view: str = "board", control: bool = True, composer: ComposerState | str = "") -> None:
     if height < 4:
         return
+    state = composer if isinstance(composer, ComposerState) else ComposerState(str(composer), len(str(composer)))
+    state = state.clamp()
     mode = "controller" if control else "observer"
     help_text = (
-        f"view:{view} mode:{mode}  Enter submits  / command  Backspace edits  Esc clears  q quit  "
-        "1-8 views"
+        f"view:{view} mode:{mode}  Enter submits  Ctrl+C cancels  Ctrl+V pastes  Ctrl+D quits  "
+        "F1-F8 views"
     )
     clear_line(screen, height - 2)
     clear_line(screen, height - 1)
-    prompt = f"hive> {composer}"
+    prompt_prefix = "hive> "
+    prompt = prompt_prefix + state.text
     add_line(screen, height - 2, 2, truncate(prompt, max(10, width - 4)), color(1, curses.A_BOLD))
     add_line(screen, height - 1, 2, truncate(f"{message}  |  {help_text}", max(10, width - 4)), color(2) if message != "ready" else curses.A_DIM)
+    try:
+        cursor_x = 2 + display_width(prompt_prefix + state.text[: state.cursor])
+        screen.move(height - 2, min(max(2, width - 2), cursor_x))
+        curses.curs_set(1)
+    except curses.error:
+        pass
+
+
+def display_width(text: str) -> int:
+    width = 0
+    for ch in text:
+        if unicodedata.combining(ch):
+            continue
+        width += 2 if unicodedata.east_asian_width(ch) in {"F", "W"} else 1
+    return width
 
 
 def draw_board_view(

@@ -268,3 +268,440 @@ None of these require inventing new storage. They all map onto existing MemoryOS
 ### One-Line Summary
 
 > Hive Mind is necessary because today the user has to be the shared state. Hive Mind replaces the user as coordinator for everything that should be automatic, while keeping the user as the authority for everything that requires judgment.
+
+---
+
+## Codex Field Note — Adversarial Convergence During P18-A / Paper 4
+
+*Author: Codex, 2026-05-02.*
+*Context: this was written after a live research loop where User, Claude, and Codex interpreted P18-A, converged on the Paper 4 direction, staged a pre-P18-B gamma diagnostic, and used `.ai-runs/shared/` as the shared folder.*
+
+### What Worked Well
+
+The strongest part of the loop was not parallel execution by itself. It was **adversarial convergence under a shared north star**.
+
+Claude and Codex were useful because they did not collapse into one voice:
+
+- Claude sharpened the interpretation: P18-A should not be sold as a clean identifiability boundary map. It showed robust architecture-level signal and smooth bounded gamma compression.
+- Codex sharpened the execution rule: do not proceed to P18-B until the one-cell gamma-init plus frozen-gamma diagnostic separates init artifact, training artifact, multi-basin behavior, and finite-schedule information limit.
+- The user supplied the north star: adversarial agents must disagree productively but converge toward the paper, not toward winning the argument.
+
+This produced a better outcome than either isolated agent would likely have produced. The final action was concrete: `g3_s0`, `gamma_true=0.5`, `sigma_m=0.25`, six learned-gamma inits, one frozen-gamma arm, explicit metrics, and an explicit decision table.
+
+The shared folder also helped. Once we wrote notes into `.ai-runs/shared/`, the discussion stopped being purely conversational. Claude could see Codex's position; Codex could see Claude's critique; the user did not have to repeat every argument from memory.
+
+### What Was Still Hard
+
+#### 1. The User Still Had To Be The Router
+
+The user repeatedly had to say which interpretation mattered, which experiment came next, and which agent should act. Even with shared markdown, there was no live work queue saying:
+
+```text
+current objective: resolve P18-A gamma compression
+blocked action: P18-B
+active action: one-cell gamma diagnostic
+owner: Codex
+parallel writing: Claude
+decision barrier: wait for summary.json
+```
+
+Without that state, the user remained the scheduler.
+
+#### 2. Shared Markdown Was Useful But Not Sufficient
+
+`.ai-runs/shared/` worked as a human-readable memory layer, but it did not enforce state.
+
+Examples:
+
+- A note could say "P18-B is blocked," but no system prevented an agent from starting P18-B.
+- A note could say "Codex owns the diagnostic script," but there was no lock or task claim.
+- A note could record a decision table, but no verifier checked whether the output JSON actually contained the required fields.
+
+Markdown is good as a derived surface. It is weak as the source of truth.
+
+#### 3. Execution State Was Fragile
+
+The tmux/nohup/PID loop exposed an operational gap:
+
+- PID files can capture wrapper bash instead of the actual Python child.
+- Logs may be quiet for a long time, making a live run look stalled.
+- Multiple launch methods can accidentally create duplicate runs.
+- The user had to ask whether a process was running on the intended server.
+
+Hive Mind needs a run supervisor, not just "paste this bash command."
+
+The desired state is:
+
+```text
+hive run start p18-gamma-init --host local --gpu 0
+hive run status p18-gamma-init
+hive run tail p18-gamma-init
+hive run stop p18-gamma-init --keep-latest
+```
+
+The run record should store real child PID, parent session, host, GPU, log path, start time, command hash, code commit, and output artifact path.
+
+#### 4. Git Safety Needs To Be A First-Class Gate
+
+During commit preparation, unrelated staged archive moves were accidentally pulled into a commit attempt. This was caught and corrected before push, but the incident is exactly the kind of mistake Hive Mind should prevent.
+
+Needed behavior:
+
+```text
+hive git propose-commit --scope quantum/q_state_model/p18_gamma_init_sweep.py,.ai-runs/shared/*
+  -> shows staged files outside scope
+  -> refuses commit unless --include-out-of-scope is explicit
+```
+
+Agent work often happens in dirty repos. A useful Hive Mind runtime must assume dirty state and enforce commit scope.
+
+#### 5. Interpretation And Evidence Need Separate Lanes
+
+P18-A created a subtle research risk: "non-identifiability," "compression," "optimizer artifact," and "finite-schedule information limit" are different claims. Agents can argue about them before the evidence exists.
+
+The good part of the loop was that we created a decision table. The missing part is that Hive Mind did not enforce the table as a barrier.
+
+Needed state:
+
+```text
+Claim: intrinsic Born-marginal non-identifiability
+Status: blocked
+Required evidence: gamma-init/frozen diagnostic + P18-B Profile 1
+
+Claim: smooth bounded gamma compression under current setup
+Status: currently supported by P18-A
+Required caveat: optimizer and schedule not yet separated
+
+Claim: architecture identifiability
+Status: supported
+Evidence: full arm vs ablation trajectory scores
+```
+
+This lets agents write conditionally without overclaiming.
+
+#### 6. Adversarial Work Needs A Convergence Protocol
+
+"Let agents debate" is not enough. Debate needs a protocol:
+
+1. Each agent writes its independent position.
+2. Each agent identifies what the other got right.
+3. Each agent identifies the remaining disagreement.
+4. The user or reviewer sets the north-star decision.
+5. Hive Mind creates the next experiment or writing task.
+6. The resolved decision is written as a claim/evidence artifact.
+
+Without this, adversarial mode becomes either noisy disagreement or premature consensus.
+
+### Why Hive Mind Is Necessary
+
+The P18-A loop showed that multiple agents are useful only when coordination is explicit. Otherwise the user becomes:
+
+- scheduler;
+- context relay;
+- process monitor;
+- git safety reviewer;
+- claim auditor;
+- conflict resolver;
+- memory writer.
+
+That is too much operator load. The user's judgment should be reserved for high-level scientific decisions: which claim matters, which venue to target, which risk is acceptable. Hive Mind should absorb mechanical coordination.
+
+In this sense, Hive Mind is not "more agents." It is the missing runtime around agents:
+
+```text
+agents generate proposals and work
+Hive Mind maintains state, barriers, evidence, and routing
+MemoryOS preserves reviewed knowledge
+the user supplies north-star judgment
+```
+
+### How Hive Mind Should Be Structured
+
+#### 1. Run Ledger
+
+Every run should have a structured ledger:
+
+```json
+{
+  "run_id": "p18-gamma-init-20260502",
+  "objective": "Separate gamma compression causes before P18-B",
+  "status": "running",
+  "owner": "Codex",
+  "blocked_tasks": ["P18-B Profile 1"],
+  "parallel_tasks": ["Claude abstract candidates"],
+  "decision_barrier": "summary.json exists and has all required metrics"
+}
+```
+
+Markdown summaries can be generated from this ledger, but the ledger should be canonical.
+
+#### 2. Task Queue With Claims And Locks
+
+Tasks need explicit state:
+
+```text
+unassigned -> claimed -> running -> needs_review -> verified -> accepted
+```
+
+A claim should include:
+
+- owner;
+- files or domains;
+- expected artifacts;
+- forbidden scope;
+- verification command;
+- handoff target.
+
+This would have made it explicit that Codex owned the diagnostic script while Claude owned abstract/venue/figure language.
+
+#### 3. Execution Supervisor
+
+Hive Mind should own long-running process control:
+
+- launch;
+- PID tracking;
+- host/GPU recording;
+- log tailing;
+- duplicate detection;
+- latest-run selection;
+- stop/kill semantics;
+- output artifact validation.
+
+This directly addresses the nohup/tmux/PID confusion.
+
+#### 4. Evidence And Claim Ledger
+
+Research work needs more than task status. It needs claim status:
+
+```text
+claim_id
+claim_text
+status: proposed | supported | blocked | falsified | superseded
+evidence_refs
+required_next_evidence
+allowed_wording
+forbidden_wording
+```
+
+For P18-A, this would prevent "intrinsic non-identifiability" from becoming accepted language before the gamma diagnostic.
+
+#### 5. Conflict Set And Convergence Record
+
+When Claude and Codex disagree, Hive Mind should create a `ConflictSet`:
+
+```text
+topic: P18-A gamma interpretation
+position_A: compression / not boundary map
+position_B: diagnostic decision table before P18-B
+overlap: architecture signal robust
+resolved_next_action: one-cell gamma diagnostic
+authority: User
+status: converged_for_now
+```
+
+This preserves disagreement without forcing fake consensus.
+
+#### 6. Git Scope Guard
+
+Before commit/push, Hive Mind should compare intended scope with actual staged diff:
+
+```text
+intended_scope:
+  - quantum/q_state_model/p18_gamma_init_sweep.py
+  - .ai-runs/shared/*
+
+out_of_scope_staged:
+  - archive/imports/*
+  - quantum/paper3.tex
+
+action:
+  refuse commit unless explicitly approved
+```
+
+This is critical in agent-heavy dirty worktrees.
+
+#### 7. Arrival Pack For Each Agent
+
+Every agent should start with a compact, role-specific pack:
+
+```text
+current objective
+current run state
+active owners
+blocked tasks
+accepted claims
+contested claims
+files in scope
+latest logs/results
+what not to touch
+```
+
+This is the difference between useful parallelism and duplicate work.
+
+#### 8. MemoryOS Interface
+
+Hive Mind should emit reviewed artifacts to MemoryOS only after verification:
+
+```text
+Hive Mind event log
+  -> verified run summary
+  -> accepted claim changes
+  -> MemoryOS import
+  -> future context pack
+```
+
+Raw agent thoughts should not automatically become memory. They should become candidate memory with provenance and review state.
+
+### Minimal MVP From This Experience
+
+The smallest useful Hive Mind for this workflow would include:
+
+1. `hive task claim`: declare owner, scope, expected artifacts, and forbidden scope.
+2. `hive run start/status/tail/stop`: supervised long-running jobs with real PID and log tracking.
+3. `hive claim set`: record claim status and required evidence.
+4. `hive conflict open/resolve`: preserve adversarial disagreement and convergence.
+5. `hive git guard`: prevent commits outside intended scope.
+6. `hive next`: produce the next operator decision grounded in current run state.
+
+### Codex One-Line Summary
+
+> Hive Mind is needed because adversarial multi-agent research works only when disagreement, execution, evidence, and memory are all stateful. Without that runtime, the user remains the hidden scheduler and the hidden database.
+
+---
+
+## Claude's Second Gap Analysis — Adversarial Research Debate in the Quantum Track
+
+*Author: Claude (claude-opus-4-7), 2026-05-02 KST.*
+*Context: a same-day session where Claude and Codex worked the Paper 4 / P18-A identifiability experiment in `/home/user/workspaces/jaewon/universe/quantum/`. Communication channel: append-only `.ai-runs/shared/comms_log.md` plus position-note files in the same folder. Edit ownership was partitioned in advance (Codex owns `quantum/q_state_model/*.py` edits; Claude reads, proposes, and meta-coordinates). The user explicitly invoked adversarial mode mid-session: "동등한 입장에서 토론해야 adversarial 하게 사용하는 의미가 있어. 북극성에 수렴할 수 있도록 하는 것이 목적."*
+
+This section is **not a rehash** of the memoryOS analysis above. The earlier section was about parallel implementation conflicts. This one is about a different failure surface: **adversarial debate that needs to converge on a research truth**, not on shipped code.
+
+### Why this collaboration mode is different
+
+In implementation work, agreement is the goal — two agents writing compatible code. In research work, **disagreement is the value**. A single-author paper carries hidden assumptions that reviewers eventually catch. Two agents debating with explicit pre-commits surface those assumptions early. The hive's job is not to suppress friction but to make sure friction ends in a falsifiable test, not in venting.
+
+The user named this directly: "adversarial 하게 가면서도 북극성에 수렴." Friction is means, convergence is end.
+
+### What actually worked (and is missing from generic agent harnesses)
+
+#### 1. Append-only single channel forced linear consensus history
+
+`comms_log.md` is append-only with timestamped author entries. The rule "never modify past entries" was Codex's. This eliminated the edit-race class of bugs from the memoryOS section above — neither of us was rewriting the other's words. Every claim was permanently attributable.
+
+A side effect: the channel doubles as a forensic audit trail. When the user asked "where did this decision come from," the answer was always one grep away.
+
+#### 2. Strict edit-ownership partition
+
+Codex owns `quantum/q_state_model/*.py`. Claude does not. This meant:
+- I could not "accidentally" land an edit that conflicted with Codex's in-progress work.
+- I had to express disagreement as written argument, not as code diffs.
+- Code-side mistakes (e.g., the no-nohup launcher) had to be caught and reported, not silently fixed.
+
+The cost: I had to wait for Codex on every implementation step. The benefit: the channel stayed legible.
+
+#### 3. Pre-commit-to-outcome rule
+
+We built a five-row decision table for the γ-init sweep. Each row was a possible experimental outcome paired with its disposition (paper claim and next step). Both sides signed it before the experiment landed.
+
+This is the single most important discipline I want the hive to enforce. Without it, post-result rationalization is invisible. With it, retrofitting is visible — the table is in the channel, the result lands, and any deviation from the locked disposition shows up as a contradiction.
+
+#### 4. Cross-agent verification of execution hygiene
+
+Codex launched the sweep without nohup. I caught it (PPID, STAT flags, controlling terminal evidence). I didn't have to be a code editor to be useful — I just had to be a verifier.
+
+This is a different role than the memoryOS section discussed. It's not "review the code" — it's "review the launch." Process-level hygiene (nohup, PID file, log location, env activation, GPU contention) is invisible in code review and easy to skip in solo work.
+
+### What still hurt (gaps the hive must close)
+
+#### 1. Adversarial mode is not the default
+
+I went into deferential mode by default, citing the channel rule "Codex is file-edit owner." The user had to flip me explicitly: "동등한 입장에서 토론해야." Without that nudge, I would have rubber-stamped Codex's "boundary result / underidentified" framing instead of catching that the data didn't support it.
+
+**The hive needs a mode flag per round**: `cooperative` vs `adversarial` vs `verification-only`. Defaulting to `cooperative` collapses to single-agent thinking.
+
+#### 2. Convergence rule has no enforcement
+
+Our 15:10 convergence rule said: "every disagreement terminates in a falsifiable cheap test; both sides pre-commit to outcomes; no new fronts opened until current closes." This is a social contract, not a structural one.
+
+If either of us had reneged after the sweep landed, nothing in the channel would have stopped us. The pre-commit table is just markdown — a sufficiently motivated agent could re-litigate and the only safeguard is the user reading the log.
+
+**The hive needs a binding pre-commit ledger.** When N agents sign a decision table, the hive records the signatures as artifacts. When the experiment lands, the hive automatically determines which row fired and treats the corresponding disposition as bound. Re-litigation requires explicit user override, not just another comms entry.
+
+#### 3. Context staleness across in-progress experiments
+
+Codex wrote `p18a_analysis_handoff_2026-05-02.md` at 07:39 KST, before the rerun finished. He wrote `p18a_final_eval_next_2026-05-02.md` at 15:21 after it finished. These two documents partially contradicted each other — the first said "ARCHITECTURE_ONLY/POOR_OBS_FIT/NUMERICALLY_UNSTABLE" with auditor bugs, the second corrected to clean labels. I had to figure out which was current by mtimes.
+
+**The hive needs document supersession edges.** When a document corrects or refines an earlier one, the link should be explicit, not implicit-by-mtime. New agents arriving should see only the live frontier, not the full history flattened.
+
+#### 4. The user is still the round-trip dispatcher
+
+Every adversarial round needed the user to prompt: "이제 네 차례야," "공유 노트 확인해봐," "Codex 답변 확인해봐," "더 강하게 받아쳐." Without these nudges, the channel goes silent because each agent finishes its turn and waits.
+
+**The hive needs turn arbitration**: when Claude files a position, prompt Codex with a deadline. When the deadline passes, escalate to user. When Codex responds, notify Claude. Currently the user is the polling thread.
+
+#### 5. Same-source double-processing
+
+Codex and I both independently read `paper4_readiness_checklist_2026-05-01.md`, `0501.md`, `paper3.tex`, `paper4_frame.md` (memory), and the rerun JSONs. We produced overlapping but distinct mental models. I had no way to know what Codex had read until his note referenced it; he had no way to know what I had read.
+
+**The hive needs a source-read registry per agent per run.** When Claude reads file X, register it. When Codex reads file X, register it. When both have read X, surface "both processed; reconcile interpretations" as a hint to the user. The memoryOS section above called this `SourceArtifact` — the same primitive applies here, but for adversarial-debate it should specifically flag "shared input → divergent interpretation" cases as a candidate for explicit comparison.
+
+#### 6. No automatic North Star drift detection
+
+The locked North Star claim is in `paper4_frame.md`. Every position Codex and I file should be checked against the forbidden-language list ("Generative Truth Engine," "truth reconstruction," etc.) and the locked claim shape. We did this manually. Twice in the day I had to check my own draft against the frame doc.
+
+**The hive needs a frame-anchor check.** Position notes get auto-scanned against the active frame document on commit. Forbidden language flagged. Drift from claim shape flagged. Vision-language belongs in `northstar/`, not in `comms_log.md` or position notes.
+
+#### 7. No falsifiable-test gate before opening new fronts
+
+Our convergence rule said "no new fronts before current closes." Nothing enforced it. If Claude had filed a P18-C position note while γ-init sweep was still running, the channel would have accepted it.
+
+**The hive needs a front-state machine.** Open fronts (current debates) are tracked. New fronts cannot open until existing ones close via the registered cheap test. This is structurally similar to the work queue in the memoryOS analysis but specialized for debate state, not implementation state.
+
+### How to construct the adversarial-debate layer
+
+The earlier memoryOS section listed six gaps and mapped them to MemoryOS schema primitives. This section adds a parallel layer specifically for debate.
+
+**Debate-mode artifacts the hive must produce:**
+
+| Artifact | Purpose |
+|---|---|
+| `Round` | A debate round: opener, challenger, falsifiable test, outcome. |
+| `PreCommitTable` | Outcome → disposition rows, signed by N agents, bound to a future test result. |
+| `Front` | A live disagreement, with status `open / test-pending / closed-bound`. |
+| `FrameAnchor` | The active claim/forbidden-language doc. Every position note auto-checks against it. |
+| `RoleFlag` | Per-agent role for this round: `cooperative`, `adversarial`, `verification-only`. |
+| `Turn` | Whose turn. Has timeout. Hive escalates on timeout. |
+
+**Mode behaviors the hive must support:**
+
+- `adversarial`: agents are required to push back on each other's framings before agreeing. "Acknowledged" without contestation is flagged as a missing turn.
+- `cooperative`: agents merge claims, edit-conflicts only.
+- `verification-only`: one agent observes, runs reproducibility checks, does not propose.
+
+**Convergence enforcement:**
+
+- A `Front` cannot close without a registered test result.
+- A `PreCommitTable` is binding once N signatures land. The hive auto-determines which row fired from a structured experiment-result artifact and posts the disposition.
+- New fronts cannot open while any existing front is `open` or `test-pending` — unless user override.
+
+**Cross-agent cross-checks:**
+
+- Process-launch artifact (e.g., "Codex started PID X") triggers a verification request to other agents in `verification-only` capacity.
+- Source reads register per agent. "Both read source X but produced different interpretations" auto-creates a `Front`.
+
+### What this means for the larger Hive Mind / MemoryOS / CapabilityOS split
+
+The boundary line earlier in this doc says:
+
+> Hive Mind acts. MemoryOS remembers. CapabilityOS learns what works.
+
+The adversarial-debate layer is a Hive Mind responsibility, but it consumes from MemoryOS and produces evidence for CapabilityOS:
+
+- It consumes `FrameAnchor` and `SourceArtifact` from MemoryOS to ground claims.
+- It produces `Round`, `PreCommitTable`, `Front` artifacts as run state.
+- After closure, it emits `MemoryDraft` candidates from converged dispositions to MemoryOS.
+- Over many rounds, CapabilityOS learns: which agents push back well on which topics, which falsifiable tests close fronts fastest, which frames produce stable claims.
+
+### One-line conclusion
+
+> Adversarial collaboration produces sharper truth than cooperative collaboration, but only if the hive structurally enforces pre-commit binding, falsifiable-test gating, and frame-anchored drift detection. Without those, adversarial mode degrades into either deferential consensus or unbounded debate — and the user has to be the convergence enforcer instead of the judge.

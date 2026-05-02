@@ -90,6 +90,12 @@ Sources: `VG-03`, `VG-04`, `VG-06`, `VG-13`.
 - [ ] Add convergence scoring: evidence strength, reversibility, risk, and user-preference fit.
 - [ ] Add TUI view for active debate rounds and participant readiness.
 - [ ] Add MemoryOS draft extraction from debate convergence only after human review.
+- [ ] Add debate mode flags per round: cooperative, adversarial, and verification-only.
+- [ ] Add binding `PreCommitTable` artifacts with agent signatures and result-to-disposition matching.
+- [ ] Add `Front` state machine so new debate fronts are blocked until the current cheap falsifiable test closes or the user overrides.
+- [ ] Add turn arbitration with owner, deadline, next speaker, timeout, and user escalation.
+- [ ] Add frame-anchor drift checks for active claim shape and forbidden language before accepting position notes.
+- [ ] Add source-read registry that can flag shared source input with divergent agent interpretations.
 
 ## Hive Mind Gap Closure
 
@@ -105,6 +111,9 @@ Source mirror: `docs/HIVE_MIND_GAPS.md` from `../memoryOS/docs/shared/HIVE_MIND_
 - [x] Refine `hive next` into a prioritized operator decision surface grounded in run state.
 - [ ] Replace placeholder MemoryOS context command with the sibling repo's canonical command after MemoryOS exposes it.
 - [ ] Add semantic verifier LLM review for high-risk runs.
+- [ ] Add document supersession edges so stale handoffs are explicitly replaced, not inferred from mtimes.
+- [ ] Add claim/evidence ledger with supported, blocked, falsified, superseded, required evidence, allowed wording, and forbidden wording fields.
+- [ ] Add arrival packs generated from live run state: objective, owners, blocked tasks, accepted claims, contested claims, scope, logs, and latest artifacts.
 
 ## Harness Runtime
 
@@ -123,6 +132,7 @@ Sources: `VG-03`, `VG-04`, `VG-13`.
 - [x] Add TUI prompt routing controls: `n` for new prompt and `a` for auto-routing the current run.
 - [x] Add `hive run -q --json` and shell completion script generation for bash/zsh/fish.
 - [x] Add interactive slash-command shell for `hive` inspired by OpenClaude/Open Codex.
+- [x] Add UTF-8/Hangul-capable TUI composer with cursor movement, Ctrl+C cancel, Ctrl+V paste, Ctrl+D quit, and provider-style line editing.
 - [x] Add `.hivemind/checks/*.md` markdown-as-agent-check policy files inspired by Continue.
 - [x] Add git-first diff/check/commit summary loop inspired by Aider.
 - [x] Add unified prompt input via `hive prompt` and slash shell `/prompt`.
@@ -132,6 +142,8 @@ Sources: `VG-03`, `VG-04`, `VG-13`.
 - [x] Add always-visible TUI `hive>` composer so prompt entry is discoverable.
 - [x] Add `hive_events.jsonl` and `hive hive activity` so human activity shows role assignment, not only artifact creation.
 - [x] Harden provider result validation for all prepared/executed adapters.
+- [ ] Add supervised long-running run control: `hive run start/status/tail/stop` with real child PID, host, GPU, log path, command hash, commit, and output artifact validation.
+- [ ] Add `hive git guard` / scoped commit proposal that refuses out-of-scope staged files unless explicitly approved.
 
 ## Parser Work
 
