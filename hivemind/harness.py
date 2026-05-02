@@ -2861,7 +2861,7 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
     paths = create_run(root, prompt, project="Hive Mind", task_type="routed") if run_id is None else load_run(root, run_id)[0]
     paths.local_dir.mkdir(parents=True, exist_ok=True)
     ensure_local_backend(root)
-    method_profile = load_operator_method_profile(root)
+    method_profile = load_router_method_profile()
     router_input = (
         "# User Prompt\n"
         f"{prompt.strip()}\n\n"
@@ -2961,10 +2961,8 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
         role = action["role"]
         try:
             if provider == "local":
-                # Only run cheap context preparation automatically. Other local roles can be triggered from the prepared plan.
-                if role == "context" and route_source == "local_llm":
-                    out = invoke_local(root, role, run_id=paths.run_id, complexity=complexity)
-                    prepared.append(out.relative_to(root).as_posix())
+                append_agent_log(paths, "local", role, f"prepared worker request from {route_source}; execution requires hive invoke local --role {role}")
+                set_agent_status(paths, local_agent_name(role), "ready")
             elif provider in {"claude", "codex", "gemini"}:
                 out = invoke_external_agent(root, provider, role, run_id=paths.run_id, execute=False)
                 prepared.append(out.relative_to(root).as_posix())
@@ -3371,6 +3369,10 @@ def normalize_router_actions(raw_actions: Any) -> list[dict[str, Any]]:
                 continue
             provider = str(item.get("provider", "")).strip().lower()
             role = str(item.get("role", "")).strip().lower()
+            if "/" in provider:
+                provider_part, role_part = provider.split("/", 1)
+                provider = provider_part.strip()
+                role = role or role_part.strip()
             if provider in allowed and role in allowed[provider]:
                 actions.append(
                     {
@@ -4058,6 +4060,19 @@ def load_operator_method_profile(root: Path) -> str:
         "Classify intent first, decompose into concrete tasks, preserve disagreement, "
         "let Claude critique/planning and Codex execution stay separate, verify with commands, "
         "then write memory-ready artifacts."
+    )
+
+
+def load_router_method_profile() -> str:
+    return (
+        "- Classify intent before choosing providers.\n"
+        "- Keep provider execution prepare-only unless explicitly requested.\n"
+        "- Use local/context for context compression, not final judgment.\n"
+        "- Use claude/planner for ambiguous plans, risks, and claim discipline.\n"
+        "- Use codex/executor only when implementation is clearly needed.\n"
+        "- Use gemini/reviewer for optional independent review.\n"
+        "- Preserve disagreement and route risky decisions to review.\n"
+        "- Return the smallest useful action list."
     )
 
 

@@ -47,6 +47,13 @@ Routing impact:
 - Prefer `phi4-mini` or `qwen3:8b` for schema-critical general work.
 - Do not rely on `qwen3:4b` until adapter/prompt settings are retested.
 
+Adapter note:
+
+- The original `qwen3:*` JSON failures were partly an Ollama adapter issue:
+  `format: "json"` plus qwen3 thinking mode can return an empty `{}`. Hive Mind
+  now sends top-level `think: false` and prefixes `/no_think` for qwen3-family
+  models. Putting `think` inside `options` is not sufficient.
+
 ## Coder Role Results
 
 | Model | Role | Result |

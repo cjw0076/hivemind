@@ -59,7 +59,7 @@ WORKERS: dict[str, WorkerSpec] = {
             "should_escalate": False,
             "escalation_reason": "",
         },
-        timeout_seconds=30,
+        timeout_seconds=60,
     ),
     "classifier": WorkerSpec(
         name="classifier",
@@ -391,13 +391,7 @@ def local_runtime_status() -> dict[str, Any]:
 def call_ollama_generate(base_url: str, model: str, prompt: str, timeout: int | None = None) -> dict[str, Any]:
     timeout_seconds = int(os.environ.get("HIVE_LOCAL_WORKER_TIMEOUT", str(timeout or 120)))
     url = base_url.rstrip("/") + "/api/generate"
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "format": "json",
-        "options": {"temperature": 0.1},
-    }
+    payload = ollama_generate_payload(model, prompt)
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
@@ -425,3 +419,31 @@ def call_ollama_generate(base_url: str, model: str, prompt: str, timeout: int | 
         "raw": raw,
         "done": body.get("done"),
     }
+
+
+def ollama_generate_payload(model: str, prompt: str) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "format": "json",
+        "options": {"temperature": 0.1},
+    }
+    if requires_no_think(model):
+        payload["prompt"] = add_no_think(prompt)
+        # Ollama expects `think` at the top level. Putting it in `options` does not
+        # disable qwen3 thinking and can produce empty `{}` under `format: json`.
+        payload["think"] = False
+    return payload
+
+
+def requires_no_think(model: str) -> bool:
+    normalized = model.lower()
+    return normalized.startswith("qwen3") or "qwen3" in normalized
+
+
+def add_no_think(prompt: str) -> str:
+    stripped = prompt.lstrip()
+    if stripped.startswith("/no_think"):
+        return prompt
+    return "/no_think\n" + prompt

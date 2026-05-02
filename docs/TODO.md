@@ -86,7 +86,10 @@ Sources: `VG-03`, `VG-04`, `VG-06`, `VG-13`.
 - [x] Add redacted operator method profile for intent routing and task decomposition system context.
 - [x] Add `hive debate <topic>` for provider first opinions, review round, and convergence artifacts.
 - [x] Define Hive Mind as the chair that controls turn order, barriers, disagreement records, convergence, and next action.
+- [x] Fix qwen3/Ollama JSON routing issue by sending top-level `think: false` plus `/no_think` instead of treating `{}` fallback as acceptable.
+- [x] Stop routing from auto-running local worker roles; provider/local execution remains explicit after prompt preparation.
 - [ ] Add disagreement extraction from executed provider outputs into a structured `disagreements.json`.
+- [ ] Upgrade task decomposition beyond keyword heuristics with a schema-validated router, provider fallback, and route-quality scoring.
 - [ ] Add convergence scoring: evidence strength, reversibility, risk, and user-preference fit.
 - [ ] Add TUI view for active debate rounds and participant readiness.
 - [ ] Add MemoryOS draft extraction from debate convergence only after human review.
@@ -103,6 +106,7 @@ Sources: `VG-03`, `VG-04`, `VG-05`, `VG-12`, `VG-14`, `VG-15`.
 
 Source: `docs/HIVE_MIND_GAPS.md` section "Header Role Decomposition and Per-Layer Provider Selection".
 
+- [x] Add a small chair runtime spec before implementation so L0/L1 do not become an over-designed header LLM.
 - [ ] Define chair layer artifact schemas: `DispatcherState`, `VerifierCheck`, `WorkingAgentTurn`, `RefereeDecision`, `NorthStarAudit`, and `ConflictReview`.
 - [ ] Implement L0 dispatcher as code-first state machine for rounds, fronts, turns, timeouts, artifact arrival, and next-speaker scheduling.
 - [ ] Implement L1 verifier checks for schema validity, process launch hygiene, stale artifact detection, forbidden-language scans, and file/scope checks.

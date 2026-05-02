@@ -453,3 +453,10 @@ Naming note as of 2026-05-02 12:24 KST:
 - Decision: Reproduced the roughness in a PTY and fixed the main causes: current-run changes invalidated the controller lock, killed TUI processes left active locks until TTL, and TUI prompt routing still waited on the local LLM before falling back.
 - Evidence: Direct TUI run showed `controller lock lost` after prompt submission; later run showed `run already has an active controller` from a dead PID. Added dynamic lock transfer when following `.runs/current`, stale-lock PID checks, and fast heuristic routing for TUI prompts. Direct retest with `codex smooth abc123` produced immediate `heuristic_fast` routing and no local LLM wait.
 - Next: Improve terminal input edge cases and exit ergonomics after the L0/L1 chair-runtime work; keep TUI normal prompts on the fast path unless the operator explicitly asks for local-LLM routing.
+
+## 2026-05-02 17:40 KST - Codex
+
+- Context: User challenged the prior assessment: distinguish documented intent from post-hoc rationalization, avoid implementing chair layers before a spec, and fix the qwen3/Ollama JSON issue instead of treating fallback as acceptable.
+- Decision: Added an explicit chair runtime spec before implementation, fixed qwen3-family Ollama JSON calls with top-level `think: false` plus `/no_think`, stopped routing from auto-running local workers, and compacted the local router method profile.
+- Evidence: Direct Ollama probes showed `options.think=false` still returned `{}` while top-level `think=false` returned valid JSON. `run_worker('intent_router')` now validates qwen3 JSON output. `hive ask "간단히 상태를 보고 다음 액션 분해"` produced `route_source=local_llm` after compacting the router profile; local/context remained prepared rather than auto-executed. Tests pass at 54.
+- Next: Add route-quality scoring and provider fallback for task decomposition so first-class routing is not dependent on one local model.
