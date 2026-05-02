@@ -272,3 +272,17 @@
 - Decision: Added `transcript.md` as the human-readable run log, `mos log`, `mos prompt`, shell `/prompt`, and shell `/log`. Existing `events.jsonl` remains the machine log; transcript mirrors key events plus `Ran`, `Edited`, and `Prepared` entries.
 - Evidence: `mos prompt` routed stdin and slash-shell multiline prompts; `mos log` shows `run_created`, local router, local context, Claude/Codex prompt creation, prepared result artifacts, and verification entries. Updated run protocol and tests so transcript is required.
 - Next: TUI should surface transcript tail alongside agent status.
+
+## 2026-05-02 11:44 KST - Codex
+
+- Context: User asked to check the updated `docs/final.md` after choosing the three-repo split: Hive Mind, MemoryOS, and CapabilityOS.
+- Decision: Accepted the new final architecture as the canonical product split and aligned the document with the current Hive Mind rename by replacing stale `mos` CLI references with `hive`, switching Hive Mind config examples to `.hivemind`, and updating handoff file examples to `hivemind/`.
+- Evidence: Updated `docs/final.md`; verified no remaining `mos`, `memoryos/`, or `.memoryos` references in that file.
+- Next: Use `docs/final.md` as the north-star split while extracting memory substrate code from Hive Mind into the new MemoryOS repo.
+
+## 2026-05-02 11:53 KST - Codex
+
+- Context: User asked to make `myworld` an umbrella workspace, move the current repo route into `hivemind`, keep shared docs available to all three repos, and continue interrupted bootstrap work.
+- Decision: Reorganized the local workspace to `myworld/hivemind`, `myworld/memoryOS`, and `myworld/CapabilityOS`; kept historical `.runs` and `.ai-runs` inside Hive Mind; made `memoryOS/docs/shared` and `CapabilityOS/docs/shared` point to `hivemind/docs`; cleaned up `docs/final.md` section 14 as the intelligence-emergence model.
+- Evidence: Added `docs/REPO_SPLIT.md`, updated child repo READMEs and local shared-doc symlink ignores, verified shared docs resolve, and ran Hive Mind Python/unit/npm tests successfully.
+- Next: Commit and push the three repositories separately, then start extracting MemoryOS substrate code out of Hive Mind.
