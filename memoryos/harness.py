@@ -7,6 +7,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -626,6 +627,255 @@ def local_routes_report() -> dict[str, Any]:
     return {
         "schema_version": 1,
         "routes": worker_route_table(),
+    }
+
+
+def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: str = "default") -> Path:
+    """Route one user prompt through the local intent router and prepare provider artifacts."""
+    paths = create_run(root, prompt, project="MemoryOS", task_type="routed") if run_id is None else load_run(root, run_id)[0]
+    paths.local_dir.mkdir(parents=True, exist_ok=True)
+    ensure_ollama_server(root)
+    router_input = (
+        "# User Prompt\n"
+        f"{prompt.strip()}\n\n"
+        "# Available Harness Roles\n"
+        "- local/context: compress context for handoff\n"
+        "- local/handoff: draft implementation handoff\n"
+        "- local/memory: extract memory drafts\n"
+        "- local/summarize: summarize logs/events\n"
+        "- local/review: first-pass risk review\n"
+        "- claude/planner: conceptual plan and risk discipline\n"
+        "- codex/executor: implementation prompt artifact\n"
+        "- gemini/reviewer: alternate/multimodal review prompt artifact\n"
+    )
+    set_agent_status(paths, "local-intent-router", "running")
+    append_event(paths, "agent_started", {"agent": "local", "role": "intent-router", "worker": "intent_router"})
+    model = choose_model("intent_router", complexity)
+    try:
+        worker_output = run_worker("intent_router", router_input, model=model, source_ref="user_prompt")
+        parsed = worker_output.get("parsed") if isinstance(worker_output.get("parsed"), dict) else {}
+        validation = validate_worker_result("intent_router", worker_output)
+        if validation["valid"]:
+            router_status = "completed"
+            route_source = "local_llm"
+            actions = normalize_router_actions(parsed.get("actions"))
+        else:
+            parsed = heuristic_route_prompt(prompt)
+            router_status = "fallback"
+            route_source = "invalid_local_fallback"
+            actions = normalize_router_actions(parsed.get("actions"))
+    except Exception as exc:
+        parsed = heuristic_route_prompt(prompt)
+        validation = {
+            "valid": False,
+            "issues": [str(exc)],
+            "confidence": parsed.get("confidence"),
+            "should_escalate": True,
+            "escalation_reason": f"local intent router failed; used heuristic fallback: {exc}",
+        }
+        worker_output = {"runtime": "fallback", "model": model, "parsed": parsed, "raw": "", "error": str(exc)}
+        router_status = "fallback"
+        route_source = "heuristic_fallback"
+        actions = normalize_router_actions(parsed.get("actions"))
+
+    result = {
+        "schema_version": 1,
+        "agent": "local",
+        "role": "intent-router",
+        "status": router_status,
+        "provider_mode": "local_runtime",
+        "runtime": worker_output.get("runtime"),
+        "worker": "intent_router",
+        "model": model,
+        "route_source": route_source,
+        "output_valid": validation["valid"],
+        "output_issues": validation["issues"],
+        "confidence": validation["confidence"],
+        "should_escalate": validation["should_escalate"],
+        "escalation_reason": validation["escalation_reason"],
+        "output": worker_output,
+        "normalized_actions": actions,
+    }
+    router_path = paths.local_dir / "intent_router.json"
+    write_json(router_path, result)
+    set_agent_status(paths, "local-intent-router", "completed" if router_status in {"completed", "fallback"} else "failed")
+    append_event(paths, "intent_routed", {"agent": "local", "role": "intent-router", "artifact": router_path.relative_to(root).as_posix(), "source": route_source})
+
+    prepared: list[str] = []
+    for action in actions:
+        provider = action["provider"]
+        role = action["role"]
+        try:
+            if provider == "local":
+                # Only run cheap context preparation automatically. Other local roles can be triggered from the prepared plan.
+                if role == "context" and route_source == "local_llm":
+                    out = invoke_local(root, role, run_id=paths.run_id, complexity=complexity)
+                    prepared.append(out.relative_to(root).as_posix())
+            elif provider in {"claude", "codex", "gemini"}:
+                out = invoke_external_agent(root, provider, role, run_id=paths.run_id, execute=False)
+                prepared.append(out.relative_to(root).as_posix())
+        except Exception as exc:
+            append_event(paths, "route_action_failed", {"provider": provider, "role": role, "error": str(exc)})
+
+    plan_path = paths.run_dir / "routing_plan.json"
+    write_json(
+        plan_path,
+        {
+            "schema_version": 1,
+            "run_id": paths.run_id,
+            "prompt": prompt,
+            "intent": parsed.get("intent", "unknown"),
+            "summary": parsed.get("summary", ""),
+            "route_source": route_source,
+            "actions": actions,
+            "prepared_artifacts": prepared,
+            "risks": parsed.get("risks", []),
+            "open_questions": parsed.get("open_questions", []),
+        },
+    )
+    append_event(paths, "routing_plan_created", {"artifact": plan_path.relative_to(root).as_posix(), "prepared": len(prepared)})
+    update_state(paths, phase="routing", status="ready")
+    return plan_path
+
+
+def load_routing_plan(root: Path, run_id: str | None = None) -> dict[str, Any]:
+    paths, _ = load_run(root, run_id)
+    plan_path = paths.run_dir / "routing_plan.json"
+    if not plan_path.exists():
+        return {
+            "run_id": paths.run_id,
+            "status": "missing",
+            "path": plan_path.as_posix(),
+            "message": "No routing plan yet. Run: mos ask \"your task\"",
+        }
+    return json.loads(plan_path.read_text(encoding="utf-8"))
+
+
+def format_routing_plan(plan: dict[str, Any]) -> str:
+    if plan.get("status") == "missing":
+        return f"Routing Plan: missing\n{plan.get('message')}\n{plan.get('path')}"
+    lines = [
+        f"Routing Plan: {plan.get('run_id')}",
+        f"Intent: {plan.get('intent', 'unknown')}",
+        f"Source: {plan.get('route_source', 'unknown')}",
+        f"Summary: {plan.get('summary', '')}",
+        "",
+        "Actions:",
+    ]
+    for item in plan.get("actions") or []:
+        lines.append(f"- {item.get('provider')}/{item.get('role')}: {item.get('reason', '')}")
+    prepared = plan.get("prepared_artifacts") or []
+    if prepared:
+        lines.extend(["", "Prepared Artifacts:"])
+        for artifact in prepared:
+            lines.append(f"- {artifact}")
+    return "\n".join(lines)
+
+
+def ensure_ollama_server(root: Path) -> None:
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=1):
+            return
+    except (urllib.error.URLError, TimeoutError):
+        pass
+    starter = root / "scripts" / "start-ollama-local.sh"
+    if not starter.exists():
+        return
+    log_dir = root / PROJECT_DIR / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = (log_dir / "ollama.log").open("ab")
+    subprocess.Popen([starter.as_posix()], cwd=root, stdout=log_file, stderr=subprocess.STDOUT, start_new_session=True)
+    for _ in range(10):
+        time.sleep(0.5)
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=1):
+                return
+        except (urllib.error.URLError, TimeoutError):
+            continue
+
+
+def normalize_router_actions(raw_actions: Any) -> list[dict[str, Any]]:
+    allowed = {
+        "local": {"context", "handoff", "memory", "summarize", "review", "classify"},
+        "claude": {"planner", "reviewer"},
+        "codex": {"executor", "reviewer"},
+        "gemini": {"reviewer", "planner"},
+    }
+    actions: list[dict[str, Any]] = []
+    if isinstance(raw_actions, list):
+        for item in raw_actions:
+            if not isinstance(item, dict):
+                continue
+            provider = str(item.get("provider", "")).strip().lower()
+            role = str(item.get("role", "")).strip().lower()
+            if provider in allowed and role in allowed[provider]:
+                actions.append(
+                    {
+                        "provider": provider,
+                        "role": role,
+                        "reason": str(item.get("reason", "")),
+                        "execute": False,
+                    }
+                )
+    if not actions:
+        actions = [
+            {"provider": "local", "role": "context", "reason": "Prepare compact context.", "execute": False},
+            {"provider": "claude", "role": "planner", "reason": "Plan and identify risks.", "execute": False},
+            {"provider": "codex", "role": "executor", "reason": "Prepare implementation handoff.", "execute": False},
+            {"provider": "gemini", "role": "reviewer", "reason": "Prepare alternate review.", "execute": False},
+        ]
+    deduped: list[dict[str, Any]] = []
+    seen = set()
+    for action in actions:
+        key = (action["provider"], action["role"])
+        if key not in seen:
+            seen.add(key)
+            deduped.append(action)
+    return deduped[:6]
+
+
+def heuristic_route_prompt(prompt: str) -> dict[str, Any]:
+    lowered = prompt.lower()
+    actions = [{"provider": "local", "role": "context", "reason": "Prepare context before provider handoff.", "execute": False}]
+    intent = "planning"
+    if any(token in lowered for token in ["implement", "fix", "build", "code", "tui", "cli", "구현", "수정", "만들"]):
+        intent = "implementation"
+        actions.extend(
+            [
+                {"provider": "claude", "role": "planner", "reason": "Clarify plan and risks.", "execute": False},
+                {"provider": "codex", "role": "executor", "reason": "Prepare implementation artifact.", "execute": False},
+                {"provider": "gemini", "role": "reviewer", "reason": "Prepare independent review.", "execute": False},
+            ]
+        )
+    elif any(token in lowered for token in ["review", "audit", "검토", "리뷰"]):
+        intent = "review"
+        actions.extend(
+            [
+                {"provider": "local", "role": "review", "reason": "First-pass risk scan.", "execute": False},
+                {"provider": "claude", "role": "reviewer", "reason": "Conceptual risk review.", "execute": False},
+                {"provider": "gemini", "role": "reviewer", "reason": "Alternate review.", "execute": False},
+            ]
+        )
+    elif any(token in lowered for token in ["memory", "import", "parser", "메모리", "가져"]):
+        intent = "memory_import"
+        actions.extend(
+            [
+                {"provider": "local", "role": "memory", "reason": "Draft memory extraction.", "execute": False},
+                {"provider": "codex", "role": "executor", "reason": "Prepare parser/import implementation.", "execute": False},
+            ]
+        )
+    else:
+        actions.append({"provider": "claude", "role": "planner", "reason": "Clarify ambiguous task.", "execute": False})
+    return {
+        "intent": intent,
+        "summary": prompt.strip()[:200],
+        "complexity": "default",
+        "actions": actions,
+        "risks": [],
+        "open_questions": [],
+        "confidence": 0.45,
+        "should_escalate": True,
+        "escalation_reason": "Heuristic fallback is less reliable than local intent router.",
     }
 
 

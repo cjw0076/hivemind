@@ -28,6 +28,36 @@ class WorkerSpec:
 
 
 WORKERS: dict[str, WorkerSpec] = {
+    "intent_router": WorkerSpec(
+        name="intent_router",
+        purpose="Decompose a user prompt into local/provider roles and ordered harness actions.",
+        default_model="qwen3:8b",
+        fast_model="qwen3:8b",
+        strong_model="deepseek-coder-v2:16b",
+        system=(
+            "You are LocalIntentRouter for MemoryOS. Decompose the user's prompt into a small, "
+            "safe harness plan. Route work to local workers, Claude planner/reviewer, Codex executor, "
+            "and Gemini reviewer by role. Do not execute code. Return valid JSON only."
+        ),
+        output_schema={
+            "intent": "implementation|review|research|memory_import|documentation|planning|debugging|unknown",
+            "summary": "one sentence task summary",
+            "complexity": "fast|default|strong",
+            "actions": [
+                {
+                    "provider": "local|claude|codex|gemini",
+                    "role": "context|handoff|memory|summarize|review|classify|planner|executor|reviewer",
+                    "reason": "why this role is needed",
+                    "execute": False,
+                }
+            ],
+            "risks": [],
+            "open_questions": [],
+            "confidence": 0.0,
+            "should_escalate": False,
+            "escalation_reason": "",
+        },
+    ),
     "classifier": WorkerSpec(
         name="classifier",
         purpose="Classify short snippets into task, project, memory type, and escalation hints.",

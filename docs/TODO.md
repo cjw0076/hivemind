@@ -26,6 +26,7 @@ Sources: `VG-03`, `VG-04`, `VG-05`, `VG-13`.
 - [x] Make `mos tui` show current run health, provider availability, latest event, failures, and missing artifacts.
 - [x] Add parser warnings instead of failing entire imports on one malformed record.
 - [x] Persist production settings profile during onboarding so provider paths, local model inventory, and shell exports are tracked.
+- [x] Add prompt-first `mos ask` local intent routing that decomposes work into Claude/Codex/Gemini/local artifacts.
 
 ## Harness Runtime
 
@@ -39,6 +40,7 @@ Sources: `VG-03`, `VG-04`, `VG-13`.
 - [x] Add a minimal valid run fixture for harness tests.
 - [x] Add `memoryos import-run .runs/<run_id>` or equivalent draft import path.
 - [x] Add `mos settings detect/shell` and `scripts/mos-workbench.sh` for context editing plus fast provider artifact preparation.
+- [x] Add TUI prompt routing controls: `n` for new prompt and `a` for auto-routing the current run.
 
 ## Parser Work
 

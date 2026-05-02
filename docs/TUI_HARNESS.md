@@ -13,6 +13,8 @@ python -m memoryos.mos agents detect
 python -m memoryos.mos settings detect
 eval "$(python -m memoryos.mos settings shell)"
 python -m memoryos.mos run "Build Draft Review screen"
+python -m memoryos.mos ask "Build Draft Review screen"
+python -m memoryos.mos plan
 python -m memoryos.mos status
 python -m memoryos.mos tui
 python -m memoryos.mos context
@@ -80,7 +82,9 @@ Inside `python -m memoryos.mos tui`:
 ```text
 q  quit
 r  refresh
+n  enter a new prompt, create a run, and auto-route it
 e  edit context_pack.md in $EDITOR
+a  auto-route current task through local intent router
 l  invoke local context compressor
 c  create Claude planner prompt
 x  create Codex executor prompt
@@ -119,6 +123,16 @@ Each run is a structured blackboard under `.runs/`:
 The TUI reads `run_state.json` and `events.jsonl`. It does not require a database.
 
 ## Local Worker Behavior
+
+For prompt-first work, use:
+
+```bash
+python -m memoryos.mos ask "your task"
+```
+
+`mos ask` creates or reuses a run, asks the local `intent_router` worker to decompose the prompt, writes `routing_plan.json`, and prepares the matching Claude/Codex/Gemini/local artifacts. If Ollama is unreachable, it writes a heuristic fallback route so the run remains usable instead of blocking.
+
+Inside `mos tui`, press `n` to enter a fresh prompt directly. The TUI creates a new run and routes it through the same local intent router. Press `a` to re-route the current run.
 
 `mos invoke local --role ...` writes an artifact even when Ollama is unavailable. This keeps the run trace complete and makes infrastructure failures visible in the TUI instead of crashing the harness.
 

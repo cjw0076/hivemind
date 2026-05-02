@@ -18,6 +18,7 @@ from .harness import (
     build_summary,
     build_verification,
     append_event,
+    ask_router,
     invoke_external_agent,
     invoke_local,
     load_run,
@@ -44,7 +45,7 @@ def draw_loop(screen, root: Path, run_id: str | None) -> None:
         except Exception as exc:  # TUI should show recoverable state instead of crashing.
             add_line(screen, 1, 2, "MemoryOS Harness", curses.A_BOLD)
             add_wrapped(screen, 3, 2, width - 4, str(exc))
-        footer = "q quit  r refresh  e edit-context  l local  c claude  x codex  g gemini  v verify  s summary  m memory"
+        footer = "q quit  n new-prompt  e edit-context  a auto-route  l local  c claude  x codex  g gemini  v verify"
         add_line(screen, height - 2, 2, truncate(footer, max(10, width - 4)), curses.A_DIM)
         add_line(screen, height - 1, 2, truncate(message, max(10, width - 4)), curses.A_DIM)
         screen.refresh()
@@ -62,6 +63,13 @@ def handle_key(screen, root: Path, run_id: str | None, key: int) -> str:
             return "refreshed"
         if key in {ord("e"), ord("E")}:
             return edit_context_pack(screen, root, run_id)
+        if key in {ord("n"), ord("N")}:
+            return prompt_and_route(screen, root)
+        if key in {ord("a"), ord("A")}:
+            paths, state = load_run(root, run_id)
+            prompt = str(state.get("user_request") or paths.context_pack.read_text(encoding="utf-8")[:2000])
+            path = ask_router(root, prompt, run_id=paths.run_id, complexity="default")
+            return f"auto-route -> {path}"
         if key in {ord("l"), ord("L")}:
             path = invoke_local(root, "context", run_id=run_id, complexity="default")
             return f"local context -> {path}"
@@ -86,6 +94,30 @@ def handle_key(screen, root: Path, run_id: str | None, key: int) -> str:
     except Exception as exc:
         return f"error: {exc}"
     return "unknown key"
+
+
+def prompt_and_route(screen, root: Path) -> str:
+    height, width = screen.getmaxyx()
+    curses.echo()
+    curses.curs_set(1)
+    screen.nodelay(False)
+    prompt = ""
+    try:
+        row = max(0, height - 3)
+        screen.move(row, 0)
+        screen.clrtoeol()
+        add_line(screen, row, 2, "New prompt: ", curses.A_BOLD)
+        screen.refresh()
+        raw = screen.getstr(row, 14, max(20, min(1000, width - 16)))
+        prompt = raw.decode("utf-8", errors="replace").strip()
+    finally:
+        curses.noecho()
+        curses.curs_set(0)
+        screen.nodelay(True)
+    if not prompt:
+        return "empty prompt"
+    path = ask_router(root, prompt, run_id=None, complexity="default")
+    return f"new prompt routed -> {path}"
 
 
 def edit_context_pack(screen, root: Path, run_id: str | None) -> str:
@@ -246,6 +278,8 @@ def draw_artifacts(screen, y: int, x: int, height: int, width: int, state: dict[
     rows = [
         f"verify: {health.get('verification_verdict')}",
         f"providers: {health.get('providers_available')}/{health.get('providers_total')} available",
+        f"route: {health.get('route_intent')} via {health.get('route_source')}",
+        f"route actions: {health.get('route_actions')}",
         f"missing artifacts: {len(health.get('missing_artifacts', []))}",
         f"recent failures: {len(health.get('recent_failures', []))}",
         f"memories {context.get('memories_used', 0)}",
@@ -284,6 +318,19 @@ def collect_run_health(root: Path, paths: Any, state: dict[str, Any], events: li
         except json.JSONDecodeError:
             providers = {}
     providers_available = sum(1 for item in providers.values() if item.get("status") in {"available", "configured"})
+    route_intent = "none"
+    route_source = "none"
+    route_actions = 0
+    routing_plan = paths.run_dir / "routing_plan.json"
+    if routing_plan.exists():
+        try:
+            route_data = json.loads(routing_plan.read_text(encoding="utf-8"))
+            route_intent = str(route_data.get("intent", "unknown"))
+            route_source = str(route_data.get("route_source", "unknown"))
+            route_actions = len(route_data.get("actions") or [])
+        except json.JSONDecodeError:
+            route_intent = "invalid"
+            route_source = "invalid"
     return {
         "missing_artifacts": missing,
         "recent_failures": recent_failures,
@@ -291,6 +338,9 @@ def collect_run_health(root: Path, paths: Any, state: dict[str, Any], events: li
         "verification_issues": verification_issues,
         "providers_available": providers_available,
         "providers_total": len(providers),
+        "route_intent": route_intent,
+        "route_source": route_source,
+        "route_actions": route_actions,
     }
 
 
@@ -344,6 +394,7 @@ def print_status(root: Path, run_id: str | None = None, json_output: bool = Fals
     print(
         f"Health: verify={health.get('verification_verdict')} "
         f"providers={health.get('providers_available')}/{health.get('providers_total')} "
+        f"route={health.get('route_intent')}/{health.get('route_actions')} "
         f"missing={len(health.get('missing_artifacts', []))} "
         f"failures={len(health.get('recent_failures', []))}"
     )

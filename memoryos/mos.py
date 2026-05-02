@@ -28,6 +28,9 @@ from .harness import (
     format_settings,
     format_settings_shell,
     settings_report,
+    ask_router,
+    format_routing_plan,
+    load_routing_plan,
 )
 from .tui import print_status, run_tui
 
@@ -68,12 +71,21 @@ def main() -> None:
     run_cmd.add_argument("--project", default="MemoryOS")
     run_cmd.add_argument("--type", default="implementation", dest="task_type")
 
+    ask_cmd = sub.add_parser("ask", help="route one prompt through local intent decomposition")
+    ask_cmd.add_argument("prompt", help="user prompt/task")
+    ask_cmd.add_argument("--run-id")
+    ask_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="default")
+
     status_cmd = sub.add_parser("status", help="show current run status")
     status_cmd.add_argument("--run-id")
     status_cmd.add_argument("--json", action="store_true")
 
     tui_cmd = sub.add_parser("tui", help="open the run status TUI")
     tui_cmd.add_argument("--run-id")
+
+    plan_cmd = sub.add_parser("plan", help="show current routing plan")
+    plan_cmd.add_argument("--run-id")
+    plan_cmd.add_argument("--json", action="store_true")
 
     sub.add_parser("runs", help="list recent runs")
 
@@ -184,11 +196,23 @@ def main() -> None:
         paths = create_run(root, args.task, project=args.project, task_type=args.task_type)
         print(paths.run_dir)
         return
+    if args.cmd == "ask":
+        print(ask_router(root, args.prompt, run_id=args.run_id, complexity=args.complexity))
+        return
     if args.cmd == "status":
         print_status(root, run_id=args.run_id, json_output=args.json)
         return
     if args.cmd == "tui":
         run_tui(root, run_id=args.run_id)
+        return
+    if args.cmd == "plan":
+        plan = load_routing_plan(root, args.run_id)
+        if args.json:
+            import json
+
+            print(json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_routing_plan(plan))
         return
     if args.cmd == "runs":
         for run in list_runs(root)[:20]:

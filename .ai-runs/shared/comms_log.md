@@ -181,3 +181,10 @@
 - Decision: Kept `mos tui` as the status/control surface and added an `e` keybinding that opens the current run `context_pack.md` in `$EDITOR`, then logs `context_edited`.
 - Evidence: Updated `memoryos/tui.py` and `docs/TUI_HARNESS.md`; verified py_compile, unit tests, and `mos status`.
 - Next: Consider an inline text-input panel later, but `$EDITOR` is the stable minimum for now.
+
+## 2026-05-02 10:09 KST - Codex
+
+- Context: User asked for Claude/Gemini/Codex-like prompt entry where local LLM decomposes intent and dispatches to roles, then pointed to new `docs/harness_reference.md` for TUI/CLI hardening.
+- Decision: Added prompt-first routing: `mos ask`, local `intent_router`, `routing_plan.json`, `mos plan`, TUI `n` new prompt, and TUI `a` auto-route current run. `mos ask` starts workspace-local Ollama if needed and falls back to heuristic routing if local output is unavailable or invalid.
+- Evidence: `run_20260502_100751_a8d41e` routed through `qwen3:8b` with intent `implementation` and prepared local context, Claude planner, Codex executor, and Gemini reviewer artifacts. Verified py_compile, unit tests, `mos plan`, and status route health.
+- Next: Add richer routing policy and provider execution controls after the artifact loop stays stable.
