@@ -238,6 +238,20 @@
 - Evidence: Updated `memoryos/mos.py`, `memoryos/tui.py`, `docs/TUI_HARNESS.md`, and `docs/TODO.md`. Verified `npm test`, `bin/mos --root . chat` with `/help`, and a `bin/mos --root . tui` smoke run through a pseudo-terminal.
 - Next: Add richer streaming progress messages around long provider executions and persist TUI-entered chat turns into `transcript.md`.
 
+## 2026-05-02 11:15 KST - Codex
+
+- Context: User clarified that the TUI needs a visible prompt/composer area, not only hidden `Enter` input, and confirmed `docs/image.png` was renamed to `docs/memoryOS.png` while `docs/mos_cli_uiux.png` is a reference image.
+- Decision: Added an always-visible `mos>` composer/help bar to the TUI and prepared the image rename/reference assets for commit.
+- Evidence: Updated `memoryos/tui.py` and `docs/TUI_HARNESS.md`; staged `docs/image.png` deletion plus `docs/memoryOS.png` and `docs/mos_cli_uiux.png`.
+- Next: Continue toward richer inline editing/history for the TUI composer.
+
+## 2026-05-02 11:18 KST - Codex
+
+- Context: User stated the core goal: when a prompt is entered into `mos`, split provider CLIs should act with their own roles as one swarm/intelligence society.
+- Decision: Added `mos orchestrate` as the default prompt path, generating `society_plan.json` with provider/local members, roles, commands, statuses, artifacts, and next action. Bare `mos "task"`, `mos prompt`, chat input, and TUI prompt input now use orchestration instead of route-only ask.
+- Evidence: Updated `memoryos/harness.py`, `memoryos/mos.py`, `memoryos/tui.py`, `docs/TUI_HARNESS.md`, and `docs/TODO.md`. Verified `npm test`, `bin/mos --root . orchestrate "orchestrate identity smoke" --json`, and pseudo-terminal TUI smoke with visible composer.
+- Next: Add execution policies for each society member and aggregate provider outputs into a single synthesis artifact.
+
 ## 2026-05-02 10:43 KST - Codex
 
 - Context: User asked for a unified prompt input and Codex-like visible logs showing which agent/action is doing what, including file edits and commands.

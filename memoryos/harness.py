@@ -336,6 +336,7 @@ def artifact_status(paths: RunPaths, state: dict[str, Any]) -> list[dict[str, An
         rows.append({"name": name, "path": rel_path, "status": "ok" if exists else "missing"})
     extra = {
         "routing_plan": paths.run_dir / "routing_plan.json",
+        "society_plan": paths.run_dir / "society_plan.json",
         "checks_report": paths.run_dir / "checks_report.json",
         "git_diff_report": paths.run_dir / "git_diff_report.json",
         "commit_summary": paths.run_dir / "commit_summary.md",
@@ -1251,6 +1252,84 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
     append_event(paths, "routing_plan_created", {"artifact": plan_path.relative_to(root).as_posix(), "prepared": len(prepared)})
     update_state(paths, phase="routing", status="ready")
     return plan_path
+
+
+def orchestrate_prompt(
+    root: Path,
+    prompt: str,
+    run_id: str | None = None,
+    complexity: str = "default",
+    execute: bool = False,
+) -> dict[str, Any]:
+    """Turn a prompt into a multi-agent society plan and prepare worker/provider artifacts."""
+    plan_path = ask_router(root, prompt, run_id=run_id, complexity=complexity)
+    paths, state = load_run(root, plan_path.parent.name)
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    providers = detect_agents(root, write=True).get("providers") or {}
+    members: list[dict[str, Any]] = []
+    for index, action in enumerate(plan.get("actions") or [], start=1):
+        provider = str(action.get("provider"))
+        role = str(action.get("role"))
+        mode = "local_runtime" if provider == "local" else (providers.get(provider) or {}).get("mode", "prepare_only")
+        command = (
+            f"mos invoke local --role {role}"
+            if provider == "local"
+            else f"mos invoke {provider} --role {role}" + (" --execute" if execute and provider != "codex" else "")
+        )
+        members.append(
+            {
+                "order": index,
+                "provider": provider,
+                "role": role,
+                "mode": mode,
+                "status": agent_status(state, f"{provider}-{role}") or ("ready" if provider != "local" else agent_status(state, local_agent_name(role))),
+                "reason": action.get("reason", ""),
+                "command": command,
+                "artifact_prefix": (paths.run_dir / "agents" / provider).relative_to(root).as_posix()
+                if provider != "local"
+                else paths.local_dir.relative_to(root).as_posix(),
+            }
+        )
+
+    society_path = paths.run_dir / "society_plan.json"
+    report = {
+        "schema_version": 1,
+        "run_id": paths.run_id,
+        "prompt": prompt,
+        "intent": plan.get("intent", "unknown"),
+        "summary": plan.get("summary", ""),
+        "route_source": plan.get("route_source", "unknown"),
+        "execute_requested": execute,
+        "members": members,
+        "prepared_artifacts": plan.get("prepared_artifacts", []),
+        "next": recommend_next_action(paths, state, pipeline_status(paths), artifact_status(paths, state)),
+    }
+    write_json(society_path, report)
+    append_transcript(paths, "Prepared", f"`{society_path.relative_to(root).as_posix()}` with {len(members)} society members")
+    append_event(paths, "society_plan_created", {"artifact": society_path.relative_to(root).as_posix(), "members": len(members)})
+    update_state(paths, phase="orchestration", status="ready")
+    return report
+
+
+def format_orchestration_report(report: dict[str, Any]) -> str:
+    lines = [
+        f"MemoryOS Society: {report.get('run_id')}",
+        f"Intent: {report.get('intent')} via {report.get('route_source')}",
+        f"Summary: {report.get('summary')}",
+        "",
+        "Members:",
+    ]
+    for member in report.get("members") or []:
+        lines.append(
+            f"- {member.get('order')}. {member.get('provider')}/{member.get('role')} "
+            f"[{member.get('mode')}] -> {member.get('status') or 'planned'}"
+        )
+        if member.get("reason"):
+            lines.append(f"  reason: {member.get('reason')}")
+        lines.append(f"  command: {member.get('command')}")
+    next_action = report.get("next") or {}
+    lines.extend(["", "Next:", f"  {next_action.get('command')}", f"  Reason: {next_action.get('reason')}"])
+    return "\n".join(lines)
 
 
 def load_routing_plan(root: Path, run_id: str | None = None) -> dict[str, Any]:

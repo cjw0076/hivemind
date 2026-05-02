@@ -19,6 +19,7 @@ mos commit-summary
 mos agents detect --json
 mos agents status
 mos chat
+mos orchestrate "Build parser and review risks"
 mos next
 mos prompt
 mos log
@@ -58,8 +59,10 @@ python -m memoryos.mos memory list
 
 If installed as a package, `mos` points to the same command.
 
-`mos "your task"` is shorthand for `mos ask "your task"`.
+`mos "your task"` is shorthand for `mos orchestrate "your task"`.
 Bare `mos` opens the conversational operator shell. Use `mos chat` explicitly for the same shell, or `mos shell` for the older thin slash-command shell. Use `mos tui` for the curses status board.
+
+`mos orchestrate` is the default prompt path. It asks the local router to split the request into a small agent society, prepares each provider/local worker artifact, writes `society_plan.json`, and reports which member owns which role. `mos ask` remains available for route-only debugging.
 
 `mos status` prints the run board: pipeline, agent status, artifact status, and the next recommended command. `mos next` prints only the next action for fast terminal loops.
 
@@ -145,7 +148,7 @@ d  capture git diff report
 h  show keybinding hint
 ```
 
-Large terminals render the dashboard as a control plane: run/health summary, pipeline, agents, artifacts, latest events, next actions, and a keybar. The TUI is interactive: type a normal prompt to create and route a new run, or use slash commands such as `/verify`, `/memory`, `/summary`, `/diff`, `/local`, `/claude`, `/codex`, and `/gemini`.
+Large terminals render the dashboard as a control plane: run/health summary, pipeline, agents, artifacts, latest events, next actions, keybar, and an always-visible `mos>` composer. The TUI is interactive: press `Enter` and type a normal prompt to create and route a new run, or press `/` to enter slash commands such as `/verify`, `/memory`, `/summary`, `/diff`, `/local`, `/claude`, `/codex`, and `/gemini`.
 
 The TUI does not try to be the final desktop UI. It is an operational control surface for driving agent work through run artifacts: pipeline first, agent aware, artifact driven, audit friendly.
 

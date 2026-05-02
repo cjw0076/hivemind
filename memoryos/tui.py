@@ -25,6 +25,7 @@ from .harness import (
     load_run,
     read_events,
     run_board,
+    orchestrate_prompt,
 )
 
 
@@ -49,9 +50,7 @@ def draw_loop(screen, root: Path, run_id: str | None) -> None:
         except Exception as exc:  # TUI should show recoverable state instead of crashing.
             add_line(screen, 1, 2, "MemoryOS Harness", curses.A_BOLD)
             add_wrapped(screen, 3, 2, width - 4, str(exc))
-        footer = "enter talk  / command  q quit  n new  e context  a route  l local  c claude  x codex  g gemini  v verify  s summary  m memory  d diff"
-        add_line(screen, height - 2, 2, truncate(footer, max(10, width - 4)), curses.A_DIM)
-        add_line(screen, height - 1, 2, truncate(message, max(10, width - 4)), curses.A_DIM)
+        draw_global_composer(screen, height, width, message)
         screen.refresh()
         key = screen.getch()
         if key in {ord("q"), ord("Q"), 27}:
@@ -115,9 +114,8 @@ def prompt_and_route(screen, root: Path, run_id: str | None = None, prefix: str 
     screen.nodelay(False)
     prompt = ""
     try:
-        row = max(0, height - 3)
-        screen.move(row, 0)
-        screen.clrtoeol()
+        row = max(0, height - 2)
+        clear_line(screen, row)
         label = "mos> "
         add_line(screen, row, 2, label + prefix, curses.A_BOLD)
         screen.refresh()
@@ -131,8 +129,8 @@ def prompt_and_route(screen, root: Path, run_id: str | None = None, prefix: str 
         return "empty prompt"
     if prompt.startswith("/"):
         return handle_tui_command(root, run_id, prompt)
-    path = ask_router(root, prompt, run_id=None, complexity="default")
-    return f"new prompt routed -> {path}"
+    report = orchestrate_prompt(root, prompt, run_id=None, complexity="default")
+    return f"society plan -> {report.get('run_id')} ({len(report.get('members') or [])} members)"
 
 
 def handle_tui_command(root: Path, run_id: str | None, command: str) -> str:
@@ -141,8 +139,8 @@ def handle_tui_command(root: Path, run_id: str | None, command: str) -> str:
     if name in {"/help", "/h", "/?"}:
         return "commands: /ask task, /route, /verify, /memory, /summary, /diff, /local, /claude, /codex, /gemini"
     if name == "/ask" and len(parts) > 1:
-        path = ask_router(root, " ".join(parts[1:]), run_id=None, complexity="default")
-        return f"ask routed -> {path}"
+        report = orchestrate_prompt(root, " ".join(parts[1:]), run_id=None, complexity="default")
+        return f"society plan -> {report.get('run_id')} ({len(report.get('members') or [])} members)"
     if name in {"/route", "/autoroute"}:
         paths, state = load_run(root, run_id)
         prompt = str(state.get("user_request") or paths.context_pack.read_text(encoding="utf-8")[:2000])
@@ -261,6 +259,17 @@ def draw_state(
     draw_events(screen, events_top + 1, 4, max(1, footer_row - events_top - 2), content_width - 4, events)
 
 
+def draw_global_composer(screen, height: int, width: int, message: str) -> None:
+    if height < 4:
+        return
+    help_text = "Enter: type task  /: command  Examples: build parser | /verify | /codex executor | q quit"
+    clear_line(screen, height - 2)
+    clear_line(screen, height - 1)
+    add_line(screen, height - 2, 2, "mos> ", color(1, curses.A_BOLD))
+    add_line(screen, height - 2, 7, truncate(help_text, max(10, width - 9)), curses.A_DIM)
+    add_line(screen, height - 1, 2, truncate(message, max(10, width - 4)), color(2) if message != "ready" else curses.A_DIM)
+
+
 def init_theme() -> None:
     if not curses.has_colors():
         return
@@ -289,7 +298,7 @@ def draw_dashboard(
 ) -> None:
     margin = 2
     content_width = width - 4
-    footer_row = height - 3
+    composer_top = height - 3
     add_line(screen, 0, margin, "mos", color(1, curses.A_BOLD))
     add_line(screen, 0, margin + 5, "MemoryOS Harness", curses.A_BOLD)
     clock = time.strftime("%H:%M:%S")
@@ -306,8 +315,7 @@ def draw_dashboard(
 
     middle_top = 9
     bottom_h = 7
-    footer_h = 2
-    middle_h = max(8, footer_row - middle_top - bottom_h - 1)
+    middle_h = max(8, composer_top - middle_top - bottom_h - 1)
     gap = 1
     pipeline_w = max(34, content_width // 3 - 1)
     agents_w = max(42, content_width // 3)
@@ -331,9 +339,8 @@ def draw_dashboard(
     draw_box(screen, bottom_top, margin + events_w + 2, bottom_h, next_w, "Next Recommended Actions")
     draw_next_actions(screen, bottom_top + 1, margin + events_w + 4, bottom_h - 2, next_w - 4, board)
 
-    keys = "Keys: n new  a autoroute  l local  c claude  x codex  g gemini  v verify  s summarize  m memory  d diff  h help  q quit"
-    draw_box(screen, footer_row, margin, footer_h + 1, content_width, "")
-    add_line(screen, footer_row + 1, margin + 2, truncate(keys, content_width - 4), curses.A_DIM)
+    keys = "Keys: enter talk  / command  n new  a route  c claude  x codex  g gemini  v verify  m memory  d diff  q quit"
+    add_line(screen, composer_top - 1, margin, truncate(keys, content_width), curses.A_DIM)
 
 
 def draw_run_summary(screen, y: int, x: int, height: int, width: int, state: dict[str, Any], board: dict[str, Any]) -> None:
@@ -645,6 +652,14 @@ def add_line(screen, y: int, x: int, text: str, attr: int = 0) -> None:
     if y >= height or x >= width:
         return
     screen.addnstr(y, x, text, max(0, width - x - 1), attr)
+
+
+def clear_line(screen, y: int) -> None:
+    height, width = screen.getmaxyx()
+    if y >= height:
+        return
+    screen.move(y, 0)
+    screen.clrtoeol()
 
 
 def add_wrapped(screen, y: int, x: int, width: int, text: str, attr: int = 0) -> int:

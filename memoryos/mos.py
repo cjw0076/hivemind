@@ -34,8 +34,10 @@ from .harness import (
     format_run_board,
     format_settings,
     format_settings_shell,
+    format_orchestration_report,
     settings_report,
     ask_router,
+    orchestrate_prompt,
     checks_report,
     agent_icon,
     format_routing_plan,
@@ -59,6 +61,7 @@ COMMANDS = {
     "local",
     "run",
     "ask",
+    "orchestrate",
     "status",
     "tui",
     "plan",
@@ -91,14 +94,14 @@ def normalize_argv(argv: list[str]) -> list[str]:
         return argv
     if argv[0] == "--root":
         if len(argv) >= 3 and argv[2] not in COMMANDS and not argv[2].startswith("-"):
-            return [argv[0], argv[1], "ask", " ".join(argv[2:])]
+            return [argv[0], argv[1], "orchestrate", " ".join(argv[2:])]
         return argv
     if argv[0].startswith("--root="):
         if len(argv) >= 2 and argv[1] not in COMMANDS and not argv[1].startswith("-"):
-            return [argv[0], "ask", " ".join(argv[1:])]
+            return [argv[0], "orchestrate", " ".join(argv[1:])]
         return argv
     if argv[0] not in COMMANDS and not argv[0].startswith("-"):
-        return ["ask", " ".join(argv)]
+        return ["orchestrate", " ".join(argv)]
     return argv
 
 
@@ -151,6 +154,12 @@ def main(argv: list[str] | None = None) -> None:
     ask_cmd.add_argument("prompt", help="user prompt/task")
     ask_cmd.add_argument("--run-id")
     ask_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="default")
+    orchestrate_cmd = sub.add_parser("orchestrate", help="route a prompt into a multi-agent society plan")
+    orchestrate_cmd.add_argument("prompt", help="user prompt/task")
+    orchestrate_cmd.add_argument("--run-id")
+    orchestrate_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="default")
+    orchestrate_cmd.add_argument("--execute", action="store_true", help="execute supported non-Codex providers instead of only preparing artifacts")
+    orchestrate_cmd.add_argument("--json", action="store_true")
 
     status_cmd = sub.add_parser("status", help="show current run status")
     status_cmd.add_argument("--run-id")
@@ -326,6 +335,15 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "ask":
         print(ask_router(root, args.prompt, run_id=args.run_id, complexity=args.complexity))
         return
+    if args.cmd == "orchestrate":
+        report = orchestrate_prompt(root, args.prompt, run_id=args.run_id, complexity=args.complexity, execute=args.execute)
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_orchestration_report(report))
+        return
     if args.cmd == "status":
         if args.json:
             print_status(root, run_id=args.run_id, json_output=True)
@@ -452,7 +470,7 @@ def main(argv: list[str] | None = None) -> None:
         prompt = read_prompt_from_stdin()
         if not prompt.strip():
             parser.error("prompt is empty")
-        print(ask_router(root, prompt, complexity=args.complexity))
+        print(format_orchestration_report(orchestrate_prompt(root, prompt, complexity=args.complexity)))
         return
 
 
@@ -653,9 +671,11 @@ def print_chat_help() -> None:
 
 def handle_chat_task(root: Path, prompt: str) -> None:
     print("MemoryOS: 새 작업을 받았습니다.")
-    print("MemoryOS: local router로 의도를 나누고, agent handoff artifact를 준비합니다.")
-    artifact = ask_router(root, prompt, complexity="default")
-    print(f"MemoryOS: route artifact 준비 완료 -> {artifact}")
+    print("MemoryOS: local router가 의도를 분해하고, Claude/Codex/Gemini/local 역할을 배정합니다.")
+    report = orchestrate_prompt(root, prompt, complexity="default")
+    print("MemoryOS: society plan 준비 완료.")
+    for member in report.get("members") or []:
+        print(f"  - {member.get('provider')}/{member.get('role')}: {member.get('status') or 'planned'}")
     print_chat_run_update(root)
 
 
