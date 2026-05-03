@@ -55,15 +55,10 @@ class PlanStep:
     referee_policy: dict[str, Any] = field(default_factory=dict)
 
     evaluation: dict[str, Any] | None = None
-    # Filled by evaluate_step_output() after execution.
-    # Multi-dimensional (5 evaluators):
-    # {
-    #   evaluated_at, schema_valid (syntax),
-    #   evidence_score (claim), execution_score (exec),
-    #   risk_level (risk), disagreement_count (disagreement),
-    #   unsupported_claims, recommended_action,
-    #   escalation_triggered, escalation_reason, mutation_mode
-    # }
+
+    # Append-only confidence trajectory across retries/providers.
+    # Each point: {ts, value, source, attempt, provider, role, artifact}
+    confidence_history: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -610,6 +605,99 @@ def _recommend_action(
     return action, triggered, "; ".join(parts)
 
 
+# ---------------------------------------------------------------------------
+# Evaluator vote helpers (P2)
+# ---------------------------------------------------------------------------
+
+def _provider_for_step(step: "PlanStep") -> str:
+    _map = {
+        "claude-planner": "claude", "claude-reviewer": "claude",
+        "codex-executor": "codex",  "codex-reviewer": "codex",
+        "gemini-planner": "gemini", "gemini-reviewer": "gemini",
+    }
+    return _map.get(step.owner_role, "local")
+
+
+def _compute_evaluator_votes(
+    step: "PlanStep",
+    syntax: dict[str, Any],
+    execution: dict[str, Any],
+    claim: dict[str, Any],
+    risk: dict[str, Any],
+    disagreement: dict[str, Any],
+    confidence: "float | None",
+    accept_if: dict[str, Any],
+    escalate_if: dict[str, Any],
+) -> dict[str, str]:
+    """Each evaluator independently casts a vote (accept/retry/escalate/add_review/referee/block/skip)."""
+    votes: dict[str, str] = {}
+
+    # syntax
+    votes["syntax"] = "accept" if syntax["schema_valid"] else (
+        "escalate" if step.on_failure == "stop" else "skip"
+    )
+
+    # execution
+    score = execution["execution_score"]
+    if score >= 0.8:
+        votes["execution"] = "accept"
+    elif score >= 0.4:
+        votes["execution"] = "retry"
+    else:
+        votes["execution"] = "block" if step.on_failure == "stop" else "skip"
+
+    # claim
+    claims_threshold = escalate_if.get("unsupported_claims_above", 1)
+    if claim["unsupported_claims"] > claims_threshold:
+        votes["claim"] = "escalate"
+    elif claim["evidence_score"] < 0.6:
+        votes["claim"] = "retry"
+    else:
+        votes["claim"] = "accept"
+
+    # risk
+    level = risk["risk_level"]
+    risk_below = accept_if.get("risk_below", "high")
+    if _RISK_ORDER.get(level, 0) >= _RISK_ORDER.get(risk_below, 2):
+        votes["risk"] = "add_review"
+    else:
+        votes["risk"] = "accept"
+
+    # disagreement
+    disagree_below = accept_if.get("disagreement_below", 2)
+    if disagreement["disagreement_count"] >= disagree_below:
+        votes["disagreement"] = "referee"
+    elif confidence is not None and confidence < escalate_if.get("confidence_below", 0.4):
+        votes["disagreement"] = "retry"
+    else:
+        votes["disagreement"] = "accept"
+
+    return votes
+
+
+def _compute_agreement(votes: dict[str, str], recommended_action: str) -> float:
+    """Fraction of evaluators that agree with the final recommended_action."""
+    if not votes:
+        return 1.0
+    matching = sum(1 for v in votes.values() if v == recommended_action)
+    return round(matching / len(votes), 2)
+
+
+# ---------------------------------------------------------------------------
+# StepEvaluation artifact persistence (P1)
+# ---------------------------------------------------------------------------
+
+def save_step_evaluation(root: "Path", run_id: str, step_id: str, evaluation: dict[str, Any]) -> Path:
+    """Write evaluation to .runs/<run_id>/step_evaluations/<step_id>.json."""
+    from .harness import load_run  # lazy
+    paths, _ = load_run(root, run_id)
+    evals_dir = paths.run_dir / "step_evaluations"
+    evals_dir.mkdir(exist_ok=True)
+    out = evals_dir / f"{step_id}.json"
+    out.write_text(json.dumps(evaluation, ensure_ascii=False, indent=2), encoding="utf-8")
+    return out
+
+
 def evaluate_step_output(root: "Path", dag: "PlanDAG", step: "PlanStep") -> dict[str, Any]:
     """Compute a 5-dimensional StepEvaluation for a completed/prepared/failed step.
 
@@ -640,6 +728,38 @@ def evaluate_step_output(root: "Path", dag: "PlanDAG", step: "PlanStep") -> dict
         confidence, accept_if, escalate_if,
     )
 
+    votes = _compute_evaluator_votes(
+        step, syntax, execution, claim, risk, disagreement,
+        confidence, accept_if, escalate_if,
+    )
+    agreement = _compute_agreement(votes, recommended_action)
+
+    # Append to confidence trajectory (P0)
+    attempt = len(step.confidence_history) + 1
+    if confidence is not None:
+        step.confidence_history.append({
+            "ts": now_iso(),
+            "value": confidence,
+            "source": "step_evaluation",
+            "attempt": attempt,
+            "provider": _provider_for_step(step),
+            "role": step.owner_role,
+            "artifact": step.artifact,
+        })
+
+    # EVI-lite: only meaningful after first retry (P3 seed)
+    evi: dict[str, Any] | None = None
+    if len(step.confidence_history) >= 2:
+        prev = step.confidence_history[-2]["value"]
+        curr = step.confidence_history[-1]["value"]
+        delta = round(curr - prev, 3)
+        evi = {
+            "confidence_delta": delta,
+            "attempts": attempt,
+            "estimated_value": "positive" if delta > 0.05 else ("negative" if delta < -0.05 else "flat"),
+            "recommendation": "retry" if delta > 0.05 else ("stop_retry" if delta <= 0 else "accept"),
+        }
+
     evaluation: dict[str, Any] = {
         "evaluated_at": now_iso(),
         # syntax
@@ -660,12 +780,20 @@ def evaluate_step_output(root: "Path", dag: "PlanDAG", step: "PlanStep") -> dict
         "disagreement_targets": disagreement["disagreement_targets"],
         # synthesis
         "confidence": confidence,
+        "evaluator_votes": votes,
+        "evaluator_agreement": agreement,
         "recommended_action": recommended_action,
         "escalation_triggered": escalation_triggered,
         "escalation_reason": escalation_reason,
         "mutation_mode": mutation_mode,
+        "evi": evi,
     }
     step.evaluation = evaluation
+
+    try:
+        save_step_evaluation(root, dag.run_id, step.step_id, evaluation)
+    except Exception:
+        pass  # artifact write is best-effort; never block pipeline
 
     if escalation_triggered:
         _log_dag_mutation(root, dag.run_id, step.step_id, evaluation)
@@ -841,14 +969,16 @@ def format_dag(dag: PlanDAG, root: Path | None = None) -> str:
             action = step.evaluation.get("recommended_action", "")
             conf = step.evaluation.get("confidence")
             risk = step.evaluation.get("risk_level", "")
+            agreement = step.evaluation.get("evaluator_agreement")
             conf_str = f"{conf:.2f}" if conf is not None else "—"
+            agr_str = f"/{agreement:.0%}" if agreement is not None else ""
             _action_icon = {
                 "accept": "✓", "retry": "↺", "escalate": "↑",
                 "add_review": "+R", "referee": "⚖", "block": "⊘",
                 "skip": "–", "ask_user": "?",
             }.get(action, "?")
             risk_icon = {"high": "H", "medium": "M", "low": ""}.get(risk, "")
-            eval_hint = f"{_action_icon}{conf_str}{risk_icon}"
+            eval_hint = f"{_action_icon}{conf_str}{risk_icon}{agr_str}"
         lines.append(f"{icon} {step.step_id:<18} {kind} {step.status:<12} {eval_hint:<8} {step.owner_role:<28} {deps}")
     lines.append("")
     next_step = dag.next_sequential()

@@ -12,12 +12,21 @@ from hivemind.plan_dag import (
     PlanStep,
     auto_close_barriers,
     build_dag,
+    evaluate_step_output,
     execute_step,
     format_dag,
     load_dag,
     save_dag,
+    save_step_evaluation,
     update_step,
     DAG_TEMPLATES,
+    _compute_evaluator_votes,
+    _compute_agreement,
+    _evaluate_syntax,
+    _evaluate_execution,
+    _evaluate_claim,
+    _evaluate_risk,
+    _evaluate_disagreement,
 )
 
 
@@ -188,6 +197,198 @@ class FormatDagTest(unittest.TestCase):
             step.status = "completed"
         output = format_dag(dag)
         self.assertIn("All steps complete", output)
+
+
+class EvaluatorUnitTest(unittest.TestCase):
+    """Unit tests for individual evaluator helpers."""
+
+    def _make_step(self, kind="sequential", on_failure="stop", owner_role="claude-planner"):
+        from hivemind.plan_dag import _step
+        return _step("test_step", kind, [], owner_role, [],
+                     on_failure=on_failure, status="completed")
+
+    def test_syntax_no_artifact_path_no_required_outputs(self):
+        step = self._make_step()
+        step.expected_output_artifacts = []
+        result = _evaluate_syntax(step, None)
+        self.assertTrue(result["schema_valid"])
+        self.assertFalse(result["artifact_exists"])
+
+    def test_syntax_no_artifact_path_with_required_outputs(self):
+        step = self._make_step()
+        step.expected_output_artifacts = ["something.yaml"]
+        result = _evaluate_syntax(step, None)
+        self.assertFalse(result["schema_valid"])
+
+    def test_execution_score_by_status(self):
+        self.assertEqual(_evaluate_execution("completed")["execution_score"], 1.0)
+        self.assertEqual(_evaluate_execution("prepared")["execution_score"], 1.0)
+        self.assertEqual(_evaluate_execution("failed")["execution_score"], 0.0)
+        self.assertEqual(_evaluate_execution("partial")["execution_score"], 0.5)
+        self.assertEqual(_evaluate_execution(None)["execution_score"], 0.0)
+
+    def test_claim_no_artifact(self):
+        result = _evaluate_claim(None)
+        self.assertEqual(result["unsupported_claims"], 0)
+        self.assertEqual(result["evidence_score"], 1.0)
+
+    def test_risk_codex_executor_is_high(self):
+        step = self._make_step(owner_role="codex-executor")
+        result = _evaluate_risk(step)
+        self.assertEqual(result["risk_level"], "high")
+        self.assertIn("write_access", result["risk_factors"])
+
+    def test_risk_verify_step_is_medium(self):
+        # gate_step factor requires on_failure="escalate" (matching DAG template)
+        from hivemind.plan_dag import _step as make_step
+        step = make_step("verify_s", "verify", [], "verifier", [], on_failure="escalate", status="pending")
+        result = _evaluate_risk(step)
+        self.assertEqual(result["risk_level"], "medium")
+        self.assertIn("gate_step", result["risk_factors"])
+
+    def test_risk_local_step_is_low(self):
+        step = self._make_step(owner_role="local-context-compressor")
+        result = _evaluate_risk(step)
+        self.assertEqual(result["risk_level"], "low")
+
+    def test_disagreement_no_parallel_siblings(self):
+        dag = build_dag("run_dis1", "task", "implementation")
+        step = dag.by_id("planner")
+        result = _evaluate_disagreement(dag, step)
+        self.assertEqual(result["disagreement_count"], 0)
+
+
+class EvaluatorVoteTest(unittest.TestCase):
+    def _votes(self, **kwargs):
+        from hivemind.plan_dag import _step
+        step = _step("s", "sequential", [], "claude-planner", [], on_failure="stop", status="completed")
+        syntax = {"schema_valid": kwargs.get("schema_valid", True), "artifact_exists": True, "artifact_parseable": True, "missing_keys": []}
+        execution = {"execution_score": kwargs.get("exec_score", 1.0), "artifact_status": "completed"}
+        claim = {"evidence_score": kwargs.get("evid_score", 1.0), "unsupported_claims": kwargs.get("unsupported", 0)}
+        risk = {"risk_level": kwargs.get("risk", "low"), "risk_factors": []}
+        disagreement = {"disagreement_count": kwargs.get("disagree", 0), "disagreement_targets": []}
+        return _compute_evaluator_votes(step, syntax, execution, claim, risk, disagreement,
+                                        kwargs.get("confidence", None), {}, {})
+
+    def test_all_positive_votes_accept(self):
+        votes = self._votes()
+        self.assertEqual(votes["syntax"], "accept")
+        self.assertEqual(votes["execution"], "accept")
+        self.assertEqual(votes["claim"], "accept")
+        self.assertEqual(votes["risk"], "accept")
+        self.assertEqual(votes["disagreement"], "accept")
+
+    def test_agreement_perfect_when_all_accept(self):
+        votes = self._votes()
+        agreement = _compute_agreement(votes, "accept")
+        self.assertEqual(agreement, 1.0)
+
+    def test_agreement_low_when_action_minority(self):
+        votes = {"syntax": "accept", "execution": "accept", "claim": "accept", "risk": "add_review", "disagreement": "accept"}
+        agreement = _compute_agreement(votes, "add_review")
+        self.assertAlmostEqual(agreement, 0.2)
+
+    def test_high_risk_vote_is_add_review(self):
+        votes = self._votes(risk="high")
+        self.assertEqual(votes["risk"], "add_review")
+
+    def test_schema_invalid_vote_is_escalate(self):
+        votes = self._votes(schema_valid=False)
+        self.assertEqual(votes["syntax"], "escalate")
+
+
+class ConfidenceHistoryTest(unittest.TestCase):
+    def test_confidence_history_empty_initially(self):
+        dag = build_dag("run_ch1", "task", "review")
+        step = dag.by_id("context")
+        self.assertEqual(step.confidence_history, [])
+
+    def test_confidence_history_grows_after_evaluate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "ch test")
+            dag = build_dag(paths.run_id, "ch test", "implementation")
+            step = dag.by_id("verify")
+            step.status = "completed"
+            # Inject an artifact with confidence
+            import json
+            artifact_dir = (root / paths.run_id / "agents" / "harness")
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            artifact = artifact_dir / "verify_result.json"
+            artifact.write_text(json.dumps({"status": "completed", "confidence": 0.75}))
+            step.artifact = str(artifact.relative_to(root))
+            evaluate_step_output(root, dag, step)
+            self.assertEqual(len(step.confidence_history), 1)
+            self.assertAlmostEqual(step.confidence_history[0]["value"], 0.75)
+            self.assertEqual(step.confidence_history[0]["attempt"], 1)
+
+    def test_evi_computed_after_two_evaluations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "evi test")
+            dag = build_dag(paths.run_id, "evi test", "implementation")
+            step = dag.by_id("verify")
+            step.status = "completed"
+            import json
+            artifact_dir = (root / paths.run_id / "agents" / "harness")
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            artifact = artifact_dir / "verify_result.json"
+            artifact.write_text(json.dumps({"status": "completed", "confidence": 0.55}))
+            step.artifact = str(artifact.relative_to(root))
+            evaluate_step_output(root, dag, step)
+            # Simulate retry with improved confidence
+            artifact.write_text(json.dumps({"status": "completed", "confidence": 0.82}))
+            eval2 = evaluate_step_output(root, dag, step)
+            self.assertIsNotNone(eval2["evi"])
+            self.assertGreater(eval2["evi"]["confidence_delta"], 0)
+            self.assertEqual(eval2["evi"]["estimated_value"], "positive")
+
+    def test_confidence_history_persists_through_save_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "hist persist")
+            dag = build_dag(paths.run_id, "hist persist", "review")
+            import json
+            artifact_dir = (root / paths.run_id / "agents" / "harness")
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            artifact = artifact_dir / "verify_result.json"
+            artifact.write_text(json.dumps({"status": "completed", "confidence": 0.9}))
+            step = dag.by_id("verify")
+            step.status = "completed"
+            step.artifact = str(artifact.relative_to(root))
+            evaluate_step_output(root, dag, step)
+            save_dag(root, dag)
+            loaded = load_dag(root, paths.run_id)
+            loaded_step = loaded.by_id("verify")
+            self.assertEqual(len(loaded_step.confidence_history), 1)
+            self.assertAlmostEqual(loaded_step.confidence_history[0]["value"], 0.9)
+
+
+class StepEvaluationArtifactTest(unittest.TestCase):
+    def test_save_step_evaluation_writes_artifact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "eval artifact test")
+            evaluation = {"evaluated_at": "2025-01-01T00:00:00Z", "recommended_action": "accept"}
+            out = save_step_evaluation(root, paths.run_id, "planner", evaluation)
+            self.assertTrue(out.exists())
+            data = json.loads(out.read_text())
+            self.assertEqual(data["recommended_action"], "accept")
+
+    def test_evaluate_step_output_writes_artifact_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "eval artifact auto")
+            dag = build_dag(paths.run_id, "eval artifact auto", "implementation")
+            step = dag.by_id("verify")
+            step.status = "completed"
+            evaluate_step_output(root, dag, step)
+            # run_dir is paths.run_dir, not root/run_id
+            artifact = paths.run_dir / "step_evaluations" / "verify.json"
+            self.assertTrue(artifact.exists(), f"Expected {artifact}")
+            data = json.loads(artifact.read_text())
+            self.assertIn("evaluator_votes", data)
+            self.assertIn("evaluator_agreement", data)
 
 
 if __name__ == "__main__":
