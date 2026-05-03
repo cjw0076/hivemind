@@ -14,8 +14,12 @@ roles only when needed.
 Current implementation:
 
 - `hive ask` and `hive orchestrate` create run artifacts and provider prompts.
+- `hive flow` and `hive run --flow` advance a run through the first event-driven
+  prepare-only workflow slice and write `artifacts/workflow_state.json`.
 - Provider execution defaults to `prepare_only`.
 - TUI prompt routing uses a fast heuristic path for responsiveness.
+- `hive loop` can judge the next run action, but it is option-only: dry-run by
+  default, execution requires `--execute` and per-action `--allow`.
 - Deep decomposition is still incomplete when local/router output is invalid or
   shallow.
 
@@ -77,7 +81,18 @@ L1 must mark fuzzy semantic judgments as `needs_referee` or `needs_auditor`.
 
 ## First Implementation Slice
 
-Do this before any broad chair automation:
+The first runtime slice now exists as `hive flow`:
+
+- route a task if `routing_plan.json` is missing;
+- prepare provider prompt/result artifacts without executing provider CLIs;
+- write `society_plan.json`;
+- write `artifacts/workflow_state.json` with sequential steps, parallel members,
+  barrier status, next action, and policy;
+- optionally run local context with `--execute-local`;
+- re-prepare provider prompts after local context so downstream prompts receive
+  the completed local context artifact.
+
+Next read-only chair work:
 
 1. Add `hivemind/chair.py` with dataclasses and pure functions only.
 2. Write `dispatcher_state.json` from current run facts without changing run
@@ -89,6 +104,30 @@ Do this before any broad chair automation:
 
 Only after the read-only slice is stable should L0 start blocking or scheduling
 turns.
+
+## Option-Only Auto Loop
+
+`hive loop` is the narrow first slice of self-judgment and auto-execution. It is
+not a provider autopilot.
+
+Allowed by design:
+
+- propose the next action from current run state;
+- write `.runs/<run_id>/artifacts/auto_loop_plan.json`;
+- with `--execute --allow <action>`, run allowlisted internal actions only:
+  `audit`, `verify`, `memory-draft`, `summarize`, `diff`, `check-run`,
+  `local-context`, or `local-review`.
+
+Blocked by design:
+
+- provider CLI execution such as Claude, Codex, or Gemini;
+- arbitrary shell commands;
+- memory commit;
+- opening a new prompt/routing boundary without the operator.
+- repeating a failed local action without surfacing `hive audit`.
+
+This keeps the chair loop useful for repetitive run hygiene while preserving
+the user as the authority for risky execution and project direction.
 
 ## Provider Policy
 

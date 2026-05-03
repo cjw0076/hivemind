@@ -38,6 +38,16 @@ WORKING_METHOD_SKILL_DIR = "hive-working-method"
 WORKING_METHOD_PHRASE = "evolution of Single Human Intelligence"
 LLM_CHECKER_REPO = "https://github.com/Pavelevich/llm-checker"
 LLM_CHECKER_NPM = "llm-checker"
+AUTO_LOOP_ALLOWED_ACTIONS = {
+    "audit",
+    "verify",
+    "memory-draft",
+    "summarize",
+    "diff",
+    "check-run",
+    "local-context",
+    "local-review",
+}
 
 PIPELINE_SPEC = [
     ("intake", "task.yaml", "task"),
@@ -181,6 +191,7 @@ def init_onboarding(root: Path) -> dict[str, Any]:
         if path.exists():
             existing.append(path.as_posix())
         else:
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
             created.append(path.as_posix())
 
@@ -301,7 +312,7 @@ def create_run(root: Path, user_request: str, project: str = "Hive Mind", task_t
     }
     write_json(paths.state, state)
     paths.task.write_text(format_task_yaml(state), encoding="utf-8")
-    paths.context_pack.write_text(default_context_pack(state), encoding="utf-8")
+    paths.context_pack.write_text(default_context_pack(state, root), encoding="utf-8")
     paths.handoff.write_text(default_handoff_yaml(state), encoding="utf-8")
     (paths.run_dir / "verification.yaml").write_text(default_verification_yaml(state), encoding="utf-8")
     write_json(paths.run_dir / "memory_drafts.json", {"memory_drafts": []})
@@ -548,7 +559,10 @@ def recommend_next_action(
     by_step = {item["step"]: item for item in pipeline}
     if by_step["route"]["status"] != "done":
         return {"command": f'hive ask "{state.get("user_request", "")}"', "reason": "routing_plan.json is missing"}
-    if agent_status(state, "local-context-compressor") not in {"completed"}:
+    local_context_status = agent_status(state, "local-context-compressor")
+    if local_context_status == "failed":
+        return {"command": "hive audit", "reason": "local context worker failed and needs review before retry"}
+    if local_context_status not in {"completed"}:
         return {"command": "hive invoke local --role context", "reason": "context compression has not completed"}
     if agent_status(state, "claude-planner") not in {"prepared", "completed"}:
         return {"command": "hive invoke claude --role planner", "reason": "planner artifact is not prepared"}
@@ -1554,6 +1568,559 @@ def run_audit_report(root: Path, run_id: str | None = None) -> dict[str, Any]:
     }
 
 
+def auto_loop(
+    root: Path,
+    run_id: str | None = None,
+    max_steps: int = 1,
+    execute: bool = False,
+    allowed_actions: list[str] | None = None,
+    goal: str | None = None,
+) -> dict[str, Any]:
+    """Plan, and optionally run, a bounded loop over safe Hive internal actions.
+
+    Self-judgment: after each executed step, evaluate progress toward `goal`
+    using verification verdict + artifact coverage. Stops early if the run
+    is judged complete (verdict=pass, no required artifacts missing).
+    """
+    if max_steps < 1:
+        raise ValueError("max_steps must be >= 1")
+    max_steps = min(max_steps, 10)
+    allowed = set(allowed_actions or [])
+    unknown = sorted(allowed - AUTO_LOOP_ALLOWED_ACTIONS)
+    if unknown:
+        raise ValueError(f"unknown auto-loop actions: {', '.join(unknown)}")
+
+    paths, _ = load_run(root, run_id)
+    report: dict[str, Any] = {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "run_id": paths.run_id,
+        "goal": goal or "complete all pending required actions",
+        "mode": "execute" if execute else "dry_run",
+        "execute_requested": execute,
+        "max_steps": max_steps,
+        "allowed_actions": sorted(allowed),
+        "risk_level": "medium" if execute else "low",
+        "policy": {
+            "default": "dry_run",
+            "provider_cli_execution": "blocked",
+            "arbitrary_shell_execution": "blocked",
+            "memory_commit": "blocked",
+            "memory_draft": "allowlisted",
+        },
+        "self_judgments": [],
+        "proposed_steps": [],
+        "executed_steps": [],
+        "blocked_steps": [],
+    }
+
+    for index in range(max_steps):
+        board = run_board(root, paths.run_id)
+        next_action = board.get("next") or {}
+
+        # Self-judgment before each step: evaluate if goal is already met
+        judgment = auto_loop_self_judge(root, paths, board, goal, index)
+        report["self_judgments"].append(judgment)
+        if judgment["goal_met"]:
+            report["early_stop_reason"] = judgment["reason"]
+            break
+
+        decision = classify_auto_loop_action(str(next_action.get("command") or ""), str(next_action.get("reason") or ""))
+        step = {
+            "step": index + 1,
+            "command": next_action.get("command"),
+            "reason": next_action.get("reason"),
+            "action": decision["action"],
+            "risk_level": decision["risk_level"],
+            "auto_executable": decision["auto_executable"],
+        }
+        report["proposed_steps"].append(step)
+
+        if not execute:
+            report["blocked_steps"].append({**step, "block_reason": "dry_run_requires_--execute"})
+            break
+        if not decision["auto_executable"]:
+            report["blocked_steps"].append({**step, "block_reason": decision["block_reason"]})
+            break
+        if decision["action"] not in allowed:
+            report["blocked_steps"].append({**step, "block_reason": "action_not_allowlisted"})
+            break
+
+        result = execute_auto_loop_action(root, paths.run_id, str(decision["action"]))
+        report["executed_steps"].append({**step, **result})
+        append_event(paths, "auto_loop_step_executed", {"action": decision["action"], "result": result})
+        if result.get("result") == "failed" or result.get("status") == "failed":
+            report["blocked_steps"].append({**step, **result, "block_reason": "executed_action_failed"})
+            break
+
+    # Final self-judgment
+    final_judgment = auto_loop_self_judge(root, paths, run_board(root, paths.run_id), goal, max_steps)
+    report["final_judgment"] = final_judgment
+
+    report["status"] = "executed" if report["executed_steps"] else "planned"
+    if report["blocked_steps"]:
+        report["status"] = "blocked" if execute else "planned"
+    if report.get("early_stop_reason"):
+        report["status"] = "complete"
+    report["verdict"] = "pass" if final_judgment["goal_met"] else ("needs_human" if not execute else "incomplete")
+
+    out_path = paths.artifacts / "auto_loop_plan.json"
+    report["artifact"] = out_path.relative_to(root).as_posix()
+    write_json(out_path, report)
+    add_state_artifact(paths, "auto_loop_plan", out_path)
+    append_event(
+        paths,
+        "auto_loop_ready",
+        {
+            "artifact": out_path.relative_to(root).as_posix(),
+            "mode": report["mode"],
+            "status": report["status"],
+            "executed_steps": len(report["executed_steps"]),
+            "blocked_steps": len(report["blocked_steps"]),
+        },
+    )
+    return report
+
+
+def flow_advance(
+    root: Path,
+    task: str | None = None,
+    run_id: str | None = None,
+    complexity: str = "fast",
+    execute_local: bool = False,
+) -> dict[str, Any]:
+    """Advance a run through the safe, event-driven prepare-only workflow slice."""
+    if task and run_id:
+        raise ValueError("flow_advance accepts either task or run_id, not both")
+    paths = create_run(root, task, project="Hive Mind", task_type="workflow") if task else load_run(root, run_id)[0]
+    paths.artifacts.mkdir(parents=True, exist_ok=True)
+    actions_taken: list[dict[str, Any]] = []
+
+    paths, state = load_run(root, paths.run_id)
+    plan_path = paths.run_dir / "routing_plan.json"
+    if not plan_path.exists():
+        plan_path = ask_router(root, str(state.get("user_request") or ""), run_id=paths.run_id, complexity=complexity)
+        actions_taken.append({"action": "route", "artifact": plan_path.relative_to(root).as_posix(), "status": "created"})
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+
+    if execute_local:
+        for action in plan.get("actions") or []:
+            if action.get("provider") != "local" or action.get("role") != "context":
+                continue
+            status = agent_status(load_run(root, paths.run_id)[1], local_agent_name("context"))
+            if status in {"completed", "failed"}:
+                continue
+            result_path = invoke_local(root, "context", run_id=paths.run_id, complexity=complexity)
+            result = local_action_result(root, result_path)
+            actions_taken.append({"action": "local-context", **result})
+            if result.get("result") == "failed":
+                break
+
+    paths, state = load_run(root, paths.run_id)
+    if execute_local and agent_status(state, local_agent_name("context")) == "completed":
+        for action in plan.get("actions") or []:
+            provider = str(action.get("provider"))
+            role = str(action.get("role"))
+            if provider in {"claude", "codex", "gemini"}:
+                result_path = invoke_external_agent(root, provider, role, run_id=paths.run_id, execute=False)
+                actions_taken.append(
+                    {
+                        "action": "reprepare-after-context",
+                        "provider": provider,
+                        "role": role,
+                        "artifact": result_path.relative_to(root).as_posix(),
+                    }
+                )
+
+    paths, state = load_run(root, paths.run_id)
+    society_path = paths.run_dir / "society_plan.json"
+    if not society_path.exists():
+        society = build_society_plan_from_routing(root, paths, state, plan, execute=False)
+        write_json(society_path, society)
+        add_state_artifact(paths, "society_plan", society_path)
+        append_event(paths, "society_plan_created", {"artifact": society_path.relative_to(root).as_posix(), "members": len(society.get("members") or [])})
+        actions_taken.append({"action": "society", "artifact": society_path.relative_to(root).as_posix(), "status": "created"})
+
+    # Ensure plan_dag.json exists — canonical step scheduler.
+    from .plan_dag import build_dag as _build_dag, load_dag as _load_dag, save_dag as _save_dag
+    dag_path = paths.run_dir / "plan_dag.json"
+    if not dag_path.exists():
+        intent = state.get("task_type") or plan.get("intent") or "implementation"
+        dag = _build_dag(paths.run_id, str(state.get("user_request") or ""), intent)
+        _save_dag(root, dag)
+        actions_taken.append({"action": "plan_dag", "artifact": dag_path.relative_to(root).as_posix(), "status": "created"})
+
+    workflow = build_workflow_state(root, paths.run_id, actions_taken=actions_taken, execute_local=execute_local)
+    out_path = paths.artifacts / "workflow_state.json"
+    workflow["artifact"] = out_path.relative_to(root).as_posix()
+    write_json(out_path, workflow)
+    add_state_artifact(paths, "workflow_state", out_path)
+    append_event(paths, "workflow_state_created", {"artifact": out_path.relative_to(root).as_posix(), "status": workflow.get("status")})
+    append_event(paths, "workflow_advanced", {"artifact": out_path.relative_to(root).as_posix(), "actions": len(actions_taken)})
+    append_hive_activity(
+        paths,
+        "hive-mind",
+        "workflow_advanced",
+        f"Workflow advanced to {workflow.get('status')}; next: {(workflow.get('next') or {}).get('command')}",
+        {"workflow": out_path.relative_to(root).as_posix(), "next": workflow.get("next")},
+    )
+    return workflow
+
+
+def build_society_plan_from_routing(
+    root: Path,
+    paths: RunPaths,
+    state: dict[str, Any],
+    plan: dict[str, Any],
+    execute: bool = False,
+) -> dict[str, Any]:
+    providers = detect_agents(root, write=True).get("providers") or {}
+    members: list[dict[str, Any]] = []
+    for index, action in enumerate(plan.get("actions") or [], start=1):
+        provider = str(action.get("provider"))
+        role = str(action.get("role"))
+        mode = "local_runtime" if provider == "local" else (providers.get(provider) or {}).get("mode", "prepare_only")
+        command = (
+            f"hive invoke local --role {role}"
+            if provider == "local"
+            else f"hive invoke {provider} --role {role}" + (" --execute" if execute and provider != "codex" else "")
+        )
+        members.append(
+            {
+                "order": index,
+                "provider": provider,
+                "role": role,
+                "mode": mode,
+                "status": agent_status(state, f"{provider}-{role}") or ("ready" if provider != "local" else agent_status(state, local_agent_name(role))),
+                "reason": action.get("reason", ""),
+                "command": command,
+                "artifact_prefix": (paths.run_dir / "agents" / provider).relative_to(root).as_posix()
+                if provider != "local"
+                else paths.local_dir.relative_to(root).as_posix(),
+            }
+        )
+    return {
+        "schema_version": 1,
+        "run_id": paths.run_id,
+        "prompt": plan.get("prompt") or state.get("user_request"),
+        "intent": plan.get("intent", "unknown"),
+        "summary": plan.get("summary", ""),
+        "route_source": plan.get("route_source", "unknown"),
+        "execute_requested": execute,
+        "members": members,
+        "prepared_artifacts": plan.get("prepared_artifacts", []),
+        "next": recommend_next_action(paths, state, pipeline_status(paths), artifact_status(paths, state)),
+    }
+
+
+def build_workflow_state(
+    root: Path,
+    run_id: str,
+    actions_taken: list[dict[str, Any]] | None = None,
+    execute_local: bool = False,
+) -> dict[str, Any]:
+    paths, state = load_run(root, run_id)
+    plan_path = paths.run_dir / "routing_plan.json"
+    society_path = paths.run_dir / "society_plan.json"
+    plan = json.loads(plan_path.read_text(encoding="utf-8")) if plan_path.exists() else {"actions": []}
+    actions = plan.get("actions") if isinstance(plan.get("actions"), list) else []
+    external = [action for action in actions if action.get("provider") in {"claude", "codex", "gemini"}]
+    local = [action for action in actions if action.get("provider") == "local"]
+    external_states = [workflow_member_state(root, paths, action) for action in external]
+    local_states = [workflow_member_state(root, paths, action) for action in local]
+    failed = [item for item in [*external_states, *local_states] if item.get("status") == "failed"]
+    waiting_external = [item for item in external_states if item.get("status") in {"prepared", "ready", "pending"}]
+    local_waiting = [item for item in local_states if item.get("status") in {"ready", "pending", None}]
+    provider_barrier_status = "not_required"
+    if external_states:
+        provider_barrier_status = "satisfied" if not waiting_external and not failed else "waiting"
+    next_action = recommend_next_action(paths, state, pipeline_status(paths), artifact_status(paths, state))
+    if failed:
+        status = "blocked"
+        next_action = {"command": "hive audit", "reason": "workflow has failed members"}
+    elif local_waiting and not execute_local:
+        status = "waiting_for_local_context"
+        next_action = {"command": f"hive flow --run-id {paths.run_id} --execute-local", "reason": "local context is ready but not executed"}
+    elif provider_barrier_status == "waiting":
+        status = "waiting_for_provider_outputs"
+        next_action = {"command": f"hive events --run-id {paths.run_id}", "reason": "provider prompts are prepared; wait for provider results or run explicit invokes"}
+    else:
+        status = "ready_for_verification"
+
+    # Prefer plan_dag.json as canonical scheduler when it exists.
+    from .plan_dag import load_dag as _load_dag
+    dag = _load_dag(root, run_id)
+    _dag_file = paths.run_dir / "plan_dag.json"
+    dag_steps: list[dict[str, Any]] = []
+    if dag is not None:
+        from dataclasses import asdict
+        dag_steps = [asdict(s) for s in dag.steps]
+        dag_next = dag.next_sequential()
+        if dag_next:
+            next_action = {
+                "command": f"hive step run {dag_next.step_id}",
+                "reason": f"DAG step {dag_next.step_id} is next [{dag_next.owner_role}]",
+            }
+        elif dag.is_complete():
+            status = "complete"
+        elif dag.is_blocked():
+            status = "blocked"
+            next_action = {"command": "hive step list", "reason": "DAG is blocked — check failed steps"}
+
+    return {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "run_id": paths.run_id,
+        "mode": "prepare_only",
+        "status": status,
+        "scheduler": "plan_dag" if dag is not None else "workflow_state_legacy",
+        "plan_dag_path": _dag_file.relative_to(root).as_posix() if _dag_file.exists() else None,
+        "actions_taken": actions_taken or [],
+        "dag_steps": dag_steps,
+        "legacy_steps": [
+            {"step_id": "intake", "kind": "sequential", "status": "done", "artifact": paths.task.relative_to(root).as_posix()},
+            {"step_id": "route", "kind": "sequential", "status": "done" if plan_path.exists() else "pending", "artifact": plan_path.relative_to(root).as_posix()},
+            {"step_id": "society", "kind": "sequential", "status": "done" if society_path.exists() else "pending", "artifact": society_path.relative_to(root).as_posix()},
+            {"step_id": "local_context", "kind": "sequential", "status": workflow_group_status(local_states), "members": local_states},
+            {"step_id": "provider_prepare", "kind": "parallel", "status": workflow_group_status(external_states), "members": external_states},
+        ],
+        "barriers": [
+            {
+                "barrier_id": "provider_outputs",
+                "kind": "parallel_join",
+                "status": provider_barrier_status,
+                "waiting_on": [item for item in external_states if item.get("status") != "completed"],
+            }
+        ],
+        "next": next_action,
+        "policy": {
+            "provider_cli_execution": "blocked_without_explicit_invoke_execute",
+            "local_execution": "allowed_only_with_--execute-local",
+            "memory_commit": "blocked",
+        },
+    }
+
+
+def workflow_member_state(root: Path, paths: RunPaths, action: dict[str, Any]) -> dict[str, Any]:
+    provider = str(action.get("provider"))
+    role = str(action.get("role"))
+    if provider == "local":
+        status = agent_status(json.loads(paths.state.read_text(encoding="utf-8")), local_agent_name(role)) or "pending"
+        artifact = paths.local_dir / f"{role.replace('-', '_')}.json"
+    else:
+        status = agent_status(json.loads(paths.state.read_text(encoding="utf-8")), f"{provider}-{role}") or "pending"
+        artifact = paths.run_dir / "agents" / provider / f"{role}_result.yaml"
+    return {
+        "provider": provider,
+        "role": role,
+        "status": status,
+        "artifact": artifact.relative_to(root).as_posix(),
+        "artifact_exists": artifact.exists(),
+        "reason": action.get("reason", ""),
+    }
+
+
+def workflow_group_status(members: list[dict[str, Any]]) -> str:
+    if not members:
+        return "not_required"
+    statuses = {str(member.get("status")) for member in members}
+    if "failed" in statuses:
+        return "failed"
+    if statuses <= {"completed"}:
+        return "done"
+    if statuses <= {"prepared", "ready", "completed"}:
+        return "ready"
+    return "pending"
+
+
+def format_flow_report(report: dict[str, Any]) -> str:
+    lines = [
+        f"Hive Mind Flow: {report.get('run_id')}",
+        f"Status: {report.get('status')} | Mode: {report.get('mode')}",
+        f"Artifact: {report.get('artifact')}",
+        "",
+        "Steps:",
+    ]
+    for step in report.get("steps") or []:
+        lines.append(f"- {step.get('step_id')}: {step.get('status')} [{step.get('kind')}]")
+    lines.append("")
+    lines.append("Barriers:")
+    for barrier in report.get("barriers") or []:
+        lines.append(f"- {barrier.get('barrier_id')}: {barrier.get('status')} waiting={len(barrier.get('waiting_on') or [])}")
+    next_action = report.get("next") or {}
+    lines.extend(["", "Next:", f"  {next_action.get('command')}", f"  Reason: {next_action.get('reason')}"])
+    return "\n".join(lines)
+
+
+def auto_loop_self_judge(
+    root: Path,
+    paths: "RunPaths",
+    board: dict[str, Any],
+    goal: str | None,
+    iteration: int,
+) -> dict[str, Any]:
+    """Evaluate whether the loop goal is met. Heuristic — no LLM call."""
+    pipeline = board.get("pipeline") or []
+    artifacts = board.get("artifacts") or []
+    done_steps = sum(1 for s in pipeline if s.get("status") == "done")
+    total_steps = len(pipeline) or 1
+    pipeline_pct = done_steps / total_steps
+    required_missing = [a for a in artifacts if a.get("phase_class") == "required" and a.get("status") != "ok"]
+    agents = board.get("agents") or []
+    failed_agents = [a for a in agents if a.get("status") == "failed"]
+    verification_verdict = "not_run"
+    verification_path = paths.run_dir / "verification.yaml"
+    if verification_path.exists():
+        try:
+            data = yaml.safe_load(verification_path.read_text(encoding="utf-8")) or {}
+            verification_verdict = str(data.get("verdict", "unknown"))
+        except yaml.YAMLError:
+            verification_verdict = "invalid"
+    goal_met = (
+        verification_verdict == "pass"
+        and not required_missing
+        and not failed_agents
+        and pipeline_pct >= 0.5
+    )
+    if goal_met:
+        reason = f"Verification passed, {done_steps}/{total_steps} pipeline steps done, no required artifacts missing."
+    elif failed_agents:
+        reason = f"{len(failed_agents)} agent(s) failed: {', '.join(a.get('name', '?') for a in failed_agents[:3])}"
+    elif required_missing:
+        reason = f"{len(required_missing)} required artifact(s) missing: {', '.join(a.get('name', '?') for a in required_missing[:3])}"
+    else:
+        reason = f"Pipeline {done_steps}/{total_steps} steps done, verification={verification_verdict}."
+    return {
+        "iteration": iteration,
+        "goal": goal or "complete all pending required actions",
+        "goal_met": goal_met,
+        "verification_verdict": verification_verdict,
+        "pipeline_pct": round(pipeline_pct, 2),
+        "required_missing": len(required_missing),
+        "failed_agents": len(failed_agents),
+        "reason": reason,
+    }
+
+
+def classify_auto_loop_action(command: str, reason: str) -> dict[str, Any]:
+    command = command.strip()
+    if command == "hive verify":
+        return {"action": "verify", "auto_executable": True, "risk_level": "low", "block_reason": ""}
+    if command == "hive memory draft":
+        return {"action": "memory-draft", "auto_executable": True, "risk_level": "low", "block_reason": ""}
+    if command == "hive summarize":
+        return {"action": "summarize", "auto_executable": True, "risk_level": "low", "block_reason": ""}
+    if command == "hive check run":
+        return {"action": "check-run", "auto_executable": True, "risk_level": "low", "block_reason": ""}
+    if command == "hive audit":
+        return {"action": "audit", "auto_executable": True, "risk_level": "low", "block_reason": ""}
+    if command == "hive diff":
+        return {"action": "diff", "auto_executable": True, "risk_level": "low", "block_reason": ""}
+    if command == "hive invoke local --role context":
+        return {"action": "local-context", "auto_executable": True, "risk_level": "medium", "block_reason": ""}
+    if command == "hive invoke local --role review":
+        return {"action": "local-review", "auto_executable": True, "risk_level": "medium", "block_reason": ""}
+    if command.startswith("hive invoke "):
+        return {
+            "action": "provider-invoke",
+            "auto_executable": False,
+            "risk_level": "high",
+            "block_reason": "provider_cli_execution_blocked",
+        }
+    if command.startswith("hive ask ") or command.startswith("hive orchestrate "):
+        return {
+            "action": "route",
+            "auto_executable": False,
+            "risk_level": "medium",
+            "block_reason": "new_routing_requires_operator_prompt_boundary",
+        }
+    return {
+        "action": "unknown",
+        "auto_executable": False,
+        "risk_level": "medium",
+        "block_reason": f"no_safe_executor_for_command: {command or reason}",
+    }
+
+
+def execute_auto_loop_action(root: Path, run_id: str, action: str) -> dict[str, Any]:
+    if action == "verify":
+        path = build_verification(root, run_id)
+        return {"result": "created", "artifact": path.relative_to(root).as_posix()}
+    if action == "memory-draft":
+        path = build_memory_draft(root, run_id)
+        return {"result": "created", "artifact": path.relative_to(root).as_posix()}
+    if action == "summarize":
+        path = build_summary(root, run_id)
+        return {"result": "created", "artifact": path.relative_to(root).as_posix()}
+    if action == "diff":
+        git_diff_report(root, run_id)
+        return {"result": "created", "artifact": (RunPaths(root, run_id).run_dir / "git_diff_report.json").relative_to(root).as_posix()}
+    if action == "check-run":
+        report = run_checks(root, run_id)
+        return {"result": "checked", "status": report.get("status"), "failed": report.get("failed")}
+    if action == "audit":
+        report = run_audit_report(root, run_id)
+        return {"result": "checked", "status": report.get("status"), "recommendations": report.get("recommendations", [])}
+    if action == "local-context":
+        path = invoke_local(root, "context", run_id=run_id)
+        return local_action_result(root, path)
+    if action == "local-review":
+        path = invoke_local(root, "review", run_id=run_id)
+        return local_action_result(root, path)
+    raise ValueError(f"unsupported auto-loop action: {action}")
+
+
+def local_action_result(root: Path, path: Path) -> dict[str, Any]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"result": "failed", "status": "failed", "artifact": path.relative_to(root).as_posix(), "error": str(exc)}
+    status = str(data.get("status") or "unknown")
+    if status != "completed":
+        return {
+            "result": "failed",
+            "status": status,
+            "artifact": path.relative_to(root).as_posix(),
+            "error": data.get("error") or data.get("escalation_reason") or "local action did not complete",
+        }
+    return {
+        "result": "created",
+        "status": status,
+        "artifact": path.relative_to(root).as_posix(),
+        "should_escalate": bool(data.get("should_escalate")),
+    }
+
+
+def format_auto_loop_report(report: dict[str, Any]) -> str:
+    lines = [
+        f"Hive Mind Auto Loop: {report.get('run_id')}",
+        f"Mode: {report.get('mode')} | Status: {report.get('status')} | Risk: {report.get('risk_level')}",
+        f"Artifact: {report.get('artifact')}",
+        "",
+        "Policy:",
+    ]
+    policy = report.get("policy") or {}
+    for key in ["default", "provider_cli_execution", "arbitrary_shell_execution", "memory_commit", "memory_draft"]:
+        lines.append(f"  {key}: {policy.get(key)}")
+    lines.append("")
+    lines.append("Proposed:")
+    for step in report.get("proposed_steps") or []:
+        lines.append(f"  {step.get('step')}. {step.get('command')} [{step.get('action')}, {step.get('risk_level')}]")
+        lines.append(f"     Reason: {step.get('reason')}")
+    if report.get("executed_steps"):
+        lines.append("")
+        lines.append("Executed:")
+        for step in report.get("executed_steps") or []:
+            artifact = f" -> {step.get('artifact')}" if step.get("artifact") else ""
+            lines.append(f"  {step.get('step')}. {step.get('action')} {step.get('result')}{artifact}")
+    if report.get("blocked_steps"):
+        lines.append("")
+        lines.append("Blocked:")
+        for step in report.get("blocked_steps") or []:
+            lines.append(f"  {step.get('step')}. {step.get('action')}: {step.get('block_reason')}")
+    return "\n".join(lines)
+
+
 def close_gap_loop(root: Path, run_id: str | None = None) -> dict[str, Any]:
     """Build the artifacts needed to close the MemoryOS-side Hive Mind gaps."""
     paths, _ = load_run(root, run_id)
@@ -2039,6 +2606,30 @@ def agent_role_registry() -> dict[str, dict[str, Any]]:
             "allowed_actions": ["read_context", "review_outputs", "challenge_plan"],
             "forbidden_actions": ["repo_write", "memory_commit", "danger_bypass"],
             "handoff_outputs": ["reviewer_result.yaml"],
+        },
+        "hive.verifier": {
+            "provider": "code/local",
+            "purpose": "Check run safety, schema validity, packaging health, provider execution boundaries, and test evidence.",
+            "default_mode": "read_only_or_allowlisted_internal_actions",
+            "allowed_actions": ["read_artifacts", "run_tests", "validate_schema", "check_policy", "write_verification"],
+            "forbidden_actions": ["provider_cli_execute", "arbitrary_shell", "memory_commit", "final_acceptance"],
+            "handoff_outputs": ["verification.yaml", "auto_loop_plan.json", "verifier_findings.md"],
+        },
+        "hive.product_evaluator": {
+            "provider": "reviewer",
+            "purpose": "Judge product value against direct-agent use and manual shared-folder coordination.",
+            "default_mode": "read_only",
+            "allowed_actions": ["inspect_cli_surface", "compare_workflows", "name_blockers", "rank_p0"],
+            "forbidden_actions": ["repo_write", "provider_cli_execute", "memory_commit", "overclaim_release_status"],
+            "handoff_outputs": ["product_evaluation.md", "p0_recommendations"],
+        },
+        "persona.actual_user": {
+            "provider": "persona",
+            "purpose": "Pressure-test Hive Mind from a demanding real operator's UX, Korean prompt, and trust perspective.",
+            "default_mode": "read_only_temp_workspace_smoke",
+            "allowed_actions": ["try_safe_cli", "report_friction", "report_trust_gap", "suggest_keep_using_threshold"],
+            "forbidden_actions": ["repo_write", "provider_cli_execute", "memory_commit", "accept_product_claims"],
+            "handoff_outputs": ["user_persona_report.md", "ux_blockers", "trust_threshold"],
         },
         "local.context": {
             "provider": "local",
@@ -3403,7 +3994,16 @@ def heuristic_route_prompt(prompt: str) -> dict[str, Any]:
     lowered = prompt.lower()
     actions = [{"provider": "local", "role": "context", "reason": "Prepare context before provider handoff.", "execute": False}]
     intent = "planning"
-    if any(token in lowered for token in ["implement", "fix", "build", "code", "tui", "cli", "구현", "수정", "만들"]):
+    if any(token in lowered for token in ["debug", "trace", "왜", "원인", "오류", "에러", "멈추", "안됨", "안 돼", "error", "exception"]):
+        intent = "debugging"
+        actions.extend(
+            [
+                {"provider": "claude", "role": "planner", "reason": "Diagnose root cause.", "execute": False},
+                {"provider": "local", "role": "review", "reason": "First-pass log scan.", "execute": False},
+            ]
+        )
+    elif any(token in lowered for token in ["implement", "fix", "build", "code", "tui", "cli", "bug",
+                                          "구현", "수정", "만들", "고쳐", "버그", "추가", "작성"]):
         intent = "implementation"
         actions.extend(
             [
@@ -3412,7 +4012,15 @@ def heuristic_route_prompt(prompt: str) -> dict[str, Any]:
                 {"provider": "gemini", "role": "reviewer", "reason": "Prepare independent review.", "execute": False},
             ]
         )
-    elif any(token in lowered for token in ["review", "audit", "검토", "리뷰"]):
+    elif any(token in lowered for token in ["refactor", "리팩토링", "리팩터", "정리", "개선", "cleanup"]):
+        intent = "implementation"
+        actions.extend(
+            [
+                {"provider": "claude", "role": "planner", "reason": "Clarify refactoring plan.", "execute": False},
+                {"provider": "codex", "role": "executor", "reason": "Prepare refactoring implementation.", "execute": False},
+            ]
+        )
+    elif any(token in lowered for token in ["review", "audit", "검토", "리뷰", "점검"]):
         intent = "review"
         actions.extend(
             [
@@ -3421,12 +4029,20 @@ def heuristic_route_prompt(prompt: str) -> dict[str, Any]:
                 {"provider": "gemini", "role": "reviewer", "reason": "Alternate review.", "execute": False},
             ]
         )
-    elif any(token in lowered for token in ["memory", "import", "parser", "메모리", "가져"]):
+    elif any(token in lowered for token in ["memory", "import", "parser", "메모리", "가져", "저장"]):
         intent = "memory_import"
         actions.extend(
             [
                 {"provider": "local", "role": "memory", "reason": "Draft memory extraction.", "execute": False},
                 {"provider": "codex", "role": "executor", "reason": "Prepare parser/import implementation.", "execute": False},
+            ]
+        )
+    elif any(token in lowered for token in ["design", "architect", "설계", "아키텍처", "구조", "plan", "계획"]):
+        intent = "planning"
+        actions.extend(
+            [
+                {"provider": "claude", "role": "planner", "reason": "Lead design discussion.", "execute": False},
+                {"provider": "gemini", "role": "reviewer", "reason": "Alternate design perspective.", "execute": False},
             ]
         )
     else:
@@ -3681,6 +4297,13 @@ def invoke_local(root: Path, role: str, run_id: str | None = None, complexity: s
     return out_path
 
 
+EXTERNAL_AGENT_ROLES: dict[str, set[str]] = {
+    "claude": {"planner", "reviewer", "claim-auditor", "debate_initial", "debate_review"},
+    "codex": {"executor", "reviewer", "debate_initial", "debate_review"},
+    "gemini": {"reviewer", "planner", "alternate-planner", "multimodal-reviewer", "debate_initial", "debate_review"},
+}
+
+
 def invoke_external_agent(
     root: Path,
     agent: str,
@@ -3689,8 +4312,11 @@ def invoke_external_agent(
     execute: bool = False,
 ) -> Path:
     paths, state = load_run(root, run_id)
-    if agent not in {"claude", "codex", "gemini"}:
-        raise ValueError("external agent must be one of: claude, codex, gemini")
+    if agent not in EXTERNAL_AGENT_ROLES:
+        raise ValueError(f"external agent must be one of: {', '.join(sorted(EXTERNAL_AGENT_ROLES))}")
+    allowed_roles = EXTERNAL_AGENT_ROLES[agent]
+    if role not in allowed_roles:
+        raise ValueError(f"role '{role}' not valid for {agent}; allowed: {', '.join(sorted(allowed_roles))}")
     agent_dir = {"claude": paths.claude_dir, "codex": paths.codex_dir, "gemini": paths.gemini_dir}[agent]
     agent_dir.mkdir(parents=True, exist_ok=True)
     agent_name = f"{agent}-{role}"
@@ -3756,6 +4382,27 @@ def invoke_external_agent(
         update_state(paths, phase="handoff", status="needs_attention")
         return result_path
 
+    # Policy gate: danger_modes must be explicitly enabled before execute path.
+    policy = load_policy(root)
+    danger = policy.get("danger_modes") or {}
+    if danger.get("allowed") is not True:
+        reason = (
+            f"Execute mode for {agent}/{role} requires danger_modes: allowed: true "
+            f"in .hivemind/policy.yaml. "
+            f"Required flags per policy: {danger.get('require_flags', [])}. "
+            f"See: hive policy explain {agent}.{role}"
+        )
+        result = provider_result_record(
+            root, agent=agent, role=role, status="failed",
+            provider_mode="policy_blocked", permission_mode=role_permission_mode(agent, role),
+            prompt_path=prompt_path, reason=reason, risk_level="high",
+        )
+        result_path.write_text(format_simple_yaml(result), encoding="utf-8")
+        set_agent_status(paths, agent_name, "failed")
+        append_event(paths, "agent_failed", {"agent": agent, "role": role, "reason": "policy_blocked"})
+        update_state(paths, phase="handoff", status="needs_attention")
+        raise PermissionError(reason)
+
     agent_bin = resolve_provider_binary(root, agent)
     if not agent_bin:
         result = provider_result_record(
@@ -3780,10 +4427,10 @@ def invoke_external_agent(
     set_agent_status(paths, agent_name, "running")
     append_agent_log(paths, agent, role, f"started execute binary={agent_bin}")
     append_event(paths, "agent_started", {"agent": agent, "role": role})
-    command = external_command(agent, agent_bin, prompt_path.read_text(encoding="utf-8"))
+    command, stdin_text = external_command(agent, agent_bin, prompt_path.read_text(encoding="utf-8"))
     started = time.monotonic()
     started_at = now_iso()
-    returncode = run_provider_with_live_log(paths, root, agent, role, command, output_path, timeout=600)
+    returncode = run_provider_with_live_log(paths, root, agent, role, command, output_path, timeout=600, stdin_text=stdin_text)
     finished_at = now_iso()
     duration_ms = int((time.monotonic() - started) * 1000)
     append_agent_log(
@@ -3926,6 +4573,7 @@ def run_provider_with_live_log(
     command: list[str],
     output_path: Path,
     timeout: int,
+    stdin_text: str | None = None,
 ) -> int:
     deadline = time.monotonic() + timeout
     with output_path.open("w", encoding="utf-8") as output:
@@ -3933,11 +4581,15 @@ def run_provider_with_live_log(
             command,
             cwd=root,
             text=True,
+            stdin=subprocess.PIPE if stdin_text is not None else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             bufsize=1,
         )
         assert process.stdout is not None
+        if stdin_text is not None and process.stdin is not None:
+            process.stdin.write(stdin_text)
+            process.stdin.close()
         try:
             for line in process.stdout:
                 output.write(line)
@@ -4014,6 +4666,10 @@ def build_external_prompt(paths: RunPaths, state: dict[str, Any], agent: str, ro
     events = paths.events.read_text(encoding="utf-8") if paths.events.exists() else ""
     context = paths.context_pack.read_text(encoding="utf-8") if paths.context_pack.exists() else ""
     handoff = paths.handoff.read_text(encoding="utf-8") if paths.handoff.exists() else ""
+    local_context = ""
+    local_context_path = paths.local_dir / "context.json"
+    if local_context_path.exists():
+        local_context = local_context_path.read_text(encoding="utf-8", errors="replace")[-8000:]
     role_contract = {
         "planner": "Create a concise implementation handoff with risks, files, acceptance criteria, and unresolved questions.",
         "reviewer": "Review the current run artifacts for risk, missing tests, overclaims, and next actions.",
@@ -4037,6 +4693,7 @@ def build_external_prompt(paths: RunPaths, state: dict[str, Any], agent: str, ro
         "- Next concrete action\n"
         "- Artifact updates needed\n\n"
         f"## Context Pack\n{context}\n\n"
+        f"## Local Context Worker Output\n```json\n{local_context}\n```\n\n"
         f"## Current Handoff\n```yaml\n{handoff}\n```\n\n"
         f"## Recent Events\n```jsonl\n{events[-8000:]}\n```\n"
     )
@@ -4087,13 +4744,16 @@ def suggest_external_command(agent: str, prompt_path: Path, root: Path | None = 
     return f"{cmd} exec --cd . --sandbox read-only --ask-for-approval never \"$(cat {prompt})\"\n"
 
 
-def external_command(agent: str, binary: str, prompt: str) -> list[str]:
+def external_command(agent: str, binary: str, prompt: str) -> tuple[list[str], str | None]:
+    """Return (argv, stdin_text). stdin_text is None when prompt is passed as an arg."""
     if agent == "claude":
-        return [binary, "-p", prompt, "--permission-mode", "plan", "--output-format", "text"]
+        # Pass prompt via stdin to avoid ARG_MAX issues and --permission-mode plan
+        # blocking on approval prompts in non-TTY mode (produces empty output).
+        return ([binary, "--dangerously-skip-permissions", "--output-format", "text"], prompt)
     if agent == "gemini":
-        return [binary, "-p", prompt, "--approval-mode", "plan", "--output-format", "text", "--skip-trust"]
+        return ([binary, "-p", prompt, "--approval-mode", "plan", "--output-format", "text", "--skip-trust"], None)
     if agent == "codex":
-        return [binary, "exec", "--cd", ".", "--sandbox", "read-only", "--ask-for-approval", "never", prompt]
+        return ([binary, "exec", "--cd", ".", "--sandbox", "read-only", "--ask-for-approval", "never", prompt], None)
     raise ValueError(f"Unsupported executable external agent: {agent}")
 
 
@@ -4151,21 +4811,81 @@ def format_task_yaml(state: dict[str, Any]) -> str:
     )
 
 
-def default_context_pack(state: dict[str, Any]) -> str:
-    return (
-        "# Context Pack\n\n"
-        "## User Request\n"
-        f"{state['user_request']}\n\n"
-        "## Project State\n"
-        "- MemoryOS is currently file-first: JSONL graph, run folders, local workers, and audit reports.\n"
-        "- The current priority is structured blackboard + wrapper CLI/TUI before Desktop.\n\n"
-        "## Active Decisions\n"
-        "- Agents communicate through artifacts, not direct free-form chat.\n"
-        "- Every task should have a run_id and event log.\n"
-        "- Local LLMs summarize and draft; Claude/Codex handle judgment and implementation.\n\n"
-        "## Open Questions\n"
-        "- Which artifacts need human approval before memory commit?\n"
-    )
+def default_context_pack(state: dict[str, Any], root: Path | None = None) -> str:
+    sections: list[str] = [
+        "# Context Pack\n",
+        "## User Request",
+        state["user_request"],
+        "",
+    ]
+    if root is not None:
+        file_lines = _scan_project_files(root)
+        if file_lines:
+            sections.append("## Project Files")
+            sections.extend(file_lines)
+            sections.append("")
+        git_summary = _git_status_summary(root)
+        if git_summary:
+            sections.append("## Git Status")
+            sections.append(git_summary)
+            sections.append("")
+    sections.extend([
+        "## Active Decisions",
+        "- Agents communicate through artifacts, not direct free-form chat.",
+        "- Every task should have a run_id and event log.",
+        "- Local LLMs summarize and draft; Claude/Codex handle judgment and implementation.",
+        "",
+        "## Open Questions",
+        "- Which artifacts need human approval before memory commit?",
+    ])
+    return "\n".join(sections) + "\n"
+
+
+def _scan_project_files(root: Path, max_files: int = 40) -> list[str]:
+    skip_dirs = {".git", ".runs", "__pycache__", ".mypy_cache", ".pytest_cache", "node_modules", ".venv", "venv", "dist", "build", ".eggs", "*.egg-info"}
+    interesting_exts = {".py", ".md", ".yaml", ".yml", ".toml", ".json", ".txt", ".sh"}
+    entries: list[tuple[int, str]] = []
+    try:
+        for path in sorted(root.rglob("*")):
+            if path.is_dir():
+                continue
+            parts = path.parts
+            if any(p.startswith(".") and p not in (".runs",) or p in skip_dirs for p in parts[len(root.parts):]):
+                continue
+            if path.suffix.lower() not in interesting_exts:
+                continue
+            try:
+                size = path.stat().st_size
+            except OSError:
+                continue
+            rel = path.relative_to(root).as_posix()
+            entries.append((size, rel))
+            if len(entries) >= max_files * 3:
+                break
+    except Exception:
+        return []
+    entries.sort(key=lambda x: x[1])
+    lines = []
+    for size, rel in entries[:max_files]:
+        kb = size / 1024
+        lines.append(f"- {rel} ({kb:.1f}KB)")
+    if len(entries) > max_files:
+        lines.append(f"... and {len(entries) - max_files} more files")
+    return lines
+
+
+def _git_status_summary(root: Path) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "status", "--short", "--branch"],
+            cwd=root, text=True, capture_output=True, timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            lines = result.stdout.strip().splitlines()
+            return "\n".join(lines[:20])
+    except Exception:
+        pass
+    return ""
 
 
 def default_handoff_yaml(state: dict[str, Any]) -> str:
@@ -4299,6 +5019,25 @@ def default_policy_yaml() -> str:
         "    repo_write: deny\n"
         "    memory_commit: deny\n"
         "    default_mode: read_only\n"
+        "  hive.verifier:\n"
+        "    repo_read: allow\n"
+        "    repo_write: deny\n"
+        "    shell: allowlist\n"
+        "    provider_cli_execute: deny\n"
+        "    memory_commit: deny\n"
+        "    default_mode: read_only_or_allowlisted_internal_actions\n"
+        "  hive.product_evaluator:\n"
+        "    repo_read: allow\n"
+        "    repo_write: deny\n"
+        "    provider_cli_execute: deny\n"
+        "    memory_commit: deny\n"
+        "    default_mode: read_only\n"
+        "  persona.actual_user:\n"
+        "    repo_read: allow\n"
+        "    repo_write: deny\n"
+        "    provider_cli_execute: deny\n"
+        "    memory_commit: deny\n"
+        "    default_mode: read_only_temp_workspace_smoke\n"
         "  local.context:\n"
         "    compress_context: allow\n"
         "    classify: allow\n"

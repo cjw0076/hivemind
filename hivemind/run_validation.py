@@ -40,6 +40,10 @@ ALLOWED_EVENT_TYPES = {
     "routing_evidence_created",
     "conflict_set_created",
     "operator_decisions_created",
+    "auto_loop_step_executed",
+    "auto_loop_ready",
+    "workflow_advanced",
+    "workflow_state_created",
 }
 
 RUN_ARTIFACT_SPEC = {
@@ -136,6 +140,7 @@ def validate_run_artifacts(run_dir: Path, root: Path) -> dict[str, Any]:
     checks["final_report_schema_valid"] = validate_final_report(paths["final_report"], run_id, issues)
     checks["state_artifact_refs_valid"] = validate_state_artifact_refs(state, root, issues)
     checks["provider_results_schema_valid"] = validate_provider_results(run_dir, root, issues)
+    checks["agent_states_valid"] = validate_agent_states(state, issues)
 
     if isinstance(task, dict) and task.get("run_id") != run_id:
         checks["task_run_id_matches"] = False
@@ -217,6 +222,20 @@ def validate_required_keys(data: Any, keys: set[str], label: str, issues: list[s
     missing = sorted(keys - set(data))
     if missing:
         issues.append(f"{label} missing required keys: {', '.join(missing)}")
+        return False
+    return True
+
+
+def validate_agent_states(state: Any, issues: list[str]) -> bool:
+    if not isinstance(state, dict):
+        return False
+    agents = state.get("agents")
+    if not isinstance(agents, list):
+        issues.append("run_state.agents must be a list")
+        return False
+    failed = [str(agent.get("name") or "unknown") for agent in agents if isinstance(agent, dict) and agent.get("status") == "failed"]
+    if failed:
+        issues.append(f"failed agent state requires review: {', '.join(failed)}")
         return False
     return True
 

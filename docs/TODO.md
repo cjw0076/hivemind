@@ -29,12 +29,14 @@ Sources: `VG-03`, `VG-04`, `VG-05`, `VG-13`.
 - [x] Add parser warnings instead of failing entire imports on one malformed record.
 - [x] Persist production settings profile during onboarding so provider paths, local model inventory, and shell exports are tracked.
 - [x] Add prompt-first `hive ask` local intent routing that decomposes work into Claude/Codex/Gemini/local artifacts.
+- [x] Add event-driven `hive flow` / `hive run --flow` first slice: route, prepare provider prompts, write society/workflow state, and expose barriers without provider auto-execution.
 - [x] Install `hive` as a real CLI and support provider-style shorthand: `hive "task"`.
 - [x] Add production run board UX: pipeline, agents, artifact status, and next recommended action.
 - [x] Add local production wrappers: `bin/hive`, `scripts/install-hive-cli.sh`, and private npm `production` script.
 - [x] Make bare `hive` enter a conversational operator shell instead of only a thin command shell.
 - [x] Make prompt input default to `hive orchestrate`, creating a multi-agent `society_plan.json`.
 - [x] Name the provider-CLI harness product `Hive Mind` and document the API-first harness distinction.
+- [x] Add reproducible product evaluation script for packaging, routing, provider preparation, run validation, and auto-loop safety smoke checks.
 
 ## Production Hardening From `hive_mind2.md`
 
@@ -54,6 +56,7 @@ Work order: finish the `hive` operator loop before deeper MemoryOS/CapabilityOS 
 - [x] Add `.hivemind/policy.yaml` default policy plus `hive policy check/explain`.
 - [x] Add local model profile and role auto-assignment artifacts.
 - [x] Add agent role registry, permission policy, role prompt templates, and `hive agents explain <role>`.
+- [x] Add verifier, product evaluator, and actual-user persona roles to the agent registry for repeatable product pressure tests.
 - [x] Add production context builder/budgeter/validator and `hive context build --for <agent-role>`.
 - [x] Add multi-session workspace layout hints with `hive workspace --layout dev|dual`.
 - [x] Add run audit/observability command for provider failures, stale artifacts, unverified outputs, and policy drift.
@@ -109,6 +112,11 @@ Source: `docs/HIVE_MIND_GAPS.md` section "Header Role Decomposition and Per-Laye
 - [x] Add a small chair runtime spec before implementation so L0/L1 do not become an over-designed header LLM.
 - [ ] Define chair layer artifact schemas: `DispatcherState`, `VerifierCheck`, `WorkingAgentTurn`, `RefereeDecision`, `NorthStarAudit`, and `ConflictReview`.
 - [ ] Implement L0 dispatcher as code-first state machine for rounds, fronts, turns, timeouts, artifact arrival, and next-speaker scheduling.
+- [x] Add first `plan_dag.json` runtime and CLI surface: `hive plan dag`, `hive step list/status/next/run`, and DAG-aware `hive next`.
+- [ ] Reconcile `artifacts/workflow_state.json` and `plan_dag.json` into one durable scheduler surface.
+- [ ] Harden DAG step result handling so failed local/provider artifacts become `failed` or `skipped`, not `completed`.
+- [ ] Policy-gate or replace the Claude `--dangerously-skip-permissions` execute workaround before expanding automation.
+- [ ] Add bounded parallel fan-out/fan-in runner for safe runnable steps, with durable resume and barrier joins.
 - [ ] Implement L1 verifier checks for schema validity, process launch hygiene, stale artifact detection, forbidden-language scans, and file/scope checks.
 - [ ] Add provider-family metadata to provider capabilities so L2/L3/L5 can enforce model-family heterogeneity.
 - [ ] Add role routing policy: L0 code/local-only, L1 code/local/cheap-hosted, L2 frontier workers, L3 different-family referee, L4 long-context auditor, L5 different-family conflict reviewer.
@@ -134,6 +142,7 @@ Source mirror: `docs/HIVE_MIND_GAPS.md` from `../memoryOS/docs/shared/HIVE_MIND_
 - [ ] Add document supersession edges so stale handoffs are explicitly replaced, not inferred from mtimes.
 - [ ] Add claim/evidence ledger with supported, blocked, falsified, superseded, required evidence, allowed wording, and forbidden wording fields.
 - [ ] Add arrival packs generated from live run state: objective, owners, blocked tasks, accepted claims, contested claims, scope, logs, and latest artifacts.
+- [ ] Add first-class `hive evaluate` or `hive subagents review` command that runs verifier, product evaluator, and actual-user persona checks into durable artifacts.
 
 ## Harness Runtime
 
@@ -162,12 +171,16 @@ Sources: `VG-03`, `VG-04`, `VG-13`.
 - [x] Add unified prompt input via `hive prompt` and slash shell `/prompt`.
 - [x] Add adapter registry stubs for opencode, goose, OpenClaude-compatible runtimes.
 - [x] Add `hive next`, `hive agents status`, and `hive memory list` for fast operator loops.
+- [x] Add option-only `hive loop` self-judgment/autopilot surface: dry-run by default, `--execute` plus per-action `--allow`, no provider CLI auto-execution, no arbitrary shell, no memory commit.
+- [x] Make `hive loop` validation-safe and failure-aware: auto-loop events are accepted by run validation, failed local workers stop the loop, and failed agent state fails verification.
 - [x] Make `hive tui` interactive with prompt input, slash command input, and dashboard layout.
 - [x] Add always-visible TUI `hive>` composer so prompt entry is discoverable.
 - [x] Add `hive_events.jsonl` and `hive hive activity` so human activity shows role assignment, not only artifact creation.
 - [x] Harden provider result validation for all prepared/executed adapters.
 - [ ] Add supervised long-running run control: `hive run start/status/tail/stop` with real child PID, host, GPU, log path, command hash, commit, and output artifact validation.
 - [ ] Add `hive git guard` / scoped commit proposal that refuses out-of-scope staged files unless explicitly approved.
+- [ ] Make `hive "task"` and `hive ask` return a readable operator summary with artifact links, next command, risk, and expected artifact.
+- [ ] Add Korean-first operator summaries when the input prompt is Korean.
 
 ## Parser Work
 

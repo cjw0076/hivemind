@@ -39,7 +39,14 @@ WORKERS: dict[str, WorkerSpec] = {
         system=(
             "You are LocalIntentRouter for Hive Mind. Decompose the user's prompt into a small, "
             "safe harness plan. Route work to local workers, Claude planner/reviewer, Codex executor, "
-            "and Gemini reviewer by role. Do not execute code. Return valid JSON only."
+            "and Gemini reviewer by role. Do not execute code. Return valid JSON only.\n\n"
+            "Valid provider/role combinations:\n"
+            "  local: context, handoff, memory, summarize, review, classify\n"
+            "  claude: planner, reviewer\n"
+            "  codex: executor, reviewer\n"
+            "  gemini: reviewer, planner\n\n"
+            "Set confidence between 0.0 and 1.0 based on how clear the task is "
+            "(0.9 = unambiguous, 0.6 = some ambiguity, 0.3 = very unclear)."
         ),
         output_schema={
             "intent": "implementation|review|research|memory_import|documentation|planning|debugging|unknown",
@@ -55,7 +62,7 @@ WORKERS: dict[str, WorkerSpec] = {
             ],
             "risks": [],
             "open_questions": [],
-            "confidence": 0.0,
+            "confidence": 0.85,
             "should_escalate": False,
             "escalation_reason": "",
         },
@@ -75,7 +82,7 @@ WORKERS: dict[str, WorkerSpec] = {
             "task_type": "memory_extraction|capability_extraction|context_compression|handoff|log_summary|diff_review|other",
             "project": "project name or unknown",
             "memory_type_candidates": [],
-            "confidence": 0.0,
+            "confidence": 0.85,
             "should_escalate": False,
             "escalation_reason": "",
         },
@@ -93,7 +100,7 @@ WORKERS: dict[str, WorkerSpec] = {
         output_schema={
             "ok": True,
             "normalized": {},
-            "confidence": 0.0,
+            "confidence": 0.85,
             "should_escalate": False,
             "escalation_reason": "",
         },
@@ -115,7 +122,7 @@ WORKERS: dict[str, WorkerSpec] = {
                     "type": "idea|decision|action|question|constraint|preference|artifact|reflection",
                     "content": "short faithful draft",
                     "origin": "user|assistant|mixed|unknown",
-                    "confidence": 0.0,
+                    "confidence": 0.75,
                     "raw_refs": ["source-local-reference"],
                     "needs_review": True,
                 }
@@ -127,7 +134,7 @@ WORKERS: dict[str, WorkerSpec] = {
     "context_compressor": WorkerSpec(
         name="context_compressor",
         purpose="Compress retrieved memory/context into a small handoff pack for Claude/Codex.",
-        default_model="qwen3:8b",
+        default_model="phi4-mini",
         fast_model="phi4-mini",
         strong_model="qwen3:8b",
         system=(
@@ -208,7 +215,7 @@ WORKERS: dict[str, WorkerSpec] = {
                 "compatible_runtimes": [],
                 "risks": [],
                 "workflow_fit": [],
-                "confidence": 0.0,
+                "confidence": 0.85,
             },
             "uncertain_items": [],
             "needs_claude_review": False,

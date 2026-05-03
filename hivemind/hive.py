@@ -10,6 +10,8 @@ from .harness import (
     build_memory_draft,
     build_summary,
     build_verification,
+    auto_loop,
+    flow_advance,
     create_run,
     commit_summary,
     detect_agents,
@@ -25,6 +27,8 @@ from .harness import (
     format_doctor,
     format_doctor_scope,
     format_memory_drafts,
+    format_auto_loop_report,
+    format_flow_report,
     format_local_runtime,
     format_local_model_profile,
     format_local_benchmark,
@@ -78,6 +82,13 @@ from .harness import (
     policy_report,
     workspace_layout_report,
 )
+from .plan_dag import (
+    build_dag,
+    execute_step,
+    format_dag,
+    load_dag,
+    save_dag,
+)
 from .tui import TUI_VIEWS, print_status, run_tui
 
 
@@ -89,9 +100,11 @@ COMMANDS = {
     "policy",
     "local",
     "run",
+    "flow",
     "ask",
     "orchestrate",
     "debate",
+    "step",
     "status",
     "board",
     "events",
@@ -105,6 +118,7 @@ COMMANDS = {
     "context",
     "handoff",
     "invoke",
+    "loop",
     "verify",
     "summarize",
     "memory",
@@ -156,6 +170,13 @@ def resolve_root(root_arg: str) -> Path:
 
 
 def main(argv: list[str] | None = None) -> None:
+    try:
+        _main(argv)
+    except ValueError as exc:
+        raise SystemExit(f"hive: {exc}") from None
+
+
+def _main(argv: list[str] | None = None) -> None:
     argv = normalize_argv(list(sys.argv[1:] if argv is None else argv))
     parser = argparse.ArgumentParser(prog="hive", description="Hive Mind control plane for provider CLI harnessing")
     parser.add_argument("--root", default=".", help="workspace root")
@@ -231,11 +252,22 @@ def main(argv: list[str] | None = None) -> None:
     run_cmd.add_argument("--type", default="implementation", dest="task_type")
     run_cmd.add_argument("-q", "--quiet", action="store_true", help="only print the run id/path")
     run_cmd.add_argument("--json", action="store_true")
+    run_cmd.add_argument("--flow", action="store_true", help="advance the new run through the prepare-only workflow")
+    run_cmd.add_argument("--execute-local", action="store_true", help="allow local worker execution during --flow")
+    run_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="fast")
+
+    flow_cmd = sub.add_parser("flow", help="advance current or new run through event-driven prepare-only workflow")
+    flow_cmd.add_argument("task", nargs="?", help="optional task; creates a new workflow run when provided")
+    flow_cmd.add_argument("--run-id")
+    flow_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="fast")
+    flow_cmd.add_argument("--execute-local", action="store_true", help="allow local worker execution")
+    flow_cmd.add_argument("--json", action="store_true")
 
     ask_cmd = sub.add_parser("ask", help="route one prompt through local intent decomposition")
     ask_cmd.add_argument("prompt", help="user prompt/task")
     ask_cmd.add_argument("--run-id")
     ask_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="default")
+    ask_cmd.add_argument("--json", action="store_true")
     orchestrate_cmd = sub.add_parser("orchestrate", help="route a prompt into a multi-agent society plan")
     orchestrate_cmd.add_argument("prompt", help="user prompt/task")
     orchestrate_cmd.add_argument("--run-id")
@@ -284,9 +316,32 @@ def main(argv: list[str] | None = None) -> None:
     tui_cmd.add_argument("--view", choices=sorted(TUI_VIEWS), default="board")
     tui_cmd.add_argument("--observer", action="store_true", help="read-only TUI session")
 
-    plan_cmd = sub.add_parser("plan", help="show current routing plan")
+    plan_cmd = sub.add_parser("plan", help="show routing plan or generate a task DAG")
+    plan_sub = plan_cmd.add_subparsers(dest="plan_sub")
+    plan_dag_cmd = plan_sub.add_parser("dag", help="generate and save a step DAG for the current run")
+    plan_dag_cmd.add_argument("--run-id")
+    plan_dag_cmd.add_argument("--intent", default=None, help="override intent: implementation|review|planning|debugging")
+    plan_dag_cmd.add_argument("--json", action="store_true")
     plan_cmd.add_argument("--run-id")
     plan_cmd.add_argument("--json", action="store_true")
+
+    step_cmd = sub.add_parser("step", help="list, inspect, or run individual DAG steps")
+    step_sub = step_cmd.add_subparsers(dest="step_sub", required=True)
+    step_list_cmd = step_sub.add_parser("list", help="list all steps in the current plan DAG")
+    step_list_cmd.add_argument("--run-id")
+    step_list_cmd.add_argument("--json", action="store_true")
+    step_status_cmd = step_sub.add_parser("status", help="show status of a specific step")
+    step_status_cmd.add_argument("step_id")
+    step_status_cmd.add_argument("--run-id")
+    step_status_cmd.add_argument("--json", action="store_true")
+    step_run_cmd = step_sub.add_parser("run", help="execute a specific step")
+    step_run_cmd.add_argument("step_id", nargs="?", default=None, help="step ID (default: next runnable step)")
+    step_run_cmd.add_argument("--run-id")
+    step_run_cmd.add_argument("--execute", action="store_true", help="execute external agents (default: prepare-only)")
+    step_run_cmd.add_argument("--json", action="store_true")
+    step_next_cmd = step_sub.add_parser("next", help="show the next runnable step")
+    step_next_cmd.add_argument("--run-id")
+    step_next_cmd.add_argument("--json", action="store_true")
 
     sub.add_parser("runs", help="list recent runs")
 
@@ -308,6 +363,20 @@ def main(argv: list[str] | None = None) -> None:
     invoke_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="default")
     invoke_cmd.add_argument("--dry-run", action="store_true", help="prepare prompt/command/result artifacts without executing")
     invoke_cmd.add_argument("--execute", action="store_true", help="execute the external agent when supported")
+
+    loop_cmd = sub.add_parser("loop", help="option-only self-judgment loop over safe internal actions")
+    loop_cmd.add_argument("--run-id")
+    loop_cmd.add_argument("--max-steps", type=int, default=1)
+    loop_cmd.add_argument("--goal", default=None, help="natural-language goal for self-judgment; loop stops early when met")
+    loop_cmd.add_argument("--execute", action="store_true", help="execute explicitly allowed internal actions")
+    loop_cmd.add_argument(
+        "--allow",
+        action="append",
+        choices=["audit", "verify", "memory-draft", "summarize", "diff", "check-run", "local-context", "local-review"],
+        default=[],
+        help="allow one auto-executable action; repeatable",
+    )
+    loop_cmd.add_argument("--json", action="store_true")
 
     verify_cmd = sub.add_parser("verify", help="create a verification report")
     verify_cmd.add_argument("--run-id")
@@ -540,6 +609,17 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.cmd == "run":
         paths = create_run(root, args.task, project=args.project, task_type=args.task_type)
+        if args.flow:
+            report = flow_advance(root, run_id=paths.run_id, complexity=args.complexity, execute_local=args.execute_local)
+            if args.json:
+                import json
+
+                print(json.dumps(report, ensure_ascii=False, indent=None if args.quiet else 2, sort_keys=True))
+            elif args.quiet:
+                print(paths.run_id)
+            else:
+                print(format_flow_report(report))
+            return
         if args.json:
             import json
 
@@ -550,11 +630,33 @@ def main(argv: list[str] | None = None) -> None:
         else:
             print(paths.run_dir)
         return
+    if args.cmd == "flow":
+        if args.task and args.run_id:
+            parser.error("hive flow accepts either a task or --run-id, not both")
+        report = flow_advance(root, task=args.task, run_id=args.run_id, complexity=args.complexity, execute_local=args.execute_local)
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_flow_report(report))
+        return
     if args.cmd == "ask":
-        print(ask_router(root, args.prompt, run_id=args.run_id, complexity=args.complexity))
+        prompt = args.prompt.strip()
+        if not prompt:
+            raise SystemExit("hive ask: prompt cannot be empty")
+        plan_path = ask_router(root, prompt, run_id=args.run_id, complexity=args.complexity)
+        if args.json:
+            import json
+            print(json.dumps(json.loads(plan_path.read_text(encoding="utf-8")), ensure_ascii=False, indent=2))
+        else:
+            print(format_routing_plan(load_routing_plan(root, plan_path.parent.name)))
         return
     if args.cmd == "orchestrate":
-        report = orchestrate_prompt(root, args.prompt, run_id=args.run_id, complexity=args.complexity, execute=args.execute)
+        prompt = args.prompt.strip()
+        if not prompt:
+            raise SystemExit("hive orchestrate: prompt cannot be empty")
+        report = orchestrate_prompt(root, prompt, run_id=args.run_id, complexity=args.complexity, execute=args.execute)
         if args.json:
             import json
 
@@ -608,11 +710,26 @@ def main(argv: list[str] | None = None) -> None:
         run_tui(root, run_id=args.run_id, view="artifacts", control=False)
         return
     if args.cmd == "next":
+        import json as _json
+        dag = load_dag(root, args.run_id)
+        if dag is not None:
+            next_step = dag.next_sequential()
+            if args.json:
+                result = {"source": "plan_dag", "next": {"step_id": next_step.step_id, "kind": next_step.kind, "owner_role": next_step.owner_role, "command": f"hive step run {next_step.step_id}"} if next_step else None}
+                print(_json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                if dag.is_complete():
+                    print("All DAG steps complete.")
+                elif dag.is_blocked():
+                    print("DAG is blocked — check failed steps with: hive step list")
+                elif next_step:
+                    provider_hint = "/".join(next_step.provider_candidates) or "harness"
+                    print(f"Next step: {next_step.step_id}  [{next_step.owner_role} via {provider_hint}]")
+                    print(f"  Run: hive step run {next_step.step_id}")
+            return
         report = close_gap_loop(root, args.run_id)
         if args.json:
-            import json
-
-            print(json.dumps(report.get("next_actions", []), ensure_ascii=False, indent=2, sort_keys=True))
+            print(_json.dumps(report.get("next_actions", []), ensure_ascii=False, indent=2, sort_keys=True))
         else:
             actions = report.get("next_actions", [])
             next_action = actions[0] if actions else {}
@@ -635,14 +752,98 @@ def main(argv: list[str] | None = None) -> None:
         run_tui(root, run_id=args.run_id, view=args.view, control=not args.observer)
         return
     if args.cmd == "plan":
+        if getattr(args, "plan_sub", None) == "dag":
+            import json as _json
+            paths, state = load_run(root, args.run_id)
+            intent_override = getattr(args, "intent", None)
+            intent = intent_override or state.get("task_type") or "implementation"
+            dag = build_dag(paths.run_id, state.get("user_request", ""), intent)
+            dag_path = save_dag(root, dag)
+            if args.json:
+                print(_json.dumps(_json.loads(dag_path.read_text(encoding="utf-8")), ensure_ascii=False, indent=2))
+            else:
+                print(format_dag(dag, root))
+                print(f"\nSaved → {dag_path.relative_to(root).as_posix()}")
+            return
         plan = load_routing_plan(root, args.run_id)
         if args.json:
             import json
-
             print(json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True))
         else:
             print(format_routing_plan(plan))
+            dag = load_dag(root, args.run_id)
+            if dag:
+                print("")
+                print(format_dag(dag, root))
         return
+    if args.cmd == "step":
+        import json as _json
+        sub_cmd = args.step_sub
+        run_id_arg = getattr(args, "run_id", None)
+        dag = load_dag(root, run_id_arg)
+        if dag is None:
+            print("No plan DAG found. Run: hive plan dag")
+            return
+        if sub_cmd == "list":
+            if args.json:
+                from dataclasses import asdict
+                print(_json.dumps([asdict(s) for s in dag.steps], indent=2, ensure_ascii=False))
+            else:
+                print(format_dag(dag, root))
+            return
+        if sub_cmd == "status":
+            step = dag.by_id(args.step_id)
+            if step is None:
+                raise SystemExit(f"hive step status: step '{args.step_id}' not found in DAG")
+            if args.json:
+                from dataclasses import asdict
+                print(_json.dumps(asdict(step), indent=2, ensure_ascii=False))
+            else:
+                from dataclasses import asdict
+                for k, v in asdict(step).items():
+                    print(f"  {k}: {v}")
+            return
+        if sub_cmd == "next":
+            next_step = dag.next_sequential()
+            if next_step is None:
+                if dag.is_complete():
+                    print("All steps complete.")
+                elif dag.is_blocked():
+                    print("DAG is blocked — check failed steps.")
+                else:
+                    print("No runnable step found.")
+                return
+            provider_hint = "/".join(next_step.provider_candidates) or "harness"
+            print(f"Next: {next_step.step_id}  [{next_step.kind}  {next_step.owner_role} via {provider_hint}]")
+            print(f"  Run: hive step run {next_step.step_id}")
+            return
+        if sub_cmd == "run":
+            step_id = getattr(args, "step_id", None)
+            execute = getattr(args, "execute", False)
+            if not step_id:
+                next_step = dag.next_sequential()
+                if next_step is None:
+                    print("DAG is complete or blocked. Nothing to run.")
+                    return
+                step_id = next_step.step_id
+            result = execute_step(root, dag, step_id, execute=execute)
+            save_dag(root, dag)
+            if args.json:
+                print(_json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                ok = result.get("ok")
+                status = result.get("status", "?")
+                artifact = result.get("artifact", "")
+                icon = "✓" if ok else "✗"
+                print(f"{icon} {step_id}  [{status}]{('  → ' + artifact) if artifact else ''}")
+                if not ok and result.get("error"):
+                    print(f"  Error: {result['error']}")
+                next_step = dag.next_sequential()
+                if next_step:
+                    print(f"  Next: hive step run {next_step.step_id}")
+                elif dag.is_complete():
+                    print("  All steps complete.")
+            return
     if args.cmd == "runs":
         for run in list_runs(root)[:20]:
             marker = "*" if run.get("run_id") == get_current(root) else " "
@@ -675,6 +876,15 @@ def main(argv: list[str] | None = None) -> None:
             print(invoke_local(root, args.role, run_id=args.run_id, complexity=args.complexity))
             return
         print(invoke_external_agent(root, args.agent, args.role, run_id=args.run_id, execute=args.execute))
+        return
+    if args.cmd == "loop":
+        report = auto_loop(root, run_id=args.run_id, max_steps=args.max_steps, execute=args.execute, allowed_actions=args.allow, goal=args.goal)
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_auto_loop_report(report))
         return
     if args.cmd == "verify":
         print(build_verification(root, args.run_id))

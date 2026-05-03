@@ -2,7 +2,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from hivemind.harness import build_verification, create_run
+from hivemind.harness import build_verification, create_run, set_agent_status
 from hivemind.run_validation import validate_run_artifacts
 
 
@@ -53,6 +53,15 @@ class RunValidationTest(unittest.TestCase):
             report = validate_run_artifacts(paths.run_dir, root)
             self.assertEqual(report["verdict"], "needs_review")
             self.assertFalse(report["checks"]["provider_results_schema_valid"])
+
+    def test_failed_agent_state_fails_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "failed agent state", project="Hive Mind")
+            set_agent_status(paths, "local-context-compressor", "failed")
+            report = validate_run_artifacts(paths.run_dir, root)
+            self.assertEqual(report["verdict"], "needs_review")
+            self.assertFalse(report["checks"]["agent_states_valid"])
 
 if __name__ == "__main__":
     unittest.main()

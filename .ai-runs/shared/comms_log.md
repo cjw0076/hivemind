@@ -460,3 +460,24 @@ Naming note as of 2026-05-02 12:24 KST:
 - Decision: Added an explicit chair runtime spec before implementation, fixed qwen3-family Ollama JSON calls with top-level `think: false` plus `/no_think`, stopped routing from auto-running local workers, and compacted the local router method profile.
 - Evidence: Direct Ollama probes showed `options.think=false` still returned `{}` while top-level `think=false` returned valid JSON. `run_worker('intent_router')` now validates qwen3 JSON output. `hive ask "간단히 상태를 보고 다음 액션 분해"` produced `route_source=local_llm` after compacting the router profile; local/context remained prepared rather than auto-executed. Tests pass at 54.
 - Next: Add route-quality scoring and provider fallback for task decomposition so first-class routing is not dependent on one local model.
+
+## 2026-05-03 00:45 KST - Codex
+
+- Context: User asked to test Hive Mind like a product, compare it with manual shared-folder collaboration and direct agents, then add a self-judgment/auto-execution loop only as an option.
+- Decision: Added a reproducible product eval harness and implemented `hive loop` as an option-only chair loop. It defaults to dry-run, requires `--execute` plus per-action `--allow`, and blocks provider CLI execution, arbitrary shell commands, and memory commits.
+- Evidence: Product eval now covers wheel build/install, clean `hive init`, doctor, varied Korean/English routing tasks, provider preparation, run validation, next-action output, and auto-loop dry/blocked modes. Unit tests cover dry-run non-execution, allowlist enforcement, and external provider blocking.
+- Next: Finish the product evaluation report with an honest verdict: Hive Mind is useful for auditability and multi-agent handoff, but it is not yet superior to direct agents for simple tasks or production-grade without stronger routing, disagreement extraction, and convergence verification.
+
+## 2026-05-03 01:35 KST - Codex
+
+- Context: User asked to make verifier, evaluator, and actual-user persona subagents and actually use them.
+- Decision: Ran three read-only subagents, registered their roles in Hive Mind, and patched the issues they found instead of treating the review as advisory only.
+- Evidence: Added `hive.verifier`, `hive.product_evaluator`, and `persona.actual_user` roles; added `docs/SUBAGENT_PERSONAS.md` and `docs/SUBAGENT_REVIEW_2026_05_03.md`. Fixed auto-loop validation event types, failed-agent validation, failed local-action stopping, product eval `--out -`, temp source wheel builds, `hive ask --json`, and debate role validation. Verified `npm test` 59/59, `git diff --check`, product eval 19/19, and deep product eval 20/20.
+- Next: Turn subagent review from manual launch into a first-class `hive evaluate` style command, then implement route-quality scoring and real disagreement extraction.
+
+## 2026-05-03 14:35 KST - Codex
+
+- Context: User compared the real multi-agent working method with Hive Mind and then summarized a new DAG runtime slice.
+- Decision: Treat `plan_dag.py` as the right scheduler direction, but gate the next work order: safety/correctness first, parallel fan-out second. Current DAG CLI works, but execution is still one-step-at-a-time and provider execution has a Claude danger-mode workaround that must not become a default automation path.
+- Evidence: Temp-workspace smoke verified `hive plan dag --intent implementation`, `hive step list`, `hive step next`, and `hive step run context --json`. `npm test` passed 80 tests. `python scripts/hive-product-eval.py --deep --out -` passed 21/21.
+- Next: Harden DAG `execute_step()` result semantics, reconcile `hive flow` and `plan_dag.json`, policy-gate Claude execute, then implement bounded parallel fan-out and barrier join.
