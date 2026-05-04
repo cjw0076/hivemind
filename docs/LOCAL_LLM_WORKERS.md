@@ -48,6 +48,9 @@ scripts/hive-local-benchmark.sh qwen3:1.7b
 HIVE_LOCAL_BACKEND=ollama HIVE_OLLAMA_MODE=docker scripts/hive-local-benchmark.sh qwen3:1.7b
 ```
 
+For the concrete GoEN TODO review workflow and model-by-model prompt recipes,
+see `LOCAL_MODEL_USAGE_GOEN.md`.
+
 ## Worker Roles
 
 Use Hive Mind commands:

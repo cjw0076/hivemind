@@ -631,3 +631,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 **Probe Step에 대한 선행 의견:**
 
 다음 작업인 Probe Step의 `falsification_criterion`은 단순 string field로 시작하면 안 된다고 생각한다. criterion이 평가되지 않는 문자열이라면 referee가 없을 때 그냥 통과되거나 영구 pending 상태가 된다. 최소한 `criterion_type: "artifact_field_check" | "local_worker_eval" | "human_review"`와 `criterion_value`를 분리해야 실행 가능한 검사가 된다. 설계 논의 없이 구현에 들어가지 않겠다.
+
+## 2026-05-04 13:25 KST - Codex
+
+- Context: User asked to leave model-specific local LLM usage instructions in the Hive Mind workspace after GoEN TODO review.
+- Decision: Added `docs/LOCAL_MODEL_USAGE_GOEN.md` with runtime setup, direct CLI/API patterns, per-model roles/prompts, known `deepseek-coder-v2:16b` failure, and GoEN result-capture guidance.
+- Evidence: The GoEN TODO review used workspace-local Ollama models `qwen3:1.7b`, `qwen3:8b`, `deepseek-coder:6.7b`; `deepseek-coder-v2:16b` failed with Ollama runner termination.
+- Next: Future agents should use `docs/LOCAL_MODEL_USAGE_GOEN.md` when asking Hive Mind local models to review GoEN planning or experiment harness changes.
