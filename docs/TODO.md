@@ -132,7 +132,8 @@ Source: `docs/HIVE_MIND_GAPS.md` section "Header Role Decomposition and Per-Laye
 - [ ] Extend ledger replay with artifact content hashes and command/prompt hash drift.
 - [x] Extend TUI ledger view with current authority, waiting votes, active intent, replay issues, and verifier/proof state.
 - [ ] Extend TUI protocol drilldown with per-intent conditions, artifact paths, and active lease details.
-- [ ] Design `ProbeStep` criterion schema before implementation: typed criterion, evaluator, expected artifact field, timeout, and failure disposition.
+- [x] Design `ProbeStep` criterion schema before implementation: typed criterion, evaluator, expected artifact field, timeout, and failure disposition.
+- [x] Surface `ProbeStep` action, confidence, and criteria count in ledger replay, TUI ledger cockpit, and supervised run status.
 - [ ] Add bounded parallel fan-out/fan-in runner for safe runnable steps, with durable resume and barrier joins.
 - [ ] Add evaluation-aware barrier joins: close only when dependency status and evaluation policy are satisfied.
 - [ ] Add `RefereeDecision` artifact and `referee` step type; prefer required next tests over winner selection.

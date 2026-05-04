@@ -22,7 +22,7 @@ from .dag_state import STEP_LEASES_DIR, atomic_write
 from .harness import load_run
 from .plan_dag import build_dag, execute_fan_out, load_dag, save_dag
 from .utils import now_iso
-from .workloop import append_execution_ledger, replay_execution_ledger
+from .workloop import append_execution_ledger, format_probe_confidence, replay_execution_ledger
 
 
 SUPERVISOR_STATE_FILE = "supervisor_state.json"
@@ -192,6 +192,7 @@ def run_supervisor(
             save_dag(root, dag)
             sup_state["rounds"] = round_index
             sup_state["last_result"] = result
+            sup_state["last_probes"] = probe_summaries_from_result(result)
             append_supervisor_log(
                 root,
                 run_id,
@@ -244,7 +245,51 @@ def run_supervisor(
 
 def supervisor_result_is_waiting(result: dict[str, Any]) -> bool:
     statuses = [str(item.get("status") or "") for item in (result.get("results") or {}).values()]
-    return any(status in {"prepared", "protocol_gate", "reversibility_gate", "barrier_waiting"} for status in statuses)
+    probe_actions = [str(item.get("probe_action") or "") for item in (result.get("results") or {}).values()]
+    return any(status in {"prepared", "protocol_gate", "reversibility_gate", "barrier_waiting"} for status in statuses) or any(
+        action == "override_pending" for action in probe_actions
+    )
+
+
+def probe_summaries_from_result(result: dict[str, Any]) -> list[dict[str, Any]]:
+    summaries: list[dict[str, Any]] = []
+    for step_id, item in (result.get("results") or {}).items():
+        if not isinstance(item, dict) or "probe_action" not in item:
+            continue
+        summaries.append(
+            {
+                "step_id": str(step_id),
+                "action": item.get("probe_action"),
+                "confidence": item.get("probe_confidence"),
+                "passed": item.get("probe_passed"),
+                "status": item.get("status"),
+                "evidence": item.get("probe_evidence"),
+            }
+        )
+    return summaries
+
+
+def probe_summaries_from_replay(replay: dict[str, Any]) -> list[dict[str, Any]]:
+    summaries: list[dict[str, Any]] = []
+    for step_id, step in (replay.get("steps") or {}).items():
+        if not isinstance(step, dict):
+            continue
+        probe = step.get("probe")
+        if not isinstance(probe, dict):
+            continue
+        summaries.append(
+            {
+                "step_id": str(step_id),
+                "action": probe.get("action"),
+                "confidence": probe.get("confidence"),
+                "passed": None,
+                "status": probe.get("status"),
+                "criteria_count": probe.get("criteria_count"),
+                "seq": probe.get("seq"),
+            }
+        )
+    summaries.sort(key=lambda item: int(item.get("seq") or 0))
+    return summaries
 
 
 def start_supervisor_detached(
@@ -308,6 +353,9 @@ def supervisor_status_report(root: Path, run_id: str | None = None) -> dict[str,
         "issue_count": len(replay.get("issues") or []),
     }
     state["active_leases"] = active_step_leases(root, paths_obj.run_id)
+    state["last_probes"] = state.get("last_probes") or probe_summaries_from_result(state.get("last_result") or {})
+    if not state["last_probes"]:
+        state["last_probes"] = probe_summaries_from_replay(replay)
     return state
 
 
@@ -368,6 +416,21 @@ def format_supervisor_status(report: dict[str, Any]) -> str:
     last = report.get("last_result") or {}
     if last:
         lines.append(f"Last Round: mode={last.get('mode')} dispatched={last.get('dispatched')} next={last.get('next')}")
+    probes = report.get("last_probes") or []
+    lines.append("Probe:")
+    if not probes:
+        lines.append("- none")
+    else:
+        for probe in probes[-3:]:
+            criteria = probe.get("criteria_count")
+            criteria_part = f" criteria={criteria}" if criteria is not None else ""
+            passed = probe.get("passed")
+            passed_part = f" passed={passed}" if passed is not None else ""
+            lines.append(
+                f"- {probe.get('step_id')} action={probe.get('action') or '-'} "
+                f"confidence={format_probe_confidence(probe.get('confidence'))} "
+                f"status={probe.get('status') or '-'}{criteria_part}{passed_part}"
+            )
     if report.get("error"):
         lines.append(f"Error: {report.get('error')}")
     return "\n".join(lines)

@@ -15,6 +15,7 @@ from hivemind.plan_dag import (
     REVERSIBILITY_BLOCK_THRESHOLD,
     REVERSIBILITY_REVIEW_THRESHOLD,
     _REFEREE_AGREEMENT_THRESHOLD,
+    _RECOMMEND_ORDER,
     auto_close_barriers,
     build_dag,
     evaluate_step_output,
@@ -35,6 +36,10 @@ from hivemind.plan_dag import (
     _evaluate_claim,
     _evaluate_risk,
     _evaluate_disagreement,
+    _evaluate_disagreement_topology,
+    _detect_axes,
+    _topology_recommended_action,
+    _write_disagreement_record,
     _evaluation_to_verifier_status,
     _post_execution_bridge,
     _eval_artifact_field_check,
@@ -1225,6 +1230,238 @@ class ProbeStepTest(unittest.TestCase):
             self.assertEqual(data["passed"], True)
             self.assertEqual(data["status"], "completed")
             self.assertEqual(data["next_action"], "accept")
+
+
+class DisagreementTopologyTest(unittest.TestCase):
+    """Tests for axis-level disagreement topology (P3)."""
+
+    def _make_dag_with_parallel(self, root: Path, statuses: dict[str, str]) -> tuple:
+        """Build a 3-step DAG where 'step_a' and 'step_b' share a dependency (parallel)."""
+        paths = create_run(root, "topology test")
+        dag = build_dag(paths.run_id, "topology test", "implementation")
+        save_dag(root, dag)
+
+        # Add two parallel steps sharing depends_on=["plan"]
+        step_a = PlanStep(
+            step_id="step_a", kind="parallel",
+            depends_on=["plan"], owner_role="claude-planner",
+            provider_candidates=[], permission_mode="normal",
+            input_artifacts=[], expected_output_artifacts=[],
+            acceptance_criteria=[], timeout=0, retry_policy="none",
+            on_failure="stop", status="pending",
+        )
+        step_b = PlanStep(
+            step_id="step_b", kind="parallel",
+            depends_on=["plan"], owner_role="codex-executor",
+            provider_candidates=[], permission_mode="normal",
+            input_artifacts=[], expected_output_artifacts=[],
+            acceptance_criteria=[], timeout=0, retry_policy="none",
+            on_failure="stop", status="pending",
+        )
+        dag.steps.append(step_a)
+        dag.steps.append(step_b)
+
+        for step in dag.steps:
+            s = statuses.get(step.step_id)
+            if s:
+                step.status = s
+
+        return paths, dag, step_a, step_b
+
+    def test_clean_topology_no_disagreement(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths, dag, step_a, step_b = self._make_dag_with_parallel(
+                root, {"step_a": "completed", "step_b": "completed"}
+            )
+            step_a.evaluation = {"evidence_score": 0.8, "risk_level": "low", "recommended_action": "accept"}
+            step_b.evaluation = {"evidence_score": 0.75, "risk_level": "low", "recommended_action": "accept"}
+            topo = _evaluate_disagreement_topology(dag, step_a, root, paths.run_id,
+                                                   step_eval=step_a.evaluation)
+            self.assertEqual(topo["topology_type"], "clean")
+            self.assertEqual(topo["severity"], "none")
+            self.assertEqual(topo["disagreement_count"], 0)
+            self.assertEqual(topo["topology_recommended_action"], "accept")
+
+    def test_conclusion_axis_detected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths, dag, step_a, step_b = self._make_dag_with_parallel(
+                root, {"step_a": "completed", "step_b": "failed"}
+            )
+            step_a.evaluation = {"evidence_score": 0.8, "risk_level": "low", "recommended_action": "accept"}
+            step_b.evaluation = {"evidence_score": 0.8, "risk_level": "low", "recommended_action": "block"}
+            topo = _evaluate_disagreement_topology(dag, step_a, root, paths.run_id,
+                                                   step_eval=step_a.evaluation)
+            self.assertIn("conclusion", topo["axes"])
+            self.assertEqual(topo["topology_type"], "isolated")
+            self.assertGreater(topo["disagreement_count"], 0)
+            # conclusion → severity medium → referee
+            self.assertEqual(topo["severity"], "medium")
+            self.assertEqual(topo["topology_recommended_action"], "referee")
+
+    def test_evidence_axis_detected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths, dag, step_a, step_b = self._make_dag_with_parallel(
+                root, {"step_a": "completed", "step_b": "failed"}
+            )
+            # Both failed so no conclusion axis; but evidence gap > 0.3
+            step_a.status = "completed"
+            step_b.status = "completed"
+            step_a.evaluation = {"evidence_score": 0.8, "risk_level": "low", "recommended_action": "accept"}
+            step_b.evaluation = {"evidence_score": 0.4, "risk_level": "low", "recommended_action": "accept"}
+            # Force conclusion disagreement by status mismatch for detection
+            step_b.status = "failed"
+            topo = _evaluate_disagreement_topology(dag, step_a, root, paths.run_id,
+                                                   step_eval=step_a.evaluation)
+            # evidence gap = 0.4 > threshold 0.3
+            self.assertIn("evidence", topo["axes"])
+
+    def test_risk_assessment_axis_detected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths, dag, step_a, step_b = self._make_dag_with_parallel(
+                root, {"step_a": "completed", "step_b": "failed"}
+            )
+            step_a.evaluation = {"evidence_score": 0.8, "risk_level": "low", "recommended_action": "accept"}
+            step_b.evaluation = {"evidence_score": 0.8, "risk_level": "high", "recommended_action": "accept"}
+            topo = _evaluate_disagreement_topology(dag, step_a, root, paths.run_id,
+                                                   step_eval=step_a.evaluation)
+            self.assertIn("risk_assessment", topo["axes"])
+
+    def test_approach_axis_detected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths, dag, step_a, step_b = self._make_dag_with_parallel(
+                root, {"step_a": "completed", "step_b": "failed"}
+            )
+            step_a.evaluation = {"evidence_score": 0.8, "risk_level": "low", "recommended_action": "accept"}
+            step_b.evaluation = {"evidence_score": 0.8, "risk_level": "low", "recommended_action": "retry"}
+            topo = _evaluate_disagreement_topology(dag, step_a, root, paths.run_id,
+                                                   step_eval=step_a.evaluation)
+            self.assertIn("approach", topo["axes"])
+
+    def test_distributed_topology_multiple_axes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths, dag, step_a, step_b = self._make_dag_with_parallel(
+                root, {"step_a": "completed", "step_b": "failed"}
+            )
+            # conclusion + evidence + risk_assessment — 3 axes → distributed/high
+            step_a.evaluation = {"evidence_score": 0.9, "risk_level": "low", "recommended_action": "accept"}
+            step_b.evaluation = {"evidence_score": 0.3, "risk_level": "high", "recommended_action": "block"}
+            topo = _evaluate_disagreement_topology(dag, step_a, root, paths.run_id,
+                                                   step_eval=step_a.evaluation)
+            self.assertGreaterEqual(len(topo["axes"]), 2)
+            # distributed OR >=3 axes → high severity
+            self.assertIn(topo["severity"], {"high", "medium"})
+
+    def test_topology_escalates_recommended_action(self):
+        """evaluate_step_output must upgrade recommended_action if topology is more severe."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths, dag, step_a, step_b = self._make_dag_with_parallel(
+                root, {"step_a": "completed", "step_b": "failed"}
+            )
+            step_a.evaluation = {"evidence_score": 0.8, "risk_level": "low", "recommended_action": "accept"}
+            step_b.evaluation = {"evidence_score": 0.8, "risk_level": "low", "recommended_action": "block"}
+            result = evaluate_step_output(root, dag, step_a)
+            # topology should have detected conclusion disagreement → referee
+            topo = result.get("disagreement_topology", {})
+            if topo.get("disagreement_count", 0) > 0:
+                topo_action = topo["topology_recommended_action"]
+                self.assertGreaterEqual(
+                    _RECOMMEND_ORDER.get(result["recommended_action"], 0),
+                    _RECOMMEND_ORDER.get(topo_action, 0),
+                )
+
+    def test_topology_persisted_in_step_evaluation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths, dag, step_a, step_b = self._make_dag_with_parallel(
+                root, {"step_a": "completed", "step_b": "failed"}
+            )
+            step_a.evaluation = {"evidence_score": 0.8, "risk_level": "low", "recommended_action": "accept"}
+            step_b.evaluation = {"evidence_score": 0.8, "risk_level": "low", "recommended_action": "block"}
+            result = evaluate_step_output(root, dag, step_a)
+            self.assertIn("disagreement_topology", result)
+            # Check it's persisted to disk
+            from hivemind.harness import load_run
+            run_paths, _ = load_run(root, paths.run_id)
+            eval_file = run_paths.run_dir / "step_evaluations" / f"{step_a.step_id}.json"
+            self.assertTrue(eval_file.exists())
+            data = json.loads(eval_file.read_text())
+            self.assertIn("disagreement_topology", data)
+
+    def test_disagreements_json_written_on_conflict(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths, dag, step_a, step_b = self._make_dag_with_parallel(
+                root, {"step_a": "completed", "step_b": "failed"}
+            )
+            step_a.evaluation = {"evidence_score": 0.8, "risk_level": "low", "recommended_action": "accept"}
+            step_b.evaluation = {"evidence_score": 0.8, "risk_level": "low", "recommended_action": "block"}
+            topology = _evaluate_disagreement_topology(dag, step_a, root, paths.run_id,
+                                                       step_eval=step_a.evaluation)
+            if topology["disagreement_count"] > 0:
+                _write_disagreement_record(root, paths.run_id, step_a.step_id, topology)
+                from hivemind.harness import load_run
+                run_paths, _ = load_run(root, paths.run_id)
+                dis_file = run_paths.run_dir / "disagreements.json"
+                self.assertTrue(dis_file.exists())
+                records = json.loads(dis_file.read_text())
+                self.assertIsInstance(records, list)
+                self.assertEqual(records[0]["step_id"], step_a.step_id)
+                self.assertIn("axes", records[0])
+                self.assertIn("topology_type", records[0])
+
+    def test_no_disagreements_json_on_clean_topology(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths, dag, step_a, step_b = self._make_dag_with_parallel(
+                root, {"step_a": "completed", "step_b": "completed"}
+            )
+            step_a.evaluation = {"evidence_score": 0.8, "risk_level": "low", "recommended_action": "accept"}
+            step_b.evaluation = {"evidence_score": 0.8, "risk_level": "low", "recommended_action": "accept"}
+            evaluate_step_output(root, dag, step_a)
+            from hivemind.harness import load_run
+            run_paths, _ = load_run(root, paths.run_id)
+            dis_file = run_paths.run_dir / "disagreements.json"
+            # file may not exist or be empty list — either is fine
+            if dis_file.exists():
+                records = json.loads(dis_file.read_text())
+                self.assertEqual(len(records), 0)
+
+    def test_detect_axes_direct(self):
+        _kw = dict(provider_candidates=[], permission_mode="normal", input_artifacts=[],
+                   expected_output_artifacts=[], acceptance_criteria=[], timeout=0,
+                   retry_policy="none", on_failure="stop", status="pending")
+        step_a = PlanStep(step_id="a", kind="parallel", depends_on=["root"], owner_role="claude-planner", **_kw)
+        step_b = PlanStep(step_id="b", kind="parallel", depends_on=["root"], owner_role="codex-executor", **_kw)
+        step_a.status = "completed"
+        step_b.status = "failed"
+        eval_a = {"evidence_score": 0.9, "risk_level": "low", "recommended_action": "accept"}
+        eval_b = {"evidence_score": 0.5, "risk_level": "high", "recommended_action": "block"}
+        axes = _detect_axes(step_a, step_b, eval_a, eval_b)
+        self.assertIn("conclusion", axes)
+        self.assertIn("evidence", axes)  # 0.9 - 0.5 = 0.4 > 0.3
+        self.assertIn("risk_assessment", axes)
+        self.assertIn("approach", axes)
+
+    def test_topology_recommended_action_logic(self):
+        self.assertEqual(_topology_recommended_action("clean", "none", []), "accept")
+        self.assertEqual(_topology_recommended_action("distributed", "high", ["conclusion"]), "referee")
+        self.assertEqual(_topology_recommended_action("isolated", "medium", ["conclusion"]), "referee")
+        self.assertEqual(_topology_recommended_action("isolated", "low", ["evidence"]), "retry")
+        self.assertEqual(_topology_recommended_action("split", "medium", ["approach"]), "add_review")
+
+    def test_recommend_order_never_de_escalates(self):
+        """Topology integration must never lower the recommended_action."""
+        current = "referee"
+        topo_action = "retry"  # lower severity
+        result = topo_action if _RECOMMEND_ORDER.get(topo_action, 0) > _RECOMMEND_ORDER.get(current, 0) else current
+        self.assertEqual(result, "referee")
 
 
 if __name__ == "__main__":

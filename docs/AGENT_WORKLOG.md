@@ -168,3 +168,17 @@
 - Decision: Implement the first supervisor slice as a ledger client: `hive run start/status/tail/stop`, `supervisor_state.json`, `supervisor.log`, PID/host/command hash/git commit/replay health, and active step leases.
 - Evidence: Added `hivemind/supervisor.py`, wired `hivemind/hive.py`, added `tests/test_supervisor.py`, and updated docs/TODO. Focused supervisor/DAG/workloop tests passed 85 tests. CLI smoke confirmed `hive run start/status/tail` returns supervisor status/logs; full `npm test` passed 198 tests.
 - Next: Run full verification. Later slices should add heartbeat/timeout recovery and GPU/runtime snapshot, then integrate Claude's ProbeStep gate.
+
+## 2026-05-04 16:08 KST - Codex - Probe Visibility Start
+
+- Context: Claude completed typed ProbeStep criteria and writes `probe_action`, `probe_confidence`, and `criteria_count` into ledger extras, but operator surfaces do not show them yet.
+- Ownership: Codex owns the integration slice that lifts ProbeStep results into ledger replay, TUI ledger rows, and supervisor status output.
+- Expected files: `hivemind/workloop.py`, `hivemind/tui.py`, `hivemind/supervisor.py`, focused tests, `docs/TODO.md`, `docs/TUI_HARNESS.md`, `docs/LEDGER_PROTOCOL.md`, and `.ai-runs/shared/comms_log.md`.
+- Deferred: ProbeStep criterion semantics, Disagreement Topology, and Referee Escrow remain Track A / Claude-facing design work.
+
+## 2026-05-04 16:08 KST - Codex - Probe Visibility Complete
+
+- Context: Completed the operator visibility slice for typed ProbeStep output.
+- Decision: Ledger replay now reconstructs probe gate state from ledger extras, recent ledger rows show compact probe hints, the TUI authority cockpit shows the latest probe action/confidence/criteria/status, and supervisor status reports last probe summaries. `override_pending` human-review probes keep the supervisor in a waiting state.
+- Evidence: Updated `hivemind/workloop.py`, `hivemind/tui.py`, `hivemind/supervisor.py`, focused tests, and docs/TODO references.
+- Next: Track A can continue with Disagreement Topology and Referee Escrow; Codex can next add supervisor heartbeat/timeout recovery or consume probe gates in fan-out policy.

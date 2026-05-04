@@ -274,6 +274,17 @@ def replay_steps(records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         for touched in record.get("files_touched") or []:
             if touched not in step["files_touched"]:
                 step["files_touched"].append(touched)
+        extra = record.get("extra") if isinstance(record.get("extra"), dict) else {}
+        if "probe_action" in extra:
+            step["probe"] = {
+                "step_id": str(step_id),
+                "action": extra.get("probe_action"),
+                "confidence": extra.get("probe_confidence"),
+                "criteria_count": extra.get("criteria_count"),
+                "status": status or step.get("status"),
+                "event": event,
+                "seq": record.get("seq"),
+            }
     return steps
 
 
@@ -454,7 +465,26 @@ def format_ledger_entry(record: dict[str, Any]) -> str:
     file_hint = ", ".join(str(path) for path in files[:3])
     if len(files) > 3:
         file_hint += f" +{len(files) - 3}"
+    extra = record.get("extra") if isinstance(record.get("extra"), dict) else {}
+    extra_hints: list[str] = []
+    if "probe_action" in extra:
+        action = extra.get("probe_action")
+        confidence = format_probe_confidence(extra.get("probe_confidence"))
+        criteria = extra.get("criteria_count")
+        extra_hints.append(f"probe={action} conf={confidence} criteria={criteria}")
+    if extra_hints:
+        suffix = " | ".join(extra_hints)
+        file_hint = f"{file_hint} | {suffix}" if file_hint else suffix
     return f"{seq} {ts} {actor:<24} {event:<26} {step:<18} {status:<12} {file_hint}"
+
+
+def format_probe_confidence(value: Any) -> str:
+    if value is None:
+        return "-"
+    try:
+        return f"{float(value):.2f}"
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def format_execution_ledger(records: list[dict[str, Any]]) -> str:

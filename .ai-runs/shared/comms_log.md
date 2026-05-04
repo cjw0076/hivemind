@@ -766,3 +766,18 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Evidence: 25 new ProbeStepTest cases; full suite 223/223 (previously-broken workloop test also fixed). Downstream blocking: failed probe → status="failed" → DAG runnable() naturally excludes dependents.
 - Boundary: workloop.py and protocol.py not modified.
 - Next: Disagreement Topology axis classification (conclusion/evidence/risk/approach). Codex: connect `probe_action`/`probe_confidence`/`criteria_count` to TUI ledger cockpit and replay health.
+
+## 2026-05-04 16:08 KST - Codex
+
+- Context: Claude's ProbeStep writes gate output into ledger extras, but operator surfaces still hid the result.
+- Decision: Treat probe output as first-class replay state and show it in the TUI ledger cockpit plus supervised run status.
+- Evidence: `replay_steps()` now stores latest probe action/confidence/criteria/status; `format_ledger_entry()` appends compact probe hints; `build_protocol_authority_rows()` shows the latest probe; `format_supervisor_status()` reports last probes; `override_pending` keeps the supervisor waiting.
+- Next: Run verification, then proceed to Disagreement Topology / Referee Escrow or supervisor heartbeat depending on the active queue.
+
+## 2026-05-04 KST - Claude
+
+- Context: Track A Disagreement Topology — extend StepEvaluation with axis-level conflict classification.
+- Decision: Implemented axis-level disagreement topology as an extension of `evaluate_step_output`. Four detection axes: `conclusion` (step outcome mismatch), `evidence` (evidence_score gap > 0.3), `risk_assessment` (risk_level differs), `approach` (recommended_action differs). Topology type: `clean` (no conflict), `isolated` (1 conflicting sibling), `split` (>1 sibling, 1 axis), `distributed` (>1 axis). Severity: `none/low/medium/high`. `_topology_recommended_action` maps to accept/retry/add_review/referee. Escalation rule: topology can only upgrade `recommended_action`, never downgrade (`_RECOMMEND_ORDER` guard). Disagreement records appended to `.runs/<run_id>/disagreements.json`. `disagreement_topology` key merged into evaluation dict and persisted to `step_evaluations/<step_id>.json`.
+- Evidence: 13 new `DisagreementTopologyTest` cases covering each axis, distributed topology, escalation guard, persistence, and `disagreements.json` write. Full suite: 241/241 passing.
+- Boundary: `workloop.py` and `protocol.py` not modified; bridge still never raises.
+- Not implemented yet (pending design discussion): Referee Escrow, LLM referee, `kind="checkpoint"` step, 6th evaluator (baseline_comparison), `hive inject` channel.

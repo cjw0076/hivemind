@@ -7,8 +7,10 @@ from pathlib import Path
 from hivemind.harness import create_run, read_control_lock, release_control_lock
 from hivemind.plan_dag import build_dag
 from hivemind.protocol import build_execution_intent, check_intent, decide_intent, save_intent
+from hivemind.workloop import append_execution_ledger
 from hivemind.tui import (
     ComposerState,
+    build_probe_authority_rows,
     build_ledger_view_rows,
     build_protocol_authority_rows,
     handle_tui_command,
@@ -162,6 +164,22 @@ class TuiComposerTest(unittest.TestCase):
         self.assertIn("policy-gate=approve_with_conditions", text)
         self.assertIn("Replay Issues: missing_artifact", text)
 
+    def test_probe_authority_rows_show_latest_probe_gate(self) -> None:
+        replay = {
+            "steps": {
+                "context": {"probe": {"step_id": "context", "action": "accept", "confidence": 0.9, "criteria_count": 1, "status": "completed", "seq": 1}},
+                "verify": {"probe": {"step_id": "verify", "action": "block", "confidence": 0.25, "criteria_count": 2, "status": "failed", "seq": 2}},
+            }
+        }
+
+        rows = build_probe_authority_rows(replay)
+        text = "\n".join(rows)
+
+        self.assertIn("Probe: verify", text)
+        self.assertIn("action=block", text)
+        self.assertIn("confidence=0.25", text)
+        self.assertIn("criteria=2", text)
+
     def test_ledger_view_rows_include_protocol_panel(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -180,6 +198,27 @@ class TuiComposerTest(unittest.TestCase):
             self.assertIn("Decision:", text)
             self.assertIn("Recent Ledger", text)
             self.assertIn("intent_proposed", text)
+
+    def test_ledger_view_rows_include_probe_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "tui probe panel")
+            append_execution_ledger(
+                root,
+                paths.run_id,
+                "step_failed",
+                actor="harness",
+                step_id="verify",
+                status="failed",
+                extra={"probe_action": "block", "probe_confidence": 0.25, "criteria_count": 2},
+            )
+
+            rows = build_ledger_view_rows(root, paths, 20)
+            text = "\n".join(rows)
+
+            self.assertIn("Probe: verify", text)
+            self.assertIn("action=block", text)
+            self.assertIn("probe=block conf=0.25 criteria=2", text)
 
     def test_paste_normalization_flattens_multiline_text(self) -> None:
         self.assertEqual(normalize_paste_text("a\nb\r\nc"), "a b c")

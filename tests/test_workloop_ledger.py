@@ -13,6 +13,7 @@ from hivemind.workloop import (
     append_execution_ledger,
     capture_worktree_snapshot,
     execution_ledger_path,
+    format_ledger_entry,
     read_execution_ledger,
     replay_execution_ledger,
 )
@@ -73,6 +74,29 @@ class WorkloopLedgerTest(unittest.TestCase):
             self.assertTrue(report["seq_ok"])
             self.assertTrue(report["steps"]["verify"]["started"])
             self.assertTrue(report["steps"]["verify"]["completed"])
+
+    def test_replay_reconstructs_probe_summary_from_ledger_extra(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "ledger probe replay")
+
+            record = append_execution_ledger(
+                root,
+                paths.run_id,
+                "step_failed",
+                actor="harness",
+                step_id="verify",
+                status="failed",
+                extra={"probe_action": "block", "probe_confidence": 0.25, "criteria_count": 2},
+            )
+
+            report = replay_execution_ledger(root, paths.run_id)
+            probe = report["steps"]["verify"]["probe"]
+
+            self.assertEqual(probe["action"], "block")
+            self.assertEqual(probe["confidence"], 0.25)
+            self.assertEqual(probe["criteria_count"], 2)
+            self.assertIn("probe=block conf=0.25 criteria=2", format_ledger_entry(record))
 
     def test_replay_detects_hash_tamper(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

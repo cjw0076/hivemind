@@ -688,6 +688,200 @@ def _evaluate_disagreement(dag: "PlanDAG", step: "PlanStep") -> dict[str, Any]:
     return {"disagreement_count": len(conflicting), "disagreement_targets": conflicting}
 
 
+# ---------------------------------------------------------------------------
+# Disagreement topology
+# ---------------------------------------------------------------------------
+
+_EVIDENCE_AXIS_THRESHOLD = 0.3   # min evidence score gap to flag divergence
+
+# Priority order for escalation override (never de-escalate)
+_RECOMMEND_ORDER: dict[str, int] = {
+    "accept": 0, "retry": 1, "add_review": 2,
+    "escalate": 3, "referee": 4, "block": 5, "skip": 5,
+}
+
+
+def _load_sibling_evaluation(root: "Path", run_id: str, sibling_id: str) -> dict[str, Any] | None:
+    """Load persisted step_evaluations/<sibling_id>.json, best-effort."""
+    try:
+        from .harness import load_run
+        paths, _ = load_run(root, run_id)
+        path = paths.run_dir / "step_evaluations" / f"{sibling_id}.json"
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return None
+
+
+def _detect_axes(
+    step: "PlanStep",
+    sibling: "PlanStep",
+    step_eval: dict[str, Any] | None,
+    sibling_eval: dict[str, Any] | None,
+) -> list[str]:
+    """Return which disagreement axes are active between step and sibling."""
+    axes: list[str] = []
+
+    step_ok = step.status in {"completed", "prepared"}
+    sib_ok  = sibling.status in {"completed", "prepared"}
+    if step_ok != sib_ok:
+        axes.append("conclusion")
+
+    step_ev = (step_eval or {}).get("evidence_score")
+    sib_ev  = (sibling_eval or {}).get("evidence_score")
+    if step_ev is not None and sib_ev is not None:
+        if abs(step_ev - sib_ev) > _EVIDENCE_AXIS_THRESHOLD:
+            axes.append("evidence")
+
+    step_risk = (step_eval or {}).get("risk_level")
+    sib_risk  = (sibling_eval or {}).get("risk_level")
+    if step_risk and sib_risk and step_risk != sib_risk:
+        axes.append("risk_assessment")
+
+    step_action = (step_eval or {}).get("recommended_action")
+    sib_action  = (sibling_eval or {}).get("recommended_action")
+    if step_action and sib_action and step_action != sib_action:
+        axes.append("approach")
+
+    return axes
+
+
+def _topology_recommended_action(topology_type: str, severity: str, axes: list[str]) -> str:
+    if severity == "none" or topology_type == "clean":
+        return "accept"
+    if severity == "high" or topology_type == "distributed":
+        return "referee"
+    if "conclusion" in axes or "risk_assessment" in axes:
+        return "referee" if severity == "medium" else "add_review"
+    if severity == "medium":
+        return "add_review"
+    return "retry"
+
+
+def _evaluate_disagreement_topology(
+    dag: "PlanDAG",
+    step: "PlanStep",
+    root: "Path",
+    run_id: str,
+    step_eval: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return axis-level disagreement topology.
+
+    step_eval is the current evaluation dict (pass the freshly computed dict so
+    axis detection uses up-to-date evidence/risk/approach values).
+    """
+    siblings = [
+        s for s in dag.steps
+        if s.step_id != step.step_id
+        and set(s.depends_on) & set(step.depends_on)
+        and s.status in {"completed", "prepared", "failed"}
+        and s.kind == "parallel"
+    ]
+    step_ok = step.status in {"completed", "prepared"}
+    conflicting = [s for s in siblings if (s.status == "failed") != (not step_ok)]
+
+    if not conflicting:
+        return {
+            "disagreement_count": 0,
+            "disagreement_targets": [],
+            "observations": [],
+            "axes": [],
+            "dominant_axis": None,
+            "topology_type": "clean",
+            "severity": "none",
+            "topology_recommended_action": "accept",
+        }
+
+    observations: list[dict[str, Any]] = []
+    axis_counter: dict[str, int] = {}
+
+    for sibling in conflicting:
+        sib_eval = sibling.evaluation or _load_sibling_evaluation(root, run_id, sibling.step_id)
+        axes = _detect_axes(step, sibling, step_eval, sib_eval)
+        for ax in axes:
+            axis_counter[ax] = axis_counter.get(ax, 0) + 1
+        observations.append({
+            "sibling_id": sibling.step_id,
+            "axes": axes,
+            "step_status": step.status,
+            "sibling_status": sibling.status,
+            "step_recommended": (step_eval or {}).get("recommended_action"),
+            "sibling_recommended": (sib_eval or {}).get("recommended_action"),
+            "step_risk": (step_eval or {}).get("risk_level"),
+            "sibling_risk": (sib_eval or {}).get("risk_level"),
+            "step_evidence_score": (step_eval or {}).get("evidence_score"),
+            "sibling_evidence_score": (sib_eval or {}).get("evidence_score"),
+        })
+
+    all_axes = sorted({ax for obs in observations for ax in obs["axes"]})
+    dominant = max(axis_counter, key=lambda k: axis_counter[k]) if axis_counter else None
+
+    n = len(conflicting)
+    if n == 1:
+        ttype = "isolated"
+    elif len(all_axes) > 1:
+        ttype = "distributed"
+    else:
+        ttype = "split"
+
+    if ttype == "distributed" or len(all_axes) >= 3:
+        severity = "high"
+    elif "conclusion" in all_axes or "risk_assessment" in all_axes:
+        severity = "medium"
+    else:
+        severity = "low"
+
+    return {
+        "disagreement_count": n,
+        "disagreement_targets": [s.step_id for s in conflicting],
+        "observations": observations,
+        "axes": all_axes,
+        "dominant_axis": dominant,
+        "topology_type": ttype,
+        "severity": severity,
+        "topology_recommended_action": _topology_recommended_action(ttype, severity, all_axes),
+    }
+
+
+def _write_disagreement_record(
+    root: "Path",
+    run_id: str,
+    step_id: str,
+    topology: dict[str, Any],
+) -> None:
+    """Append a disagreement record to .runs/<run_id>/disagreements.json."""
+    from .dag_state import atomic_write
+    from .harness import load_run
+    try:
+        paths, _ = load_run(root, run_id)
+        dis_path = paths.run_dir / "disagreements.json"
+        record: dict[str, Any] = {
+            "ts": now_iso(),
+            "run_id": run_id,
+            "step_id": step_id,
+            "topology_type": topology["topology_type"],
+            "severity": topology["severity"],
+            "axes": topology["axes"],
+            "dominant_axis": topology["dominant_axis"],
+            "disagreement_count": topology["disagreement_count"],
+            "disagreement_targets": topology["disagreement_targets"],
+            "topology_recommended_action": topology["topology_recommended_action"],
+        }
+        existing: list[Any] = []
+        if dis_path.exists():
+            try:
+                existing = json.loads(dis_path.read_text(encoding="utf-8"))
+                if not isinstance(existing, list):
+                    existing = []
+            except Exception:
+                existing = []
+        existing.append(record)
+        atomic_write(dis_path, json.dumps(existing, ensure_ascii=False, indent=2))
+    except Exception:
+        pass
+
+
 def _recommend_action(
     step: "PlanStep",
     syntax: dict[str, Any],
@@ -942,12 +1136,26 @@ def evaluate_step_output(root: "Path", dag: "PlanDAG", step: "PlanStep") -> dict
     }
     step.evaluation = evaluation
 
+    # Disagreement topology (uses current evaluation for richer axis detection)
+    topology = _evaluate_disagreement_topology(dag, step, root, dag.run_id, step_eval=evaluation)
+    topo_action = topology["topology_recommended_action"]
+    if _RECOMMEND_ORDER.get(topo_action, 0) > _RECOMMEND_ORDER.get(evaluation["recommended_action"], 0):
+        evaluation["recommended_action"] = topo_action
+        evaluation["escalation_triggered"] = True
+        note = f"topology={topology['topology_type']}({topology['severity']})"
+        evaluation["escalation_reason"] = (
+            f"{evaluation['escalation_reason']}; {note}".lstrip("; ")
+        )
+    evaluation["disagreement_topology"] = topology
+    if topology["disagreement_count"] > 0:
+        _write_disagreement_record(root, dag.run_id, step.step_id, topology)
+
     try:
         save_step_evaluation(root, dag.run_id, step.step_id, evaluation)
     except Exception:
         pass  # artifact write is best-effort; never block pipeline
 
-    if escalation_triggered:
+    if evaluation["escalation_triggered"]:
         _log_dag_mutation(root, dag.run_id, step.step_id, evaluation)
 
     return evaluation

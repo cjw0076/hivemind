@@ -11,8 +11,11 @@ from hivemind.dag_state import StepLease
 from hivemind.harness import create_run
 from hivemind.supervisor import (
     active_step_leases,
+    format_supervisor_status,
+    probe_summaries_from_result,
     run_supervisor,
     supervisor_paths,
+    supervisor_result_is_waiting,
     supervisor_status_report,
     tail_supervisor_log,
 )
@@ -109,6 +112,43 @@ class SupervisorTest(unittest.TestCase):
             self.assertEqual(json.loads(started.stdout)["run_id"], run_id)
             self.assertEqual(json.loads(status.stdout)["run_id"], run_id)
             self.assertTrue(json.loads(tail.stdout)["lines"])
+
+    def test_probe_summary_from_last_round_is_reported(self) -> None:
+        result = {
+            "results": {
+                "verify": {
+                    "status": "failed",
+                    "probe_action": "block",
+                    "probe_confidence": 0.25,
+                    "probe_passed": False,
+                    "probe_evidence": "exit_code=1",
+                }
+            }
+        }
+
+        probes = probe_summaries_from_result(result)
+        rendered = format_supervisor_status(
+            {
+                "run_id": "run_test",
+                "status": "blocked",
+                "rounds": 1,
+                "max_rounds": 1,
+                "execute": False,
+                "replay": {"ok": True, "hash_chain_ok": True, "seq_ok": True, "issue_count": 0},
+                "active_leases": [],
+                "last_result": result,
+                "last_probes": probes,
+            }
+        )
+
+        self.assertEqual(probes[0]["action"], "block")
+        self.assertIn("Probe:", rendered)
+        self.assertIn("verify action=block confidence=0.25 status=failed passed=False", rendered)
+
+    def test_override_pending_probe_keeps_supervisor_waiting(self) -> None:
+        result = {"results": {"review_gate": {"status": "failed", "probe_action": "override_pending"}}}
+
+        self.assertTrue(supervisor_result_is_waiting(result))
 
 
 if __name__ == "__main__":

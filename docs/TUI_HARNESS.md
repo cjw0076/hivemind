@@ -385,6 +385,11 @@ panel: replay health, active intent, latest decision, missing voters, votes,
 proof status, and replay issues. This makes policy/protocol stalls visible
 without asking the operator to inspect `execution_intents/`,
 `execution_votes/`, `execution_decisions/`, or `execution_proofs/` by hand.
+Typed ProbeStep gates are surfaced there too: the latest probe step shows its
+action, confidence, criteria count, and status, and recent ledger rows include a
+compact `probe=... conf=... criteria=...` suffix. `hive run status` reports the
+same last-probe summary so a supervised run can explain whether it is waiting on
+human override, blocked by a falsification criterion, or safe to continue.
 
 `hive live` is the prompt/log surface over the same substrate:
 

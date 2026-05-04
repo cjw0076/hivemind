@@ -39,7 +39,7 @@ from .harness import (
     run_board,
     orchestrate_prompt,
 )
-from .workloop import format_ledger_entry, read_execution_ledger, replay_execution_ledger
+from .workloop import format_ledger_entry, format_probe_confidence, read_execution_ledger, replay_execution_ledger
 
 TUI_VIEWS = {"board", "events", "transcript", "agents", "artifacts", "memory", "society", "diff", "ledger"}
 
@@ -871,11 +871,34 @@ def build_protocol_authority_rows(replay: dict[str, Any]) -> list[str]:
         rows.append("Decision: none")
         rows.append("Votes: none")
         rows.append("Proof: none")
+    rows.extend(build_probe_authority_rows(replay))
     if issues:
         rows.append("Replay Issues: " + "; ".join(str(issue.get("type")) for issue in issues[:4]))
     else:
         rows.append("Replay Issues: none")
     return rows
+
+
+def build_probe_authority_rows(replay: dict[str, Any]) -> list[str]:
+    probes: list[dict[str, Any]] = []
+    steps = replay.get("steps") or {}
+    for step_id, step in steps.items():
+        probe = step.get("probe") if isinstance(step, dict) else None
+        if isinstance(probe, dict):
+            item = dict(probe)
+            item.setdefault("step_id", step_id)
+            probes.append(item)
+    if not probes:
+        return ["Probe: none"]
+    probes.sort(key=lambda item: int(item.get("seq") or 0))
+    latest = probes[-1]
+    return [
+        "Probe: "
+        f"{latest.get('step_id')} action={latest.get('action') or '-'} "
+        f"confidence={format_probe_confidence(latest.get('confidence'))} "
+        f"criteria={latest.get('criteria_count') if latest.get('criteria_count') is not None else '-'} "
+        f"status={latest.get('status') or '-'}"
+    ]
 
 
 def latest_mapping_key(mapping: dict[str, Any]) -> str | None:

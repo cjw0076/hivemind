@@ -398,7 +398,9 @@ P1:
 4. [ ] Add provider bypass execution through protocol-approved intents.
 5. [ ] Add verifier proof validation for stdout/stderr/output paths.
 6. [ ] Extend replay with artifact content hashes and command/prompt hash drift.
-7. [ ] Add richer TUI drilldown for per-intent artifacts and conditions.
+7. [x] Surface typed ProbeStep action, confidence, and criteria count in replay,
+   TUI ledger cockpit, and supervised run status.
+8. [ ] Add richer TUI drilldown for per-intent artifacts and conditions.
 
 P2:
 
