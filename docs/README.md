@@ -25,13 +25,22 @@ The active build target is the installable `hive` CLI/TUI harness:
 hive init
 hive doctor
 hive run "your task"
+hive live "your task"
+hive live --memoryos
+hive ledger replay
 hive tui
 hive local status
 ```
 
+`hive tui` remains the operator/debug cockpit. The long-term MemoryOS-integrated
+UX should treat Hive as prompt intake plus orchestration/ledger/protocol engine;
+MemoryOS owns the neural-map observability UI over Hive events and accepted
+memory.
+
 Relevant docs:
 
 - `TUI_HARNESS.md`
+- `LEDGER_PROTOCOL.md`
 - `HIVE_WORKING_METHOD.md`
 - `THIRD_PARTY_INTEGRATIONS.md`
 - `PROVIDER_HARNESS_GUIDE.md`

@@ -4,7 +4,7 @@ Status: implementation spec / not complete.
 
 Source: `docs/HIVE_MIND_GAPS.md` section "Header Role Decomposition and
 Per-Layer Provider Selection"; `docs/PUBLISHING_GATE.md` North Star;
-`docs/ADAPTIVE_ADVERSARIAL_CHAIR.md`.
+`docs/ADAPTIVE_ADVERSARIAL_CHAIR.md`; `docs/LEDGER_PROTOCOL.md`.
 
 This spec prevents a monolithic "header LLM" from becoming the hidden product.
 Hive Mind should be a thin chair runtime: deterministic state first, judgment
@@ -107,6 +107,26 @@ Next read-only chair work:
 
 Only after the read-only slice is stable should L0 start blocking or scheduling
 turns.
+
+## Ledger Protocol Boundary
+
+`docs/LEDGER_PROTOCOL.md` is the authority contract underneath the chair.
+`plan_dag.json` says what should happen; `execution_ledger.jsonl` proves what
+authority was requested, granted, executed, verified, blocked, or escalated.
+
+The chair should treat these as separate layers:
+
+- `PlanDAG`: desired work graph and cached step status.
+- `ExecutionIntent`: proposed authority for one step/attempt.
+- `ExecutionVote`: independent approval/block/ask-user judgment.
+- `ExecutionDecision`: quorum result and execution conditions.
+- `StepLease`: live ownership while an action is running.
+- `ExecutionProof`: stdout/stderr/output/touched-file/test result closure.
+- `execution_ledger.jsonl`: replayable sequence of all authority transitions.
+
+Bypass is a first-class protocol class, not an exception. Provider automation
+may require bypass, but no bypassed provider action should run without a ledger
+intent, policy/vote decision, lease, proof, and verifier close record.
 
 ## Adaptive Adversarial Layer
 

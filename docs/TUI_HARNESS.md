@@ -300,7 +300,7 @@ That profile tracks provider command paths, versions, roles, modes, local model 
 Inside `python -m hivemind.hive tui`:
 
 ```text
-F1-F8  switch views
+F1-F9  switch views
 type text  edit the always-visible hive> composer, including UTF-8/Hangul text
 enter  submit the composer
 left/right  move within the composer
@@ -312,13 +312,13 @@ ctrl-c or esc  cancel the composer
 ctrl-v  paste from the system clipboard when wl-paste, xclip, xsel, or pbpaste is available
 ctrl-d  quit when the composer is empty
 /command  run a slash command from the composer
-/view board|events|transcript|agents|artifacts|memory|society|diff  switch views
+/view board|events|transcript|agents|artifacts|memory|society|diff|ledger  switch views
 /demo [delay]  animate a safe multi-agent run without executing providers
 /quit  quit
 F10  show keybinding hint
 ```
 
-Large terminals render the dashboard as a control plane: run/health summary, pipeline, agents, artifacts, latest events, next actions, keybar, and an always-visible `hive>` composer. The TUI is interactive: type a normal prompt directly at `hive>` and press Enter to create and route a new run, or type slash commands such as `/verify`, `/memory`, `/summary`, `/diff`, `/local`, `/claude`, `/codex`, and `/gemini`. Printable keys are treated as prompt text first, so prompts can naturally start with `q`, digits, punctuation, or Hangul.
+Large terminals render the dashboard as a control plane: run/health summary, pipeline, agents, artifacts, latest events, next actions, keybar, and an always-visible `hive>` composer. The TUI is interactive: type a normal prompt directly at `hive>` and press Enter to create and route a new run, or type slash commands such as `/verify`, `/memory`, `/summary`, `/diff`, `/ledger`, `/local`, `/claude`, `/codex`, and `/gemini`. Printable keys are treated as prompt text first, so prompts can naturally start with `q`, digits, punctuation, or Hangul.
 
 Prompt submission runs in the background so slow local/provider routing does not freeze the console. The status line reports active submissions and then replaces it with the completed run or error message.
 
@@ -341,6 +341,67 @@ Claude planner, Codex executor, Gemini reviewer, local summarizer, verifier,
 memory, and close. It intentionally keeps provider CLIs in prepare-only mode, so
 it is a UI/read-model smoke test rather than an autonomous execution path.
 
+`hive ledger --follow` opens the same TUI directly on the ledger view. The ledger
+is an append-only `execution_ledger.jsonl` per run: scheduler round, step start,
+step completion, reversibility gate, permission mode, bypass mode, output
+artifact, and touched-file hints. This is the TUI equivalent of the user's shared
+folder/log method: agents still coordinate through files, but the chair has a
+live read-model instead of asking the operator to stare at multiple terminals.
+
+`hive ledger replay` validates the ledger instead of only tailing it. It checks
+the hash chain, sequence continuity, referenced JSON artifacts, and protocol
+intent/vote/decision/proof records, then reconstructs step and authority state.
+Use it when a run looks stale, blocked, or suspicious:
+
+```bash
+hive ledger replay
+hive ledger replay --json
+```
+
+The TUI ledger view renders the same replayed authority state at the top of the
+panel: replay health, active intent, latest decision, missing voters, votes,
+proof status, and replay issues. This makes policy/protocol stalls visible
+without asking the operator to inspect `execution_intents/`,
+`execution_votes/`, `execution_decisions/`, or `execution_proofs/` by hand.
+
+`hive live` is the prompt/log surface over the same substrate:
+
+```bash
+hive live "ship the next safe slice"
+hive live --follow
+hive live --memoryos
+```
+
+It hides run-folder and artifact paths by default and shows task state, next
+action, authority/protocol state, blocked gates, agent status, and live log
+events. Use `--paths` only for debugging/export.
+
+`hive live --memoryos` emits the first MemoryOS-facing neural-map read model as
+JSON. The shape is intentionally graph-oriented: `graph.nodes`,
+`graph.edges`, and `events` cover the Hive run, agent turns, workflow steps,
+authority gates, votes, memory drafts, disagreements, and live log records.
+MemoryOS can poll or import this contract and decide how to render the neural
+map without Hive growing a second visual UI.
+
+The TUI is not the final UX. It is a transitional operator/debug surface while
+the run substrate hardens. The desired AIOS UX is prompt input plus live
+log/decision output: no directory browsing, no manual run-folder inspection, and
+no app shell required for normal work. Files, folders, JSONL, and protocol
+artifacts remain internal infrastructure and export/debug surfaces.
+
+## MemoryOS UI Boundary
+
+Hive Mind keeps `hive tui` as a local operator cockpit, but the MemoryOS
+integration should not make Hive's TUI the main user interface. In the combined
+system, Hive receives prompts, coordinates provider/local agents, writes
+ledger/protocol/run artifacts, and emits a stable live read model. MemoryOS owns
+the neural-map observability UI that renders agent activity, authority gates,
+claims, decisions, disagreements, evidence, and accepted memory over time.
+
+This boundary keeps Hive focused on orchestration correctness and replayable
+state. It also prevents the terminal dashboard from becoming a second product UI
+that competes with MemoryOS.
+
 The TUI does not try to be the final desktop UI. It is an operational control surface for driving agent work through run artifacts: pipeline first, agent aware, artifact driven, audit friendly.
 
 ## Run Folder
@@ -355,6 +416,7 @@ Each run is a structured blackboard under `.runs/`:
     context_pack.md
     handoff.yaml
     events.jsonl
+    execution_ledger.jsonl
     run_state.json
     verification.yaml
     memory_drafts.json

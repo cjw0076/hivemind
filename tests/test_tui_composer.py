@@ -5,8 +5,12 @@ import unittest
 from pathlib import Path
 
 from hivemind.harness import create_run, read_control_lock, release_control_lock
+from hivemind.plan_dag import build_dag
+from hivemind.protocol import build_execution_intent, check_intent, decide_intent, save_intent
 from hivemind.tui import (
     ComposerState,
+    build_ledger_view_rows,
+    build_protocol_authority_rows,
     handle_tui_command,
     handle_local_composer_command,
     key_f,
@@ -115,7 +119,67 @@ class TuiComposerTest(unittest.TestCase):
     def test_function_keys_switch_views(self) -> None:
         self.assertEqual(view_for_key(key_f(1)), "board")
         self.assertEqual(view_for_key(key_f(8)), "diff")
+        self.assertEqual(view_for_key(key_f(9)), "ledger")
         self.assertIsNone(view_for_key(ord("1")))
+
+    def test_ledger_view_command(self) -> None:
+        self.assertEqual(handle_local_composer_command("/ledger"), {"action": "view", "view": "ledger"})
+        self.assertEqual(handle_local_composer_command("/view 9"), {"action": "view", "view": "ledger"})
+
+    def test_protocol_authority_rows_show_active_gate(self) -> None:
+        replay = {
+            "ok": False,
+            "hash_chain_ok": True,
+            "seq_ok": True,
+            "record_count": 4,
+            "issues": [{"type": "missing_artifact"}],
+            "authority": {
+                "intents": {
+                    "intent_1": {
+                        "intent_id": "intent_1",
+                        "step_id": "planner",
+                        "authority_class": "provider_bypass",
+                        "risk_level": "medium",
+                    }
+                },
+                "decisions": {
+                    "intent_1": {
+                        "decision": "needs_vote",
+                        "missing_voters": ["verifier"],
+                    }
+                },
+                "votes": {"intent_1": {"policy-gate": "approve_with_conditions"}},
+                "proofs": {},
+            },
+        }
+
+        rows = build_protocol_authority_rows(replay)
+        text = "\n".join(rows)
+
+        self.assertIn("Authority", rows[0])
+        self.assertIn("Active Intent: intent_1", text)
+        self.assertIn("missing=verifier", text)
+        self.assertIn("policy-gate=approve_with_conditions", text)
+        self.assertIn("Replay Issues: missing_artifact", text)
+
+    def test_ledger_view_rows_include_protocol_panel(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "tui protocol panel")
+            dag = build_dag(paths.run_id, "tui protocol panel", "implementation")
+            intent = build_execution_intent(root, dag, "planner", execute=True)
+            save_intent(root, intent)
+            check_intent(root, paths.run_id, intent.intent_id)
+            decide_intent(root, paths.run_id, intent.intent_id)
+
+            rows = build_ledger_view_rows(root, paths, 20)
+            text = "\n".join(rows)
+
+            self.assertIn("Authority", text)
+            self.assertIn("Active Intent:", text)
+            self.assertIn("Decision:", text)
+            self.assertIn("Recent Ledger", text)
+            self.assertIn("intent_proposed", text)
 
     def test_paste_normalization_flattens_multiline_text(self) -> None:
         self.assertEqual(normalize_paste_text("a\nb\r\nc"), "a b c")

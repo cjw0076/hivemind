@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 from .harness import (
@@ -92,7 +93,22 @@ from .plan_dag import (
     load_dag,
     save_dag,
 )
+from .protocol import (
+    build_execution_intent,
+    cast_vote,
+    check_intent,
+    create_proof,
+    decide_intent,
+    format_protocol_record,
+    proof_path,
+    decision_path,
+    intent_path,
+    vote_path,
+    save_intent,
+)
 from .tui import TUI_VIEWS, print_status, run_tui
+from .workloop import format_execution_ledger, format_ledger_replay, read_execution_ledger, replay_execution_ledger
+from .live import build_live_report, build_memoryos_observability_report, format_live_report, start_live_prompt
 
 
 COMMANDS = {
@@ -101,6 +117,7 @@ COMMANDS = {
     "agents",
     "settings",
     "policy",
+    "protocol",
     "local",
     "run",
     "flow",
@@ -112,6 +129,8 @@ COMMANDS = {
     "status",
     "board",
     "events",
+    "ledger",
+    "live",
     "transcript",
     "artifacts",
     "society",
@@ -230,6 +249,46 @@ def _main(argv: list[str] | None = None) -> None:
     policy_explain_cmd.add_argument("role")
     policy_explain_cmd.add_argument("--json", action="store_true")
 
+    protocol_cmd = sub.add_parser("protocol", help="ledger protocol artifacts for execution authority")
+    protocol_sub = protocol_cmd.add_subparsers(dest="protocol_cmd", required=True)
+    protocol_intent_cmd = protocol_sub.add_parser("intent", help="write an ExecutionIntent for a DAG step")
+    protocol_intent_cmd.add_argument("step_id")
+    protocol_intent_cmd.add_argument("--run-id")
+    protocol_intent_cmd.add_argument("--execute", action="store_true", help="request execute authority instead of prepare-only")
+    protocol_intent_cmd.add_argument("--json", action="store_true")
+    protocol_check_cmd = protocol_sub.add_parser("check", help="run policy gate for an ExecutionIntent")
+    protocol_check_cmd.add_argument("intent_id")
+    protocol_check_cmd.add_argument("--run-id")
+    protocol_check_cmd.add_argument("--json", action="store_true")
+    protocol_vote_cmd = protocol_sub.add_parser("vote", help="cast an ExecutionVote")
+    protocol_vote_cmd.add_argument("intent_id")
+    protocol_vote_cmd.add_argument("--run-id")
+    protocol_vote_cmd.add_argument("--voter", required=True)
+    protocol_vote_cmd.add_argument("--vote", choices=["approve", "approve_with_conditions", "block", "ask_user", "needs_referee"], required=True)
+    protocol_vote_cmd.add_argument("--confidence", type=float, default=0.8)
+    protocol_vote_cmd.add_argument("--reason", action="append", default=[])
+    protocol_vote_cmd.add_argument("--condition", action="append", default=[])
+    protocol_vote_cmd.add_argument("--json", action="store_true")
+    protocol_decide_cmd = protocol_sub.add_parser("decide", help="write an ExecutionDecision from votes")
+    protocol_decide_cmd.add_argument("intent_id")
+    protocol_decide_cmd.add_argument("--run-id")
+    protocol_decide_cmd.add_argument("--json", action="store_true")
+    protocol_proof_cmd = protocol_sub.add_parser("proof", help="write an ExecutionProof artifact")
+    protocol_proof_cmd.add_argument("intent_id")
+    protocol_proof_cmd.add_argument("--run-id")
+    protocol_proof_cmd.add_argument("--status", default="completed")
+    protocol_proof_cmd.add_argument("--returncode", type=int)
+    protocol_proof_cmd.add_argument("--stdout-path")
+    protocol_proof_cmd.add_argument("--stderr-path")
+    protocol_proof_cmd.add_argument("--output-path")
+    protocol_proof_cmd.add_argument("--file", action="append", default=[], dest="files_touched")
+    protocol_proof_cmd.add_argument("--command", action="append", default=[], dest="commands_run")
+    protocol_proof_cmd.add_argument("--test", action="append", default=[], dest="tests_run")
+    protocol_proof_cmd.add_argument("--artifact", action="append", default=[], dest="artifacts_created")
+    protocol_proof_cmd.add_argument("--violation", action="append", default=[], dest="policy_violations")
+    protocol_proof_cmd.add_argument("--verifier-status", default="not_run")
+    protocol_proof_cmd.add_argument("--json", action="store_true")
+
     settings_cmd = sub.add_parser("settings", help="detect and persist production CLI settings")
     settings_sub = settings_cmd.add_subparsers(dest="settings_cmd", required=True)
     settings_detect_cmd = settings_sub.add_parser("detect", help="write provider/runtime settings profile")
@@ -314,6 +373,24 @@ def _main(argv: list[str] | None = None) -> None:
     events_cmd.add_argument("--tail", type=int, default=60)
     events_cmd.add_argument("--follow", action="store_true", help="open the live events TUI view")
     events_cmd.add_argument("--json", action="store_true")
+
+    ledger_cmd = sub.add_parser("ledger", help="show append-only execution ledger for the current run")
+    ledger_cmd.add_argument("ledger_action", nargs="?", choices=["replay"], help="replay and validate ledger state")
+    ledger_cmd.add_argument("--run-id")
+    ledger_cmd.add_argument("--tail", type=int, default=60)
+    ledger_cmd.add_argument("--json", action="store_true")
+    ledger_cmd.add_argument("--follow", action="store_true", help="open the live ledger TUI view")
+
+    live_cmd = sub.add_parser("live", help="prompt/log AIOS surface over the current run")
+    live_cmd.add_argument("prompt", nargs="*", help="optional prompt; creates/routes a new run before showing live log")
+    live_cmd.add_argument("--run-id")
+    live_cmd.add_argument("--tail", type=int, default=18)
+    live_cmd.add_argument("--follow", action="store_true", help="keep refreshing the prompt/log surface")
+    live_cmd.add_argument("--interval", type=float, default=1.0)
+    live_cmd.add_argument("--paths", action="store_true", help="show artifact/file paths for debugging")
+    live_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="default")
+    live_cmd.add_argument("--memoryos", action="store_true", help="emit MemoryOS neural-map observability read model as JSON")
+    live_cmd.add_argument("--json", action="store_true")
 
     transcript_cmd = sub.add_parser("transcript", help="show transcript or open transcript TUI view")
     transcript_cmd.add_argument("--run-id")
@@ -556,6 +633,90 @@ def _main(argv: list[str] | None = None) -> None:
         else:
             print(format_policy_explain(report))
         return
+    if args.cmd == "protocol":
+        import json
+        from dataclasses import asdict
+
+        run_id_arg = getattr(args, "run_id", None) or get_current(root)
+        if not run_id_arg:
+            raise SystemExit("hive protocol: no current run; create one with: hive run \"task\"")
+
+        if args.protocol_cmd == "intent":
+            dag = load_dag(root, run_id_arg)
+            if dag is None:
+                raise SystemExit("hive protocol intent: no plan DAG found. Run: hive plan dag")
+            intent = build_execution_intent(root, dag, args.step_id, execute=args.execute)
+            path = save_intent(root, intent)
+            if args.json:
+                print(json.dumps(asdict(intent), ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(format_protocol_record(intent))
+                print(f"\nWrote {path.relative_to(root).as_posix()}")
+            return
+
+        if args.protocol_cmd == "check":
+            vote = check_intent(root, run_id_arg, args.intent_id)
+            path = vote_path(root, run_id_arg, args.intent_id, vote.voter_role)
+            if args.json:
+                print(json.dumps(asdict(vote), ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(format_protocol_record(vote))
+                print(f"\nWrote {path.relative_to(root).as_posix()}")
+            return
+
+        if args.protocol_cmd == "vote":
+            vote = cast_vote(
+                root,
+                run_id_arg,
+                args.intent_id,
+                voter_role=args.voter,
+                vote=args.vote,
+                confidence=args.confidence,
+                reasons=args.reason,
+                required_conditions=args.condition,
+            )
+            path = vote_path(root, run_id_arg, args.intent_id, vote.voter_role)
+            if args.json:
+                print(json.dumps(asdict(vote), ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(format_protocol_record(vote))
+                print(f"\nWrote {path.relative_to(root).as_posix()}")
+            return
+
+        if args.protocol_cmd == "decide":
+            decision = decide_intent(root, run_id_arg, args.intent_id)
+            path = decision_path(root, run_id_arg, args.intent_id)
+            if args.json:
+                print(json.dumps(asdict(decision), ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(format_protocol_record(decision))
+                print(f"\nWrote {path.relative_to(root).as_posix()}")
+            return
+
+        if args.protocol_cmd == "proof":
+            proof = create_proof(
+                root,
+                run_id_arg,
+                args.intent_id,
+                status=args.status,
+                returncode=args.returncode,
+                stdout_path=args.stdout_path,
+                stderr_path=args.stderr_path,
+                output_path=args.output_path,
+                files_touched=args.files_touched,
+                commands_run=args.commands_run,
+                tests_run=args.tests_run,
+                artifacts_created=args.artifacts_created,
+                policy_violations=args.policy_violations,
+                verifier_status=args.verifier_status,
+            )
+            path = proof_path(root, run_id_arg, args.intent_id)
+            if args.json:
+                print(json.dumps(asdict(proof), ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(format_protocol_record(proof))
+                print(f"\nWrote {path.relative_to(root).as_posix()}")
+            return
     if args.cmd == "settings":
         report = settings_report(root, write=True)
         if args.settings_cmd == "shell":
@@ -785,6 +946,57 @@ def _main(argv: list[str] | None = None) -> None:
     if args.cmd == "tui":
         run_tui(root, run_id=args.run_id, view=args.view, control=not args.observer)
         return
+    if args.cmd == "ledger":
+        if args.ledger_action == "replay":
+            import json
+
+            report = replay_execution_ledger(root, args.run_id)
+            if args.json:
+                print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(format_ledger_replay(report))
+            return
+        if args.follow:
+            run_tui(root, run_id=args.run_id, view="ledger", control=False)
+            return
+        records = read_execution_ledger(root, args.run_id, limit=args.tail)
+        if args.json:
+            import json
+
+            print(json.dumps(records, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_execution_ledger(records))
+        return
+    if args.cmd == "live":
+        import json
+
+        prompt = " ".join(args.prompt).strip()
+        run_id = args.run_id
+        if prompt:
+            report = start_live_prompt(root, prompt, complexity=args.complexity)
+            run_id = str(report.get("run_id") or run_id or "")
+        if args.memoryos:
+            print(
+                json.dumps(
+                    build_memoryos_observability_report(root, run_id or None, tail=args.tail, show_paths=args.paths),
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return
+        if args.json:
+            print(json.dumps(build_live_report(root, run_id or None, tail=args.tail, show_paths=args.paths), ensure_ascii=False, indent=2, sort_keys=True))
+            return
+        try:
+            while True:
+                print(format_live_report(build_live_report(root, run_id or None, tail=args.tail, show_paths=args.paths), show_paths=args.paths))
+                if not args.follow:
+                    return
+                print("\n--- refresh ---\n")
+                time.sleep(max(0.2, args.interval))
+        except KeyboardInterrupt:
+            return
     if args.cmd == "plan":
         if getattr(args, "plan_sub", None) == "dag":
             import json as _json

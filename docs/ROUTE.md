@@ -16,6 +16,7 @@ Read these first for current implementation work:
 8. `TODO.md` - active work queue.
 9. `TUI_HARNESS.md` - current `hive` CLI/TUI harness.
 10. `PROVIDER_HARNESS_GUIDE.md` - Claude/Codex/Gemini/local/provider usage.
+11. `LEDGER_PROTOCOL.md` - execution authority protocol over the shared run ledger.
 
 ## Current Build Surface
 
@@ -36,6 +37,7 @@ Use these when changing code:
 - `PUBLISHING_GATE.md` - release/tag/package/announcement gate tied to the Hive Mind North Star.
 - `security/PUBLIC_ALPHA_SECURITY_REVIEW.md` - preserved Claude security-review evidence.
 - `HIVE_WORKING_METHOD.md` - user/Claude/Codex/local-LLM working method as Hive Mind product protocol.
+- `LEDGER_PROTOCOL.md` - intent, policy, vote/quorum, lease, execution proof, and verification protocol over `execution_ledger.jsonl`.
 - `THIRD_PARTY_INTEGRATIONS.md` - optional adapter and license boundary notes.
 
 ## Product Vision

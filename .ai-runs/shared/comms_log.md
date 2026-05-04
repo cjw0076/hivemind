@@ -7,6 +7,62 @@ Naming note as of 2026-05-02 12:24 KST:
 - `capabilityos` / CapabilityOS is the sibling capability/workflow substrate.
 - Earlier entries that mention `mos` or `memoryos/mos.py` are historical pre-split records, not current product names or file ownership.
 
+## 2026-05-04 12:50 KST - Codex
+
+- Context: User asked to turn the shared-folder multi-agent work style into a real-time Hive Mind TUI surface, because raw terminal sessions hide progress and touched files.
+- Decision: Implement the first slice as an append-only `execution_ledger.jsonl` per run, written by DAG step execution and rendered by CLI/TUI, before adding a long-running supervisor daemon.
+- Evidence: Current runtime already has `plan_dag.json`, step leases, run events, and TUI views; the missing layer is a human-readable execution authority/touched-file ledger.
+- Next: Add ledger module, wire DAG step start/finish/gate records, expose `hive ledger`, and add a TUI ledger view.
+
+## 2026-05-04 13:00 KST - Codex
+
+- Context: Finished the real-time workloop visibility slice.
+- Decision: Keep shared-folder coordination as Hive Mind's substrate, but render it through a hash-chained execution ledger that records scheduler rounds, step authority, permission/bypass mode, artifacts, and touched-file hints.
+- Evidence: `hive ledger --tail`, `hive ledger --follow`, and TUI F9/`/ledger` now show live records from `.runs/<run_id>/execution_ledger.jsonl`. DAG execution writes `step_started`, `step_completed`, `step_skipped`, `step_blocked`, `scheduler_round_started`, and `scheduler_round_completed`.
+- Next: Implement the bypass/supervisor layer as an explicit ledgered authority path rather than hidden provider automation.
+
+## 2026-05-04 13:08 KST - Codex
+
+- Context: User asked to design the protocol that moves over the execution ledger.
+- Decision: Treat ledger as the source of truth for authority transitions. The protocol should require an intent record, policy/vote decision, lease acquisition, execution, verification, and close record before a DAG step can be considered truly done.
+- Evidence: Existing `execution_ledger.jsonl` can already store actor, step, permission mode, bypass mode, artifact, touched files, and hash chain; missing artifacts are vote/quorum/proof contracts and supervisor lifecycle.
+- Next: Write `docs/LEDGER_PROTOCOL.md` and connect it to chair runtime/TODO before implementation.
+
+## 2026-05-04 13:15 KST - Codex
+
+- Context: Ledger protocol design is now documented.
+- Decision: The next implementation should be dry-run-first protocol artifacts, not a daemon first. `hive protocol intent/check/vote/decide/proof` should exist before `hive supervisor` starts executing provider bypass flows.
+- Evidence: `docs/LEDGER_PROTOCOL.md` defines invariants, role boundaries, artifacts, event taxonomy, state machine, permission/bypass classes, quorum policies, supervisor loop, TUI read model, and P0/P1/P2 slices. `VG-17` now tracks this as a first-class vision node.
+- Next: Implement schema/helper layer and CLI dry-run commands; then require approved `ExecutionDecision` for `hive step run --execute`.
+
+## 2026-05-04 13:33 KST - Codex
+
+- Context: User explicitly approved pushing forward with implementation and fixing issues as they appear.
+- Decision: Implement Ledger Protocol P0 now: artifact schemas, CLI dry-run commands, and an execute gate that blocks `hive step run --execute` unless an approved decision exists.
+- Evidence: Existing ledger records can already show step execution; missing layer is structured authority artifacts and a gate that makes them matter.
+- Next: Add `hivemind/protocol.py`, wire `hive protocol`, then run focused tests and adjust.
+
+## 2026-05-04 13:41 KST - Codex
+
+- Context: Ledger Protocol P0 implementation completed.
+- Decision: Provider execute authority is now explicit. `hive protocol intent/check/vote/decide/proof` creates durable artifacts, and provider `hive step run --execute` is blocked by `protocol_gate` until an approved decision exists.
+- Evidence: Added `ExecutionIntent`, `ExecutionVote`, `ExecutionDecision`, and `ExecutionProof` helpers in `hivemind/protocol.py`; full test suite passes 172 tests. CLI smoke produced a provider-bypass approval quorum and blocked an unapproved executor execute.
+- Next: Build replay and TUI protocol panels before adding a long-running supervisor.
+
+## 2026-05-04 14:28 KST - Codex
+
+- Context: User clarified the long-term product direction: no visible directories, filesystem, or app shell in normal UX.
+- Decision: Record AIOS UX as the north star. Files and run artifacts remain internal/replay/debug substrate; the primary user surface is prompt input plus live logs, decisions, blocked gates, risks, and outcomes.
+- Evidence: Added `VG-18 Prompt/Log AIOS UX` and updated `NORTHSTAR`, `TUI_HARNESS`, `LEDGER_PROTOCOL`, and `TODO`.
+- Next: Implement prompt-log/live surfaces that hide artifact paths by default before investing in a heavier desktop/app layer.
+
+## 2026-05-04 14:34 KST - Codex
+
+- Context: Implemented the first prompt/log AIOS surface.
+- Decision: `hive live` is now the primary candidate for normal UX: prompt in, live state/log out. It hides run folder and artifact paths by default; `--paths` is debug/export only.
+- Evidence: `hivemind/live.py` builds a read model from run state, activity, execution ledger, and protocol artifacts. `hive live "..."` creates/routes a run then prints state, next action, authority, blocked gates, agents, and masked live logs.
+- Next: Add replay and protocol panels, then consider moving bare `hive` from TUI default to live prompt/log mode.
+
 ## 2026-05-01 KST - Codex
 
 - Context: User asked to extract the relevant MyWorld/agent-system ideas from `my_world.md` so Claude and Codex sessions in this project can recover them without reading the full source file.
@@ -638,3 +694,53 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Added `docs/LOCAL_MODEL_USAGE_GOEN.md` with runtime setup, direct CLI/API patterns, per-model roles/prompts, known `deepseek-coder-v2:16b` failure, and GoEN result-capture guidance.
 - Evidence: The GoEN TODO review used workspace-local Ollama models `qwen3:1.7b`, `qwen3:8b`, `deepseek-coder:6.7b`; `deepseek-coder-v2:16b` failed with Ollama runner termination.
 - Next: Future agents should use `docs/LOCAL_MODEL_USAGE_GOEN.md` when asking Hive Mind local models to review GoEN planning or experiment harness changes.
+
+## 2026-05-04 14:43 KST - Codex
+
+- Context: User clarified the long-term UI split: keep Hive TUI for now, but when connected to MemoryOS, Hive Mind should take prompts and MemoryOS should render the neural-map observability UI.
+- Decision: Treat Hive TUI as transitional operator/debug surface. Hive owns orchestration, ledger/protocol state, provider/local run records, and read-model exports; MemoryOS owns the main observability map and accepted-memory UI.
+- Evidence: Updated `docs/NORTHSTAR.md`, `docs/TUI_HARNESS.md`, `docs/LEDGER_PROTOCOL.md`, `docs/VISION_GRAPH.md`, `docs/TODO.md`, and `docs/README.md`.
+- Next: Add a stable MemoryOS-consumable read model for `hive live`, ledger, protocol, agent turns, gates, disagreements, evidence refs, memory drafts, and outcomes.
+
+## 2026-05-04 14:46 KST - Codex
+
+- Context: User approved starting implementation after the Hive/MemoryOS UI boundary decision.
+- Decision: First implementation slice is a stable JSON read model emitted by Hive, not MemoryOS UI code. It should expose graph-friendly run, agent, gate, event, and memory-draft records while keeping paths hidden by default.
+- Evidence: `hive live --json` already has a prompt/log read model; the missing contract is a MemoryOS/neural-map-oriented projection with stable node/edge/event shapes.
+- Next: Add `hive live --memoryos --json`, tests, and docs/TODO updates.
+
+## 2026-05-04 14:49 KST - Codex
+
+- Context: Finished the MemoryOS/neural-map read-model export slice.
+- Decision: `hive live --memoryos` is the first stable Hive-to-MemoryOS observability contract. It emits `graph.nodes`, `graph.edges`, and `events` for runs, agents, workflow steps, authority gates, votes, memory drafts, disagreements, and live log records while hiding paths by default.
+- Evidence: Added `build_memoryos_observability_report()`, CLI flag `--memoryos`, and focused tests. Smoke command parsed Korean prompt output as JSON. `npm test` passed 179 tests.
+- Next: Track B should proceed to `hive ledger replay` before TUI protocol panels. Claude should attach to Track A by designing typed Probe criteria and disagreement/referee semantics against this execution substrate.
+
+## 2026-05-04 14:56 KST - Codex
+
+- Context: Implemented Track B `hive ledger replay`.
+- Decision: Ledger replay now validates raw ledger integrity and reconstructs authority state. It reports invalid JSON lines, sequence drift, hash-chain drift, missing/invalid referenced artifacts, and protocol intent/vote/decision/proof state.
+- Evidence: Added `replay_execution_ledger()` and `format_ledger_replay()` in `hivemind/workloop.py`, wired `hive ledger replay`, and added focused tests for valid replay, tamper detection, missing artifact drift, authority reconstruction, and CLI JSON smoke. Full `npm test` passed 184 tests; valid CLI replay smoke returned `ok=True`.
+- Next: Move to TUI protocol panels or hand Track A spec work to Claude.
+
+## 2026-05-04 15:06 KST - Codex
+
+- Context: User said to proceed and that Claude will own Probe Step.
+- Decision: Codex continues Track B by adding TUI protocol panels from replayed ledger state. The TUI should show active intent, votes still needed, latest decision, proof status, replay health, and recent ledger rows in one operator view.
+- Evidence: `hive ledger replay` now reconstructs the authority state needed by the TUI; `hivemind/tui.py` already has a ledger view to extend.
+- Next: Implement helper rows and focused tests without touching Claude's Probe Step work.
+
+## 2026-05-04 15:09 KST - Codex
+
+- Context: Completed TUI protocol panels.
+- Decision: The ledger view is now a protocol cockpit, not just a JSONL tail. It shows replay health, active intent, decision, missing voters, votes, proof status, replay issues, and recent ledger rows.
+- Evidence: Added `build_ledger_view_rows()` and `build_protocol_authority_rows()` in `hivemind/tui.py`; focused tests cover the active gate and ledger panel. CLI smoke confirmed authority/intent/missing-vote/ledger rows, and full `npm test` passed 186 tests.
+- Next: Track A remains Claude-owned for Probe Step and evaluation/adversarial semantics. Codex Track B can next add supervisor/lease detail or wait for Claude's evaluation-to-protocol bridge.
+
+## 2026-05-04 KST - Claude
+
+- Context: Codex completed protocol substrate (workloop, protocol.py, TUI panels). Claude position: Track A evaluation-to-protocol bridge.
+- Decision: Implemented `_post_execution_bridge()` in `plan_dag.py`. After each `execute_step` path (completed, failed, exception), the bridge looks up the approved `ExecutionDecision` for the step and, if one exists, calls `create_proof()` with `verifier_status` derived from the evaluator's `recommended_action`. If `evaluator_agreement < 0.5` or `recommended_action == "referee"`, casts a `needs_referee` post-execution vote so downstream audit has a signal.
+- Evidence: Added `_EVALUATION_TO_VERIFIER_STATUS` mapping, `_evaluation_to_verifier_status()`, `_post_execution_bridge()`, and `evaluation_complete` ledger event to all 3 execute paths. 7 new bridge tests; 192 total, 191 pass (1 pre-existing failure in workloop test unrelated to bridge). Ledger sequence: `step_completed → evaluation_complete → execution_proof_created → optional vote_cast(needs_referee)`.
+- Boundary: `workloop.py` and `protocol.py` schemas not modified; bridge calls only existing APIs.
+- Next: Pending design (discuss before implementing): typed ProbeStep criterion, Disagreement Topology axis-level tracking, Referee Escrow, checkpoint steps, baseline_comparison evaluator, `hive inject` channel.

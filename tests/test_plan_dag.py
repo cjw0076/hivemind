@@ -12,6 +12,7 @@ from hivemind.plan_dag import (
     PlanStep,
     REVERSIBILITY_BLOCK_THRESHOLD,
     REVERSIBILITY_REVIEW_THRESHOLD,
+    _REFEREE_AGREEMENT_THRESHOLD,
     auto_close_barriers,
     build_dag,
     evaluate_step_output,
@@ -31,6 +32,8 @@ from hivemind.plan_dag import (
     _evaluate_claim,
     _evaluate_risk,
     _evaluate_disagreement,
+    _evaluation_to_verifier_status,
+    _post_execution_bridge,
 )
 
 
@@ -732,6 +735,150 @@ class ReversibilityGradientTest(unittest.TestCase):
         result = _evaluate_risk(step)
         self.assertNotIn("low_reversibility", result["risk_factors"])
         self.assertNotIn("medium_reversibility", result["risk_factors"])
+
+
+class EvaluationProtocolBridgeTest(unittest.TestCase):
+    """Tests for the evaluation-to-protocol bridge (_post_execution_bridge)."""
+
+    def _make_approved_decision(self, root, paths, dag, step_id="planner"):
+        from hivemind.protocol import (
+            build_execution_intent, cast_vote, check_intent,
+            decide_intent, save_intent,
+        )
+        intent = build_execution_intent(root, dag, step_id, execute=True)
+        save_intent(root, intent)
+        check_intent(root, paths.run_id, intent.intent_id)
+        cast_vote(root, paths.run_id, intent.intent_id,
+                  voter_role="verifier", vote="approve")
+        cast_vote(root, paths.run_id, intent.intent_id,
+                  voter_role="independent-reviewer", vote="approve")
+        decide_intent(root, paths.run_id, intent.intent_id)
+        return intent
+
+    def test_verifier_status_mapping(self):
+        self.assertEqual(_evaluation_to_verifier_status("accept"), "passed")
+        self.assertEqual(_evaluation_to_verifier_status("retry"), "low_confidence")
+        self.assertEqual(_evaluation_to_verifier_status("add_review"), "review_required")
+        self.assertEqual(_evaluation_to_verifier_status("escalate"), "flagged")
+        self.assertEqual(_evaluation_to_verifier_status("referee"), "conflict")
+        self.assertEqual(_evaluation_to_verifier_status("block"), "blocked")
+        self.assertEqual(_evaluation_to_verifier_status("skip"), "skipped")
+        self.assertEqual(_evaluation_to_verifier_status("unknown"), "not_run")
+
+    def test_bridge_creates_proof_when_approved_decision_exists(self):
+        from hivemind.protocol import proof_path
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "bridge proof test")
+            dag = build_dag(paths.run_id, "bridge proof test", "implementation")
+            save_dag(root, dag)
+            update_step(dag, "planner", status="completed")
+            intent = self._make_approved_decision(root, paths, dag, "planner")
+
+            step = dag.by_id("planner")
+            evaluation = {"recommended_action": "accept", "confidence": 0.9,
+                          "risk_level": "low", "evaluator_agreement": 1.0}
+            _post_execution_bridge(root, dag, step, evaluation, [])
+
+            ppath = proof_path(root, paths.run_id, intent.intent_id)
+            self.assertTrue(ppath.exists(), "proof file should be written")
+            import json
+            proof = json.loads(ppath.read_text())
+            self.assertEqual(proof["verifier_status"], "passed")
+
+    def test_bridge_sets_verifier_status_from_recommended_action(self):
+        from hivemind.protocol import proof_path
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "bridge status test")
+            dag = build_dag(paths.run_id, "bridge status test", "implementation")
+            save_dag(root, dag)
+            update_step(dag, "planner", status="completed")
+            intent = self._make_approved_decision(root, paths, dag, "planner")
+
+            step = dag.by_id("planner")
+            evaluation = {"recommended_action": "add_review", "confidence": 0.5,
+                          "risk_level": "high", "evaluator_agreement": 0.6}
+            _post_execution_bridge(root, dag, step, evaluation, [])
+
+            ppath = proof_path(root, paths.run_id, intent.intent_id)
+            proof = json.loads(ppath.read_text())
+            self.assertEqual(proof["verifier_status"], "review_required")
+
+    def test_bridge_noop_when_no_approved_decision(self):
+        from hivemind.protocol import proof_path
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "bridge noop test")
+            dag = build_dag(paths.run_id, "bridge noop test", "implementation")
+            save_dag(root, dag)
+            update_step(dag, "planner", status="completed")
+
+            step = dag.by_id("planner")
+            evaluation = {"recommended_action": "accept", "evaluator_agreement": 1.0}
+            # Should not raise even with no decision present
+            _post_execution_bridge(root, dag, step, evaluation, [])
+
+            # No proof file should exist since no intent was created
+            proofs_dir = root / ".runs" / paths.run_id / "execution_proofs"
+            proof_files = list(proofs_dir.glob("*.json")) if proofs_dir.exists() else []
+            self.assertEqual(len(proof_files), 0,
+                             "no proof should be created when no approved decision exists")
+
+    def test_bridge_casts_needs_referee_vote_on_low_agreement(self):
+        from hivemind.protocol import load_votes
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "bridge referee test")
+            dag = build_dag(paths.run_id, "bridge referee test", "implementation")
+            save_dag(root, dag)
+            update_step(dag, "planner", status="completed")
+            intent = self._make_approved_decision(root, paths, dag, "planner")
+
+            step = dag.by_id("planner")
+            low_agreement = max(0.0, _REFEREE_AGREEMENT_THRESHOLD - 0.1)
+            evaluation = {"recommended_action": "accept", "confidence": 0.8,
+                          "risk_level": "low", "evaluator_agreement": low_agreement}
+            _post_execution_bridge(root, dag, step, evaluation, [])
+
+            votes = load_votes(root, paths.run_id, intent.intent_id)
+            referee_votes = [v for v in votes if v.vote == "needs_referee"]
+            self.assertTrue(len(referee_votes) >= 1,
+                            "needs_referee vote should be cast on low evaluator agreement")
+
+    def test_bridge_casts_needs_referee_vote_on_referee_action(self):
+        from hivemind.protocol import load_votes
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "bridge referee action test")
+            dag = build_dag(paths.run_id, "bridge referee action test", "implementation")
+            save_dag(root, dag)
+            update_step(dag, "planner", status="completed")
+            intent = self._make_approved_decision(root, paths, dag, "planner")
+
+            step = dag.by_id("planner")
+            evaluation = {"recommended_action": "referee", "confidence": 0.6,
+                          "risk_level": "medium", "evaluator_agreement": 0.8,
+                          "escalation_reason": "disagreement_count=3>=2"}
+            _post_execution_bridge(root, dag, step, evaluation, [])
+
+            votes = load_votes(root, paths.run_id, intent.intent_id)
+            referee_votes = [v for v in votes if v.vote == "needs_referee"]
+            self.assertTrue(len(referee_votes) >= 1,
+                            "needs_referee vote should be cast when action=referee")
+
+    def test_evaluation_complete_ledger_event_emitted(self):
+        from hivemind.workloop import read_execution_ledger
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "eval complete event")
+            dag = build_dag(paths.run_id, "eval complete event", "implementation")
+            save_dag(root, dag)
+            execute_step(root, dag, "verify", execute=False)
+            records = read_execution_ledger(root, paths.run_id)
+            events = [r["event"] for r in records]
+            self.assertIn("evaluation_complete", events,
+                          "evaluation_complete should appear in ledger after execute_step")
 
 
 if __name__ == "__main__":

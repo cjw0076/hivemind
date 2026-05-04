@@ -39,8 +39,9 @@ from .harness import (
     run_board,
     orchestrate_prompt,
 )
+from .workloop import format_ledger_entry, read_execution_ledger, replay_execution_ledger
 
-TUI_VIEWS = {"board", "events", "transcript", "agents", "artifacts", "memory", "society", "diff"}
+TUI_VIEWS = {"board", "events", "transcript", "agents", "artifacts", "memory", "society", "diff", "ledger"}
 
 CTRL_A = "\x01"
 CTRL_C = "\x03"
@@ -307,6 +308,7 @@ def view_for_key(key: int) -> str | None:
         key_f(6): "memory",
         key_f(7): "society",
         key_f(8): "diff",
+        key_f(9): "ledger",
     }.get(key)
 
 
@@ -331,10 +333,11 @@ def handle_local_composer_command(prompt: str) -> dict[str, Any]:
             "6": "memory",
             "7": "society",
             "8": "diff",
+            "9": "ledger",
         }.get(parts[1].lower(), parts[1].lower())
         if view in TUI_VIEWS:
             return {"action": "view", "view": view}
-    if name in {"/board", "/events", "/transcript", "/agents", "/artifacts", "/memory", "/society", "/diff"}:
+    if name in {"/board", "/events", "/transcript", "/agents", "/artifacts", "/memory", "/society", "/diff", "/ledger"}:
         return {"action": "view", "view": name[1:]}
     return {}
 
@@ -382,7 +385,7 @@ def handle_key(screen, root: Path, run_id: str | None, key: int, control: bool =
             report = git_diff_report(root, run_id=run_id)
             return f"diff -> {report.get('path')} ({len(report.get('changed_files') or [])} files)"
         if key in {ord("h"), ord("H"), ord("?")}:
-            return "views: F1 board F2 events F3 transcript F4 agents F5 artifacts F6 memory F7 society F8 diff"
+            return "views: F1 board F2 events F3 transcript F4 agents F5 artifacts F6 memory F7 society F8 diff F9 ledger"
     except Exception as exc:
         return f"error: {exc}"
     return "unknown key"
@@ -418,7 +421,7 @@ def handle_tui_command(root: Path, run_id: str | None, command: str) -> str:
     parts = command.split()
     name = parts[0].lower()
     if name in {"/help", "/h", "/?"}:
-        return "commands: /demo, /ask task, /route, /verify, /memory, /summary, /diff, /local, /claude, /codex, /gemini, /view, /quit"
+        return "commands: /demo, /ask task, /route, /verify, /memory, /summary, /diff, /ledger, /local, /claude, /codex, /gemini, /view, /quit"
     if name == "/demo":
         delay = 0.6
         if len(parts) > 1:
@@ -508,6 +511,9 @@ def draw_view(
     if view == "diff":
         draw_diff_view(screen, height, width, paths)
         return
+    if view == "ledger":
+        draw_ledger_view(screen, height, width, root, paths)
+        return
     draw_board_view(screen, height, width, state, events, health, board, control)
 
 
@@ -596,7 +602,7 @@ def draw_global_composer(screen, height: int, width: int, message: str, view: st
     mode = "controller" if control else "observer"
     help_text = (
         f"view:{view} mode:{mode}  Enter submits  Ctrl+C cancels  Ctrl+V pastes  Ctrl+D quits  "
-        "F1-F8 views"
+        "F1-F9 views"
     )
     clear_line(screen, height - 2)
     clear_line(screen, height - 1)
@@ -808,6 +814,74 @@ def draw_diff_view(screen, height: int, width: int, paths: Any) -> None:
         except (json.JSONDecodeError, OSError) as exc:
             rows = [f"Invalid git_diff_report.json: {exc}"]
     draw_rows(screen, 4, 2, height - 7, width - 4, rows)
+
+
+def draw_ledger_view(screen, height: int, width: int, root: Path, paths: Any) -> None:
+    draw_view_header(screen, width, "Ledger", {"run_id": paths.run_id}, "Execution authority, touched files, and scheduler rounds")
+    rows = build_ledger_view_rows(root, paths, max(1, height - 8))
+    draw_rows(screen, 4, 2, height - 7, width - 4, rows)
+
+
+def build_ledger_view_rows(root: Path, paths: Any, height: int) -> list[str]:
+    replay = replay_execution_ledger(root, paths.run_id)
+    records = read_execution_ledger(root, paths.run_id, limit=max(1, height))
+    rows = build_protocol_authority_rows(replay)
+    rows.extend(["", "Recent Ledger", "SEQ TIME     ACTOR                    EVENT                      STEP               STATUS       FILES"])
+    rows.extend(format_ledger_entry(record) for record in records)
+    if len(rows) <= 4:
+        rows.append("No ledger records yet. Run: hive plan dag && hive step fan-out")
+    return rows
+
+
+def build_protocol_authority_rows(replay: dict[str, Any]) -> list[str]:
+    authority = replay.get("authority") or {}
+    intents = authority.get("intents") or {}
+    decisions = authority.get("decisions") or {}
+    proofs = authority.get("proofs") or {}
+    votes = authority.get("votes") or {}
+    latest_intent_id = latest_mapping_key(intents)
+    latest_intent = intents.get(latest_intent_id, {}) if latest_intent_id else {}
+    latest_decision = decisions.get(latest_intent_id, {}) if latest_intent_id else {}
+    latest_proof = proofs.get(latest_intent_id, {}) if latest_intent_id else {}
+    latest_votes = votes.get(latest_intent_id, {}) if latest_intent_id else {}
+    missing = latest_decision.get("missing_voters") or []
+    issues = replay.get("issues") or []
+    rows = [
+        "Authority",
+        f"Replay: {'OK' if replay.get('ok') else 'NEEDS REVIEW'}  hash={'ok' if replay.get('hash_chain_ok') else 'drift'}  seq={'ok' if replay.get('seq_ok') else 'drift'}  records={replay.get('record_count')}",
+    ]
+    if latest_intent:
+        rows.append(
+            "Active Intent: "
+            f"{latest_intent.get('intent_id')} step={latest_intent.get('step_id')} "
+            f"class={latest_intent.get('authority_class') or '-'} risk={latest_intent.get('risk_level') or '-'}"
+        )
+        rows.append(
+            "Decision: "
+            f"{latest_decision.get('decision') or '-'} "
+            f"missing={', '.join(str(item) for item in missing) if missing else 'none'}"
+        )
+        rows.append(
+            "Votes: "
+            + (", ".join(f"{role}={vote}" for role, vote in sorted(latest_votes.items())) if latest_votes else "none")
+        )
+        rows.append(f"Proof: {latest_proof.get('status') or '-'} verifier={latest_proof.get('verifier_status') or '-'}")
+    else:
+        rows.append("Active Intent: none")
+        rows.append("Decision: none")
+        rows.append("Votes: none")
+        rows.append("Proof: none")
+    if issues:
+        rows.append("Replay Issues: " + "; ".join(str(issue.get("type")) for issue in issues[:4]))
+    else:
+        rows.append("Replay Issues: none")
+    return rows
+
+
+def latest_mapping_key(mapping: dict[str, Any]) -> str | None:
+    if not mapping:
+        return None
+    return next(reversed(mapping))
 
 
 def draw_view_header(screen, width: int, title: str, state: dict[str, Any], subtitle: str) -> None:

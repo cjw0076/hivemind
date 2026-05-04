@@ -81,6 +81,8 @@ MemoryOS should grow in layers, not as a large monolith.
 - Agent work must become durable artifacts before it becomes memory.
 - Capability recommendations must be evidence-backed workflow records, not tool-name lists.
 - Local LLM output is draft worker output; Claude/Codex/user review remains the authority for high-impact decisions.
+- Future UX must hide directories, run folders, and filesystem mechanics by default. The user-facing surface is prompt input plus live logs/decisions; files remain the internal substrate and debug/export layer.
+- Hive Mind should not become the final visual app. It owns prompt intake, chair orchestration, ledger/protocol state, and provider execution records; MemoryOS owns the long-term neural-map observability UI over that state.
 
 ## Operating Stack
 
@@ -100,11 +102,26 @@ Human intent
 
 Near-term, this stack is implemented through the `hive` harness and file-backed run folders, not a large autonomous swarm.
 
+Long-term, this becomes an AIOS-style operator layer rather than an app. The
+user should not have to browse directories, inspect run folders, or manage
+artifact paths during normal work. The system should accept prompts, execute the
+appropriate chaired workflow, and expose only the live log, decisions, blocked
+questions, risk gates, and final outcomes. Terminal/TUI, desktop, and file views
+are transitional control/debug surfaces over the same operating layer.
+
+When Hive Mind is attached to MemoryOS, Hive should provide prompt intake plus a
+stable read model/event stream. MemoryOS should render the user's main
+observability surface as a neural map: agent turns, authority gates, memory
+nodes, claims, disagreements, evidence, and task flow become graph events rather
+than file paths or terminal panels. `hive tui` remains useful as an operator
+console and debugging harness, but it is not the product north star.
+
 Roles:
 
 - MemoryOS remembers decisions, claims, evidence, disagreements, project state, and agent runs.
+- MemoryOS owns the neural-map observability UI and accepted-memory review surface.
 - CapabilityOS maps tools, models, MCP servers, skills, connectors, workflows, risks, quality tiers, and legacy comparisons.
-- The `hive` harness turns user requests into task specs, context packs, handoffs, provider artifacts, verification reports, and memory drafts.
+- The `hive` harness turns user prompts into chaired workflows, task specs, context packs, handoffs, provider artifacts, ledger/protocol records, verification reports, and memory drafts.
 - Local LLM workers classify, extract, compress, summarize, and draft handoffs as cheap provider-like workers.
 - Claude, Codex, Gemini, and future providers plug into the same artifact protocol according to their strengths.
 - Agent Society records performance, peer review, user feedback, and routing proposals, but prompt/routing mutations require review.

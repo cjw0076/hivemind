@@ -12,6 +12,18 @@ from pathlib import Path
 from typing import Any
 
 from .utils import now_iso
+from .workloop import (
+    append_execution_ledger,
+    capture_worktree_snapshot,
+    relative_artifact,
+    touched_files_between,
+)
+from .protocol import (
+    approved_decision_for_step,
+    cast_vote,
+    create_proof,
+    step_requires_protocol_decision,
+)
 
 PLAN_DAG_FILE = "plan_dag.json"
 SCHEMA_VERSION = 1
@@ -942,6 +954,84 @@ def _log_dag_mutation(root: "Path", run_id: str, trigger_step: str, evaluation: 
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
+# ---------------------------------------------------------------------------
+# Evaluation-to-protocol bridge
+# ---------------------------------------------------------------------------
+
+_EVALUATION_TO_VERIFIER_STATUS: dict[str, str] = {
+    "accept":     "passed",
+    "retry":      "low_confidence",
+    "add_review": "review_required",
+    "escalate":   "flagged",
+    "referee":    "conflict",
+    "block":      "blocked",
+    "skip":       "skipped",
+}
+
+# evaluator_agreement below this threshold triggers a needs_referee post-vote
+_REFEREE_AGREEMENT_THRESHOLD = 0.5
+
+
+def _evaluation_to_verifier_status(recommended_action: str) -> str:
+    return _EVALUATION_TO_VERIFIER_STATUS.get(recommended_action, "not_run")
+
+
+def _post_execution_bridge(
+    root: "Path",
+    dag: "PlanDAG",
+    step: "PlanStep",
+    evaluation: dict[str, Any],
+    files_touched: list[str],
+) -> None:
+    """Best-effort: close protocol loop after evaluation.
+
+    If an approved ExecutionDecision exists for this step, write an
+    ExecutionProof with verifier_status derived from the evaluation result.
+    If evaluator agreement is below the referee threshold, cast a
+    needs_referee post-execution vote so downstream audit can track it.
+
+    Never raises — pipeline must not be blocked by protocol bookkeeping.
+    """
+    try:
+        decision = approved_decision_for_step(root, dag.run_id, step.step_id)
+        if decision is None:
+            return
+        recommended = evaluation.get("recommended_action", "accept")
+        verifier_status = _evaluation_to_verifier_status(recommended)
+        create_proof(
+            root,
+            dag.run_id,
+            decision.intent_id,
+            status=step.status,
+            output_path=step.artifact,
+            files_touched=files_touched,
+            verifier_status=verifier_status,
+        )
+    except Exception:
+        return
+
+    try:
+        agreement = evaluation.get("evaluator_agreement", 1.0) or 1.0
+        recommended = evaluation.get("recommended_action", "accept")
+        if recommended == "referee" or agreement < _REFEREE_AGREEMENT_THRESHOLD:
+            reasons = [f"evaluator_agreement={agreement:.2f}"]
+            if recommended == "referee":
+                reasons.append(f"escalation_reason={evaluation.get('escalation_reason', '')}")
+            cast_vote(
+                root,
+                dag.run_id,
+                decision.intent_id,
+                voter_role="evaluator",
+                vote="needs_referee",
+                confidence=agreement,
+                risk_level=evaluation.get("risk_level"),
+                reasons=reasons,
+                allow_executor=True,
+            )
+    except Exception:
+        pass
+
+
 def execute_step(
     root: Path,
     dag: PlanDAG,
@@ -970,25 +1060,109 @@ def execute_step(
 
     # Terminal-state idempotency check (before guard so it's always fast)
     if step.status == "completed":
+        append_execution_ledger(
+            root,
+            dag.run_id,
+            "step_idempotent",
+            actor=step.owner_role,
+            step_id=step_id,
+            status="already_completed",
+            permission_mode=step.permission_mode,
+        )
         return {"ok": True, "step_id": step_id, "status": "already_completed"}
 
     if step.kind == "barrier":
         closed = auto_close_barriers(dag)
         if step_id in closed:
+            append_execution_ledger(
+                root,
+                dag.run_id,
+                "barrier_closed",
+                actor=step.owner_role,
+                step_id=step_id,
+                status="completed",
+                permission_mode=step.permission_mode,
+                extra={"depends_on": step.depends_on},
+            )
             return {"ok": True, "step_id": step_id, "status": "barrier_closed"}
         missing = [dep for dep in step.depends_on if dag.status_of(dep) != "completed"]
+        append_execution_ledger(
+            root,
+            dag.run_id,
+            "barrier_waiting",
+            actor=step.owner_role,
+            step_id=step_id,
+            status="waiting",
+            permission_mode=step.permission_mode,
+            extra={"waiting_on": missing},
+        )
         return {"ok": False, "step_id": step_id, "status": "barrier_waiting", "waiting_on": missing}
 
     # Status transition guard
     try:
         guard_transition(step_id, step.status, "running", force=force)
     except ValueError as exc:
+        append_execution_ledger(
+            root,
+            dag.run_id,
+            "step_blocked",
+            actor=step.owner_role,
+            step_id=step_id,
+            status="transition_blocked",
+            permission_mode=step.permission_mode,
+            message=str(exc),
+        )
         return {"ok": False, "step_id": step_id, "status": "transition_blocked", "error": str(exc)}
+
+    if step_requires_protocol_decision(step, execute):
+        decision = approved_decision_for_step(root, dag.run_id, step_id)
+        if decision is None:
+            append_execution_ledger(
+                root,
+                dag.run_id,
+                "step_blocked",
+                actor=step.owner_role,
+                step_id=step_id,
+                status="protocol_gate",
+                permission_mode=step.permission_mode,
+                bypass_mode="execute",
+                message="execute requires approved ExecutionDecision",
+            )
+            return {
+                "ok": False,
+                "step_id": step_id,
+                "status": "protocol_gate",
+                "error": (
+                    "execute requires approved ExecutionDecision. "
+                    f"Run: hive protocol intent {step_id} --execute"
+                ),
+            }
+        append_execution_ledger(
+            root,
+            dag.run_id,
+            "protocol_decision_used",
+            actor="harness",
+            step_id=step_id,
+            status=decision.decision,
+            permission_mode=step.permission_mode,
+            bypass_mode="execute",
+            extra={"intent_id": decision.intent_id, "conditions": decision.conditions},
+        )
 
     # Acquire step lease
     try:
         lease = StepLease.acquire(root, dag.run_id, step_id)
     except RuntimeError as exc:
+        append_execution_ledger(
+            root,
+            dag.run_id,
+            "step_blocked",
+            actor=step.owner_role,
+            step_id=step_id,
+            status="lease_conflict",
+            permission_mode=step.permission_mode,
+            message=str(exc),
+        )
         return {"ok": False, "step_id": step_id, "status": "lease_conflict", "error": str(exc)}
 
     # Reversibility gate (pre-execution): declared values are operator-owned;
@@ -1000,6 +1174,21 @@ def execute_step(
         step.reversibility_source = "estimated"
         step.reversibility_factors = factors
     if step.reversibility < REVERSIBILITY_BLOCK_THRESHOLD and not force:
+        append_execution_ledger(
+            root,
+            dag.run_id,
+            "step_blocked",
+            actor=step.owner_role,
+            step_id=step_id,
+            status="reversibility_gate",
+            permission_mode=step.permission_mode,
+            message=f"reversibility={step.reversibility:.2f}",
+            extra={
+                "reversibility": step.reversibility,
+                "reversibility_source": step.reversibility_source,
+                "reversibility_factors": step.reversibility_factors,
+            },
+        )
         lease.release()
         return {
             "ok": False,
@@ -1017,6 +1206,26 @@ def execute_step(
     paths, state = load_run(root, dag.run_id)
     step.status = "running"
     step.started_at = now_iso()
+    before_snapshot = capture_worktree_snapshot(root)
+    append_execution_ledger(
+        root,
+        dag.run_id,
+        "step_started",
+        actor=step.owner_role,
+        step_id=step_id,
+        status="running",
+        permission_mode=step.permission_mode,
+        bypass_mode="execute" if execute else "prepare",
+        extra={
+            "kind": step.kind,
+            "execute": execute,
+            "force": force,
+            "provider_candidates": step.provider_candidates,
+            "reversibility": step.reversibility,
+            "reversibility_source": step.reversibility_source,
+            "reversibility_factors": step.reversibility_factors,
+        },
+    )
 
     try:
         mapping = _ROLE_MAP.get(step.owner_role)
@@ -1041,8 +1250,25 @@ def execute_step(
                 guard_transition(step_id, "running", "completed", force=force)
                 step.status = "completed"
                 step.finished_at = now_iso()
+                files_touched = touched_files_between(
+                    before_snapshot,
+                    capture_worktree_snapshot(root),
+                    root=root,
+                )
+                append_execution_ledger(
+                    root,
+                    dag.run_id,
+                    "step_completed",
+                    actor=step.owner_role,
+                    step_id=step_id,
+                    status=step.status,
+                    permission_mode=step.permission_mode,
+                    bypass_mode="execute" if execute else "prepare",
+                    files_touched=files_touched,
+                )
                 lease.release()
                 return {"ok": True, "step_id": step_id, "status": "completed",
+                        "files_touched": files_touched,
                         "idempotency_key": lease.idempotency_key}
         else:
             raise ValueError(f"Unknown executor kind: {kind}")
@@ -1055,10 +1281,47 @@ def execute_step(
             step.finished_at = now_iso()
             step.artifact = artifact_path.relative_to(root).as_posix()
             evaluation = evaluate_step_output(root, dag, step)
+            files_touched = touched_files_between(
+                before_snapshot,
+                capture_worktree_snapshot(root),
+                root=root,
+                artifact_path=artifact_path,
+            )
+            append_execution_ledger(
+                root,
+                dag.run_id,
+                "step_failed" if new_status == "failed" else "step_skipped",
+                actor=step.owner_role,
+                step_id=step_id,
+                status=step.status,
+                permission_mode=step.permission_mode,
+                bypass_mode="execute" if execute else "prepare",
+                files_touched=files_touched,
+                artifact=relative_artifact(root, artifact_path),
+                message="artifact reported status=failed",
+                extra={"recommended_action": evaluation.get("recommended_action")},
+            )
+            append_execution_ledger(
+                root,
+                dag.run_id,
+                "evaluation_complete",
+                actor="evaluator",
+                step_id=step_id,
+                status=evaluation.get("recommended_action", "accept"),
+                permission_mode=step.permission_mode,
+                bypass_mode="execute" if execute else "prepare",
+                extra={
+                    "confidence": evaluation.get("confidence"),
+                    "risk_level": evaluation.get("risk_level"),
+                    "evaluator_agreement": evaluation.get("evaluator_agreement"),
+                },
+            )
+            _post_execution_bridge(root, dag, step, evaluation, files_touched)
             lease.release()
             return {
                 "ok": False, "step_id": step_id, "status": step.status,
                 "artifact": step.artifact, "error": "artifact reported status=failed",
+                "files_touched": files_touched,
                 "recommended_action": evaluation.get("recommended_action"),
                 "idempotency_key": lease.idempotency_key,
             }
@@ -1070,10 +1333,50 @@ def execute_step(
         step.artifact = artifact_path.relative_to(root).as_posix()
         evaluation = evaluate_step_output(root, dag, step)
         auto_close_barriers(dag)
+        files_touched = touched_files_between(
+            before_snapshot,
+            capture_worktree_snapshot(root),
+            root=root,
+            artifact_path=artifact_path,
+        )
+        append_execution_ledger(
+            root,
+            dag.run_id,
+            "step_completed",
+            actor=step.owner_role,
+            step_id=step_id,
+            status=step.status,
+            permission_mode=step.permission_mode,
+            bypass_mode="execute" if execute else "prepare",
+            files_touched=files_touched,
+            artifact=relative_artifact(root, artifact_path),
+            extra={
+                "recommended_action": evaluation.get("recommended_action"),
+                "confidence": evaluation.get("confidence"),
+                "risk_level": evaluation.get("risk_level"),
+            },
+        )
+        append_execution_ledger(
+            root,
+            dag.run_id,
+            "evaluation_complete",
+            actor="evaluator",
+            step_id=step_id,
+            status=evaluation.get("recommended_action", "accept"),
+            permission_mode=step.permission_mode,
+            bypass_mode="execute" if execute else "prepare",
+            extra={
+                "confidence": evaluation.get("confidence"),
+                "risk_level": evaluation.get("risk_level"),
+                "evaluator_agreement": evaluation.get("evaluator_agreement"),
+            },
+        )
+        _post_execution_bridge(root, dag, step, evaluation, files_touched)
         lease.release()
         return {
             "ok": True, "step_id": step_id, "status": step.status,
             "artifact": step.artifact,
+            "files_touched": files_touched,
             "recommended_action": evaluation.get("recommended_action"),
             "confidence": evaluation.get("confidence"),
             "risk_level": evaluation.get("risk_level"),
@@ -1085,9 +1388,44 @@ def execute_step(
         step.status = new_status
         step.finished_at = now_iso()
         evaluation = evaluate_step_output(root, dag, step)
+        files_touched = touched_files_between(
+            before_snapshot,
+            capture_worktree_snapshot(root),
+            root=root,
+        )
+        append_execution_ledger(
+            root,
+            dag.run_id,
+            "step_failed" if new_status == "failed" else "step_skipped",
+            actor=step.owner_role,
+            step_id=step_id,
+            status=step.status,
+            permission_mode=step.permission_mode,
+            bypass_mode="execute" if execute else "prepare",
+            files_touched=files_touched,
+            message=str(exc),
+            extra={"recommended_action": evaluation.get("recommended_action")},
+        )
+        append_execution_ledger(
+            root,
+            dag.run_id,
+            "evaluation_complete",
+            actor="evaluator",
+            step_id=step_id,
+            status=evaluation.get("recommended_action", "accept"),
+            permission_mode=step.permission_mode,
+            bypass_mode="execute" if execute else "prepare",
+            extra={
+                "confidence": evaluation.get("confidence"),
+                "risk_level": evaluation.get("risk_level"),
+                "evaluator_agreement": evaluation.get("evaluator_agreement"),
+            },
+        )
+        _post_execution_bridge(root, dag, step, evaluation, files_touched)
         lease.release()
         return {
             "ok": False, "step_id": step_id, "status": step.status, "error": str(exc),
+            "files_touched": files_touched,
             "recommended_action": evaluation.get("recommended_action"),
         }
 
@@ -1118,6 +1456,16 @@ def execute_fan_out(
     The caller must call save_dag() after this returns.
     """
     from .dag_state import recover_expired_leases
+
+    append_execution_ledger(
+        root,
+        dag.run_id,
+        "scheduler_round_started",
+        actor="harness",
+        status="running",
+        bypass_mode="execute" if execute else "prepare",
+        extra={"force": force},
+    )
 
     # Recover any crashed workers before scheduling
     recovered = recover_expired_leases(root, dag.run_id, dag)
@@ -1174,7 +1522,7 @@ def execute_fan_out(
     ]
 
     next_step = dag.next_sequential()
-    return {
+    report = {
         "ok": not any_hard_fail,
         "mode": mode,
         "dispatched": dispatched,
@@ -1186,6 +1534,23 @@ def execute_fan_out(
         "dag_complete": dag.is_complete(),
         "dag_blocked": dag.is_blocked(),
     }
+    append_execution_ledger(
+        root,
+        dag.run_id,
+        "scheduler_round_completed",
+        actor="harness",
+        status=mode,
+        bypass_mode="execute" if execute else "prepare",
+        extra={
+            "dispatched": dispatched,
+            "barriers_closed": closed,
+            "recovered_leases": recovered,
+            "next": report["next"],
+            "dag_complete": report["dag_complete"],
+            "dag_blocked": report["dag_blocked"],
+        },
+    )
+    return report
 
 
 # ---------------------------------------------------------------------------
