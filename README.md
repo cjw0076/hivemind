@@ -68,12 +68,12 @@ See:
 ```bash
 scripts/install-hive-cli.sh
 hive init
-hive
+hive                       # opens the Hive Console/TUI on an interactive terminal
 hive "your task"
 hive hive activity
 hive plan
 hive check run
-hive tui
+hive tui                   # explicit TUI entrypoint for scripts, tests, and view flags
 ```
 
 Or without installing:

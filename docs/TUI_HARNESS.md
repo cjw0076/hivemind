@@ -46,6 +46,7 @@ hive prompt
 hive log
 hive hive activity
 hive memory list
+hive demo live "Watch Hive Mind agents coordinate in the TUI"
 hive tui
 hive tui --view board
 hive tui --view events --observer
@@ -92,12 +93,17 @@ python -m hivemind.hive verify
 python -m hivemind.hive summarize
 python -m hivemind.hive memory draft
 python -m hivemind.hive memory list
+python -m hivemind.hive demo live "Watch Hive Mind agents coordinate in the TUI"
 ```
 
 If installed as a package, `hive` and `hivemind` point to the same command.
 
 `hive "your task"` is shorthand for `hive orchestrate "your task"`.
-Bare `hive` opens the conversational operator shell. Use `hive chat` explicitly for the same shell, or `hive shell` for the older thin slash-command shell. Use `hive tui` for the curses status board.
+Bare `hive` opens the Hive Console/TUI when stdin and stdout are interactive.
+Use `hive tui` when you want the same console explicitly, `hive chat` for the
+plain conversational operator shell, and `hive shell` for the older thin
+slash-command shell. In non-interactive pipes, bare `hive` prints help instead
+of starting curses.
 
 `hive tui` is a multi-view cockpit, not one mega-dashboard. The default `board`
 view focuses on current run, next action, pipeline, agent reasons, missing
@@ -307,6 +313,7 @@ ctrl-v  paste from the system clipboard when wl-paste, xclip, xsel, or pbpaste i
 ctrl-d  quit when the composer is empty
 /command  run a slash command from the composer
 /view board|events|transcript|agents|artifacts|memory|society|diff  switch views
+/demo [delay]  animate a safe multi-agent run without executing providers
 /quit  quit
 F10  show keybinding hint
 ```
@@ -316,6 +323,23 @@ Large terminals render the dashboard as a control plane: run/health summary, pip
 Prompt submission runs in the background so slow local/provider routing does not freeze the console. The status line reports active submissions and then replaces it with the completed run or error message.
 
 Normal TUI prompts use the fast heuristic router first. This keeps the operator console responsive; explicit CLI or slash-command workflows can still run local/provider workers when deeper routing is needed.
+
+To watch the TUI update while multiple roles move through the board, open two
+terminals:
+
+```bash
+hive tui
+```
+
+```bash
+hive demo live "TUI live swarm demo" --delay 0.4
+```
+
+The same safe animation can be launched from inside the TUI with `/demo 0.4`.
+The demo writes real run artifacts and human activity events for local context,
+Claude planner, Codex executor, Gemini reviewer, local summarizer, verifier,
+memory, and close. It intentionally keeps provider CLIs in prepare-only mode, so
+it is a UI/read-model smoke test rather than an autonomous execution path.
 
 The TUI does not try to be the final desktop UI. It is an operational control surface for driving agent work through run artifacts: pipeline first, agent aware, artifact driven, audit friendly.
 

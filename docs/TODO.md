@@ -105,7 +105,7 @@ Sources: `VG-03`, `VG-04`, `VG-06`, `VG-13`.
 
 ## Layered Chair Runtime
 
-Sources: `VG-03`, `VG-04`, `VG-05`, `VG-12`, `VG-14`, `VG-15`.
+Sources: `VG-03`, `VG-04`, `VG-05`, `VG-12`, `VG-14`, `VG-15`, `VG-16`.
 
 Source: `docs/HIVE_MIND_GAPS.md` section "Header Role Decomposition and Per-Layer Provider Selection".
 
@@ -116,7 +116,18 @@ Source: `docs/HIVE_MIND_GAPS.md` section "Header Role Decomposition and Per-Laye
 - [ ] Reconcile `artifacts/workflow_state.json` and `plan_dag.json` into one durable scheduler surface.
 - [ ] Harden DAG step result handling so failed local/provider artifacts become `failed` or `skipped`, not `completed`.
 - [ ] Policy-gate or replace the Claude `--dangerously-skip-permissions` execute workaround before expanding automation.
+- [x] Specify adaptive adversarial chair design: task feature vectors, step evaluations, append-only DAG mutations, referee decisions, and capability learning.
+- [ ] Persist `StepEvaluation` artifacts under `.runs/<run_id>/step_evaluations/`, not only inline `PlanStep.evaluation`.
+- [ ] Converge `PlanStep` on `evaluation_policy` and phase out ad hoc `quality_gates`, `escalation_threshold`, and `referee_policy` use.
+- [ ] Add `TaskFeatureVector` artifact and mode router for cooperative/adversarial/verification-only/red-team defaults by task shape.
+- [ ] Add `dag_mutations.jsonl` tests for observe-only mutation proposals: retry, reviewer, verifier, referee, run_test, ask_user.
+- [x] Refresh auto-estimated reversibility on every execution attempt, preserve operator-declared values, and surface gate factors in `execute_fan_out`.
+- [ ] Calibrate reversibility thresholds from run history and false-positive review logs before raising `REVERSIBILITY_BLOCK_THRESHOLD`.
+- [ ] Design `ProbeStep` criterion schema before implementation: typed criterion, evaluator, expected artifact field, timeout, and failure disposition.
 - [ ] Add bounded parallel fan-out/fan-in runner for safe runnable steps, with durable resume and barrier joins.
+- [ ] Add evaluation-aware barrier joins: close only when dependency status and evaluation policy are satisfied.
+- [ ] Add `RefereeDecision` artifact and `referee` step type; prefer required next tests over winner selection.
+- [ ] Add capability-performance memory by provider, role, task feature vector, quality, cost, and outcome.
 - [ ] Implement L1 verifier checks for schema validity, process launch hygiene, stale artifact detection, forbidden-language scans, and file/scope checks.
 - [ ] Add provider-family metadata to provider capabilities so L2/L3/L5 can enforce model-family heterogeneity.
 - [ ] Add role routing policy: L0 code/local-only, L1 code/local/cheap-hosted, L2 frontier workers, L3 different-family referee, L4 long-context auditor, L5 different-family conflict reviewer.
@@ -175,6 +186,8 @@ Sources: `VG-03`, `VG-04`, `VG-13`.
 - [x] Make `hive loop` validation-safe and failure-aware: auto-loop events are accepted by run validation, failed local workers stop the loop, and failed agent state fails verification.
 - [x] Make `hive tui` interactive with prompt input, slash command input, and dashboard layout.
 - [x] Add always-visible TUI `hive>` composer so prompt entry is discoverable.
+- [x] Add `hive demo live` and TUI `/demo` to animate multi-agent coordination through real run artifacts without executing provider CLIs.
+- [x] Make bare `hive` open the Hive Console/TUI on interactive terminals while keeping `hive tui` as the explicit mode.
 - [x] Add `hive_events.jsonl` and `hive hive activity` so human activity shows role assignment, not only artifact creation.
 - [x] Harden provider result validation for all prepared/executed adapters.
 - [ ] Add supervised long-running run control: `hive run start/status/tail/stop` with real child PID, host, GPU, log path, command hash, commit, and output artifact validation.

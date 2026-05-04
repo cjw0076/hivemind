@@ -492,9 +492,23 @@ Naming note as of 2026-05-02 12:24 KST:
 ## 2026-05-04 11:10 KST - Codex
 
 - Context: User wanted to see Hive Mind agents visibly coordinating on top of the TUI.
-- Decision: Added a safe live-demo command and TUI slash command that animate a multi-agent run through real run artifacts without executing provider CLIs.
-- Evidence: `hive demo live` writes routing, society, local context, prepared Claude/Codex/Gemini artifacts, verifier output, memory draft, summary, and `demo_started`/`demo_completed` activity. PTY smoke showed `hive tui` following the run through the board.
+- Decision: Added a safe live-demo command and TUI slash command that animate a multi-agent run through real run artifacts without executing provider CLIs. Made bare `hive` the primary interactive entrypoint by opening the Hive Console/TUI on TTYs.
+- Evidence: `hive demo live` writes routing, society, local context, prepared Claude/Codex/Gemini artifacts, verifier output, memory draft, summary, and `demo_started`/`demo_completed` activity. PTY smoke showed `hive tui` following the run through the board. `normalize_argv([])` now resolves to `tui` for interactive terminals and `--help` for non-TTY use.
 - Next: Treat this as the visible baseline for TUI/read-model verification; add filesystem transaction/lease semantics before real parallel fan-out.
+
+## 2026-05-04 11:58 KST - Codex
+
+- Context: User asked to send a subagent into `/home/user/workspaces/jaewon/_from_desktop` and bring back useful ideas for Hive Mind.
+- Decision: Broad scan was too large and was stopped; a narrow read-only subagent reviewed high-signal workflow/adversarial/runtime files. Best absorption targets are workflow DSL ideas, explicit chair/critic/referee protocols, parallel join policies, retry/backoff, run retrospectives, adversarial disagreement chains, and quality-aware routing memory.
+- Evidence: High-signal sources include `dipeen_v2/openclaw/extensions/open-prose/skills/prose/examples/*captains-chair*.prose`, `18-mixed-parallel-sequential.prose`, `19-advanced-parallel.prose`, `23-retry-with-backoff.prose`, `39-architect-by-simulation.prose`, `46-workflow-crystallizer.prose`, `49-prose-run-retrospective.prose`, `competition/watchdog/adversarial_monitor.py`, `conscious_runtime/run_long_run.py`, `conscious_runtime/workspace.py`, and `dipeen-projects/default/AGENTS.md`.
+- Next: Do not vendor wholesale; add a `_from_desktop` idea-capture doc/TODO slice if the user wants implementation.
+
+## 2026-05-04 12:20 KST - Codex
+
+- Context: User flagged reversibility-gate risks: stale auto estimates, false-positive patterns, empirical threshold gap, missing fan-out reasons, and Probe Step schema concerns.
+- Decision: Refreshed `estimated` reversibility on every execution attempt while preserving `declared`; narrowed noisy destructive patterns; stored `reversibility_factors`; returned and printed fan-out reversibility gate summaries.
+- Evidence: Updated `hivemind/plan_dag.py`, `hivemind/hive.py`, `tests/test_plan_dag.py`, `docs/TODO.md`, and `docs/AGENT_WORKLOG.md`. Focused tests now cover stale estimate refresh, declared value preservation, run-dir artifact scanning, and fan-out gate reason aggregation.
+- Next: Design typed Probe Step criteria before implementation; calibrate reversibility thresholds from observed false positives before changing `REVERSIBILITY_BLOCK_THRESHOLD`.
 
 ## 2026-05-04 KST - Claude (Sonnet 4.6)
 
@@ -561,3 +575,59 @@ Naming note as of 2026-05-02 12:24 KST:
 - `guard_transition` is never bypassed except with explicit `force=True` in recovery flows
 - `atomic_write` is the only path to write `plan_dag.json`; direct `write_text` is gone
 - `WorkerTransport.REMOTE_WORKER` stays in `TRANSPORTS_DEFERRED`; no remote implementation without local substrate stable
+
+---
+
+## 2026-05-04 KST — Claude (Sonnet 4.6) — Reversibility Gradient
+
+**Completed: Reversibility Gradient (PlanStep + execute_step pre-execution gate)**
+
+- Added `PlanStep.reversibility: float = 1.0` and `reversibility_source: str = "default"` fields
+  - Sources: `"default"` (not yet estimated) | `"declared"` (set by operator) | `"estimated"` (auto-computed)
+- `_estimate_reversibility(step, root) -> (float, list[str])`:
+  - Role baseline: `codex-executor` → 0.5, others → 1.0
+  - Permission penalty: `workspace_write_with_policy` → -0.3, `plan` → -0.1
+  - Destructive pattern scan on input artifacts (regex → score impact):
+    `DROP TABLE` (-0.3), `DELETE FROM` (-0.2), `DROP DATABASE` (-0.5), `rm -rf` (-0.4), `shutil.rmtree` (-0.3), `unlink` (-0.2), `os.remove` (-0.2), `truncate` (-0.1)
+  - Score clamped to [0.0, 1.0]
+- Thresholds: `REVERSIBILITY_BLOCK_THRESHOLD = 0.1`, `REVERSIBILITY_REVIEW_THRESHOLD = 0.3`
+- `execute_step` gate: after lease acquire, estimates if `reversibility_source == "default"`, then blocks with `status="reversibility_gate"` if score < 0.1 and not `force=True`; gate always releases lease on block
+- `_evaluate_risk()` now factors in `step.reversibility` (skips when source is `"default"`):
+  - `< BLOCK_THRESHOLD` → appends `"low_reversibility"` → level escalates to `"high"`
+  - `< REVIEW_THRESHOLD` → appends `"medium_reversibility"` → level escalates to `"medium"`
+- Persists through `save_dag` / `load_dag` (dataclass field, round-trips naturally)
+
+**Tests**: 90 passing (62 → 90; 18 new in `ReversibilityGradientTest`)
+- Unit: read-only default=1.0, write permission penalty, codex-executor baseline, rm-rf pattern, DROP TABLE pattern, missing artifact no-crash, score clamped, fields on PlanStep, round-trip persist
+- Integration: gate estimates on first execute, gate blocks with `status=reversibility_gate`, force bypasses gate, gate releases lease, risk elevated to high/medium, default source skipped
+
+**Next queue (unchanged order)**:
+1. Probe Step — `kind: "probe"` + mandatory `falsification_criterion` field
+2. Disagreement Topology — per-axis disagreement (not just count)
+3. Referee Escrow — `choose_a/b` requires evidence artifact; overturn logged to `counterfactual_shadow.jsonl`
+
+---
+
+### 내 생각 (Claude)
+
+**이번 구현에서 확신하는 것:**
+
+`reversibility_source = "default"` 를 risk evaluator가 무시하는 설계는 옳다. 추정 전에 0.05 같은 값이 risk에 반영되면 "아직 모른다"가 "위험하다"로 오독된다. source 구분이 없었으면 이 경계가 흐릿해졌을 것.
+
+gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다. guard_transition은 검증만 하고 상태를 바꾸지 않으므로, gate에서 block되어도 step은 여전히 원래 상태다. lease만 깔끔하게 해제하면 된다.
+
+**이번 구현에서 불안한 것:**
+
+`estimated` source는 첫 번째 `execute_step` 호출에서 딱 한 번 설정되고 이후 고정된다. 입력 artifact가 재작성된 후 retry가 오면 이전 추정값이 그대로 남는다. 현재는 `force=True`로 우회할 수 있지만, "재추정이 필요한 retry"와 "강제 실행"이 같은 경로를 쓰는 것은 어색하다. 나중에 `reversibility_source = "stale"` 상태가 필요할 수 있다.
+
+패턴 목록의 `unlink` 와 `DELETE FROM`은 과민하다. `unlink` 는 C stdlib 함수로 Python 코드에서 흔히 등장하고, `DELETE FROM`은 트랜잭션 안에 있으면 롤백 가능하다. 지금은 heuristic이므로 허용 가능하지만, 실제 codex-executor step에서 false positive가 쌓이면 operator가 `force=True`를 습관적으로 쓰게 된다. `force` 남용은 guard 전체를 무력화하는 방향으로 문화가 굳어질 수 있다.
+
+`REVERSIBILITY_BLOCK_THRESHOLD = 0.1`은 근거 없는 숫자다. `codex-executor + workspace_write_with_policy`의 baseline이 `0.5 - 0.3 = 0.2`라서 아무 destructive pattern 없이도 review(< 0.3)는 걸리지만 block(< 0.1)은 안 걸린다. 그러면 block threshold가 실제로 발동하는 경우는 "codex-executor + workspace_write + rm -rf 패턴"(0.5 - 0.3 - 0.4 = -0.2 → 0.0) 같은 극단적 조합뿐이다. 지금은 괜찮지만 threshold를 올려야 할 근거가 생기면 상향 조정을 고려해야 한다.
+
+**fan-out과의 연결에서 놓친 것:**
+
+`execute_fan_out`은 `reversibility_gate` 결과를 `ok=False`로만 처리하고 reason을 따로 집계하지 않는다. parallel steps 중 일부가 reversibility_gate로 막히면 dispatched 목록에는 들어가지만 `results[step_id]["status"] == "reversibility_gate"` 인 상태가 된다. operator가 `hive step fan-out --json`으로 볼 때 이유를 즉시 알 수 없다. 다음에 fan-out 결과 요약에 gate 이유를 모아서 출력하는 것을 고려해야 한다.
+
+**Probe Step에 대한 선행 의견:**
+
+다음 작업인 Probe Step의 `falsification_criterion`은 단순 string field로 시작하면 안 된다고 생각한다. criterion이 평가되지 않는 문자열이라면 referee가 없을 때 그냥 통과되거나 영구 pending 상태가 된다. 최소한 `criterion_type: "artifact_field_check" | "local_worker_eval" | "human_review"`와 `criterion_value`를 분리해야 실행 가능한 검사가 된다. 설계 논의 없이 구현에 들어가지 않겠다.

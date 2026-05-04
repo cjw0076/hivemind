@@ -35,3 +35,24 @@
 - Decision: Verified the DAG runtime as a real and useful direction, but do not put fan-out first. The immediate order is safety and correctness: policy-gate the Claude danger-mode execute workaround, harden step result handling, reconcile `hive flow` with `plan_dag.json`, then add bounded parallel fan-out.
 - Evidence: `hive plan dag --intent implementation`, `hive step list`, `hive step next`, and `hive step run context --json` worked in a temp workspace. `npm test` passed 80 tests. `python scripts/hive-product-eval.py --deep --out -` passed 21/21.
 - Next: Patch DAG execution semantics before parallelism: inspect local/provider result artifacts, apply `on_failure`, define skipped dependency barrier rules, and keep provider CLI execution behind explicit policy.
+
+## 2026-05-03 15:10 KST - Codex - Adaptive Adversarial Chair Design
+
+- Context: User asked for researcher-level ideas beyond the current implementation and for system design toward a dynamic multi-adversarial coordinator.
+- Decision: Defined the target as an adaptive adversarial chair: every DAG step is an epistemic trial; evaluator outputs drive observe-only mutation proposals first; referee decisions prefer discriminating tests over winner selection; provider allocation should be based on task features, uncertainty, risk, disagreement, cost, and reversibility.
+- Evidence: Added `docs/ADAPTIVE_ADVERSARIAL_CHAIR.md`, added `VG-16 Adaptive Adversarial Chair`, updated `docs/CHAIR_RUNTIME_SPEC.md`, and expanded `docs/TODO.md` with StepEvaluation, TaskFeatureVector, mutation log, evaluation-aware barrier, referee, and capability-memory work items. Existing `hivemind/plan_dag.py` already has a compatible `evaluation_policy` seed and observe-only mutation path; preserved it.
+- Next: Implement the contract slice: persist `step_evaluations/<step_id>.json`, add tests for retry/reviewer/referee mutation proposals, and make `workflow_state.json` a read model derived from `plan_dag.json`.
+
+## 2026-05-04 11:10 KST - Codex - TUI Live Swarm Demo
+
+- Context: User wanted to see Codex, Claude, local, Gemini, verifier, and memory roles visibly moving together inside `hive tui`, and also asked to absorb the useful parts of Hermes Agent without making the UI/UX opaque.
+- Decision: Added a safe live-demo path instead of pretending provider execution is production-ready. `hive demo live` and TUI `/demo` create or reuse a run, animate role transitions through real `.runs` artifacts and `hive_events.jsonl`, and keep external provider CLIs in prepare-only mode. Bare `hive` now opens the Hive Console/TUI on interactive terminals; `hive tui` remains the explicit mode and `hive chat` remains the plain shell.
+- Evidence: Updated `hivemind/harness.py`, `hivemind/hive.py`, `hivemind/tui.py`, `hivemind/run_validation.py`, `tests/test_demo_live.py`, `tests/test_cli_entrypoint.py`, `docs/TUI_HARNESS.md`, `README.md`, and `docs/TODO.md`. Verified focused unit tests, CLI JSON smoke, and a PTY TUI run where the board followed local context, Claude planner, Codex executor, Gemini reviewer, summarizer, verifier, memory, and close.
+- Next: Use this demo as the visible read-model baseline, then add transaction/lease semantics before true parallel fan-out and keep networking deferred to a transport boundary rather than a distributed runtime.
+
+## 2026-05-04 12:20 KST - Codex - Reversibility Gate Tightening
+
+- Context: User reviewed the reversibility gate and flagged stale estimated values, false-positive-prone patterns, uncalibrated block threshold, missing fan-out gate reasons, and the risk of rushing Probe Step with a single string criterion.
+- Decision: Keep the default/declared/estimated source split and gate position, but refresh auto-estimated reversibility on every execution attempt. Preserve operator-declared values, narrow noisy destructive patterns, persist `reversibility_factors`, and aggregate reversibility gate reasons in fan-out output.
+- Evidence: Updated `hivemind/plan_dag.py`, `hivemind/hive.py`, `tests/test_plan_dag.py`, and `docs/TODO.md`. Focused tests caught and fixed an additional bug: estimator was reading `root/<artifact>` but not `.runs/<run_id>/<artifact>`, so actual run artifacts such as `handoff.yaml` could be missed.
+- Next: Do not implement Probe Step yet. First design a typed criterion schema and calibrate reversibility threshold/pattern false positives from run history.

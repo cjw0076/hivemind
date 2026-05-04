@@ -3,7 +3,8 @@
 Status: implementation spec / not complete.
 
 Source: `docs/HIVE_MIND_GAPS.md` section "Header Role Decomposition and
-Per-Layer Provider Selection"; `docs/PUBLISHING_GATE.md` North Star.
+Per-Layer Provider Selection"; `docs/PUBLISHING_GATE.md` North Star;
+`docs/ADAPTIVE_ADVERSARIAL_CHAIR.md`.
 
 This spec prevents a monolithic "header LLM" from becoming the hidden product.
 Hive Mind should be a thin chair runtime: deterministic state first, judgment
@@ -29,7 +30,9 @@ Product intent:
 user intent
   -> classify and decompose
   -> gather role-specific context
+  -> evaluate each step as an epistemic trial
   -> chaired debate when judgment is needed
+  -> adaptive DAG mutation proposals when uncertainty/risk/disagreement warrants
   -> implementation / review / verification artifacts
   -> disagreement and convergence records
 ```
@@ -104,6 +107,24 @@ Next read-only chair work:
 
 Only after the read-only slice is stable should L0 start blocking or scheduling
 turns.
+
+## Adaptive Adversarial Layer
+
+The next chair layer is specified in `docs/ADAPTIVE_ADVERSARIAL_CHAIR.md`.
+Summary:
+
+- each `PlanStep` is an epistemic trial, not just a command;
+- evaluation is multi-dimensional: syntax, execution, claim, risk, and
+  disagreement;
+- dynamic DAG changes are append-only mutation proposals first;
+- default mutation mode is `observe_only`;
+- real DAG insertion must require explicit `--adaptive` and policy approval;
+- referee output should prefer a discriminating next test over winner picking.
+
+`PlanStep.evaluation_policy` is the preferred future contract. Compatibility
+fields such as `quality_gates`, `escalation_threshold`, and `referee_policy`
+may remain during migration, but new scheduler code should converge on one
+policy shape.
 
 ## Option-Only Auto Loop
 

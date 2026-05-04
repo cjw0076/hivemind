@@ -22,6 +22,7 @@ graph TD
   V13[Production Packaging]
   V14[Learning Operator Loop]
   V15[Layered Chair Runtime]
+  V16[Adaptive Adversarial Chair]
 
   V0 --> V1
   V0 --> V2
@@ -41,6 +42,9 @@ graph TD
   V15 --> V4
   V15 --> V5
   V15 --> V12
+  V15 --> V16
+  V16 --> V6
+  V16 --> V12
   V7 --> V8
   V8 --> V9
   V1 --> V10
@@ -67,6 +71,7 @@ graph TD
 | VG-13 | Production Packaging | Installable local-first `hive` product wrapping MemoryOS, CapabilityOS, MCP, providers, and local runtime. | `make_production.md`, `hive_mind2.md`, `TUI_HARNESS.md`, `PROVIDER_HARNESS_GUIDE.md` | `hive init`, `hive doctor`, `hive local status/setup`; `TODO.md` Harness Runtime, Production Hardening, and Security/Product. |
 | VG-14 | Learning Operator Loop | Close the loop from accepted MemoryOS context into Hive runs, chaired provider debate, verification, conflict records, and reviewed memory drafts for the next run. | `HIVE_MIND_GAPS.md` mirrored from `../memoryOS/docs/shared/HIVE_MIND_GAPS.md`, `GAP_CLOSURE_IMPLEMENTATION.md`, `HIVE_WORKING_METHOD.md`, `agent_society.md` | `hive debate`, `hive gaps`, `hive next`; `TODO.md` Hive Mind Gap Closure and Provider Debate And Convergence. |
 | VG-15 | Layered Chair Runtime | Split the chair/header into deterministic dispatch, verification, working agents, referee, North-Star auditor, and conflict reviewer so coordination is not a monolithic LLM bottleneck. | `HIVE_MIND_GAPS.md` section "Header Role Decomposition and Per-Layer Provider Selection", `CHAIR_RUNTIME_SPEC.md`, `OPERATOR_METHOD_PROFILE.md`, `PROVIDER_MODELS.md`, `HIVE_WORKING_METHOD.md` | Planned in `TODO.md` Layered Chair Runtime; L0/L1 should be code/local-first, L2/L3/L5 provider-heterogeneous, and L4 long-context/event-triggered. |
+| VG-16 | Adaptive Adversarial Chair | Treat each DAG step as an epistemic trial, evaluate outputs across syntax/execution/claim/risk/disagreement dimensions, and adapt future agent allocation through append-only mutation proposals. | `ADAPTIVE_ADVERSARIAL_CHAIR.md`, `plan_dag.py`, `CHAIR_RUNTIME_SPEC.md`, `HIVE_MIND_GAPS.md`, `agent_society.md` | Planned in `TODO.md` Layered Chair Runtime; current code has `PlanStep.evaluation_policy` seed and observe-only `dag_mutations.jsonl` proposal path. |
 
 ## Source Families
 
