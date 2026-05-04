@@ -985,6 +985,90 @@ def execute_step(
 
 
 # ---------------------------------------------------------------------------
+# Fan-out scheduler
+# ---------------------------------------------------------------------------
+
+def execute_fan_out(
+    root: Path,
+    dag: PlanDAG,
+    execute: bool = False,
+    force: bool = False,
+) -> dict[str, Any]:
+    """One round of DAG progression.
+
+    Priority:
+      1. If runnable parallel steps exist → dispatch all of them (sequentially
+         in this implementation; concurrent dispatch is a later upgrade behind
+         the same interface).
+      2. After parallel steps complete → auto_close_barriers.
+      3. If no parallel steps were runnable → dispatch the next sequential/
+         verify/synthesize step (barriers are handled transparently).
+
+    Returns:
+      {ok, mode, dispatched, results, barriers_closed, next, dag_complete}
+
+    The caller must call save_dag() after this returns.
+    """
+    from .dag_state import recover_expired_leases
+
+    # Recover any crashed workers before scheduling
+    recovered = recover_expired_leases(root, dag.run_id, dag)
+
+    runnable = dag.runnable()
+    parallel_steps = [s for s in runnable if s.kind == "parallel"]
+
+    dispatched: list[str] = []
+    results: dict[str, Any] = {}
+    mode = "idle"
+
+    if parallel_steps:
+        mode = "parallel"
+        for step in parallel_steps:
+            result = execute_step(root, dag, step.step_id, execute=execute, force=force)
+            dispatched.append(step.step_id)
+            results[step.step_id] = result
+
+    # Auto-close any barriers whose deps are now satisfied
+    closed = auto_close_barriers(dag)
+
+    # If no parallel steps ran, fall through to the next sequential step
+    if not parallel_steps:
+        next_step = dag.next_sequential()
+        if next_step and next_step.kind != "parallel":
+            mode = "sequential"
+            result = execute_step(root, dag, next_step.step_id, execute=execute, force=force)
+            dispatched.append(next_step.step_id)
+            results[next_step.step_id] = result
+            # Close any barriers that opened after the sequential step
+            closed.extend(auto_close_barriers(dag))
+
+    if not dispatched and not closed:
+        mode = "idle"
+
+    # ok=False only when a hard stop-failure step actually failed
+    any_hard_fail = False
+    for r in results.values():
+        if r.get("status") == "failed":
+            s = dag.by_id(r.get("step_id", ""))
+            if s and s.on_failure == "stop":
+                any_hard_fail = True
+                break
+
+    next_step = dag.next_sequential()
+    return {
+        "ok": not any_hard_fail,
+        "mode": mode,
+        "dispatched": dispatched,
+        "results": results,
+        "barriers_closed": closed,
+        "recovered_leases": recovered,
+        "next": next_step.step_id if next_step else None,
+        "dag_complete": dag.is_complete(),
+        "dag_blocked": dag.is_blocked(),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Reporting
 # ---------------------------------------------------------------------------
 

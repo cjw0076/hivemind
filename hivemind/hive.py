@@ -17,6 +17,7 @@ from .harness import (
     detect_agents,
     doctor_report,
     doctor_scope_report,
+    demo_live_run,
     agent_roles_report,
     build_context_pack_for_role,
     explain_agent_role,
@@ -26,6 +27,7 @@ from .harness import (
     format_agent_roles,
     format_doctor,
     format_doctor_scope,
+    format_demo_report,
     format_memory_drafts,
     format_auto_loop_report,
     format_flow_report,
@@ -84,6 +86,7 @@ from .harness import (
 )
 from .plan_dag import (
     build_dag,
+    execute_fan_out,
     execute_step,
     format_dag,
     load_dag,
@@ -104,6 +107,7 @@ COMMANDS = {
     "ask",
     "orchestrate",
     "debate",
+    "demo",
     "step",
     "status",
     "board",
@@ -139,17 +143,26 @@ COMMANDS = {
 }
 
 
+def default_entrypoint() -> list[str]:
+    """Default product entrypoint: TTY opens the console, non-TTY prints help."""
+    return ["tui"] if sys.stdin.isatty() and sys.stdout.isatty() else ["--help"]
+
+
 def normalize_argv(argv: list[str]) -> list[str]:
     """Allow provider-style prompt entry: `hive "build this"` -> `hive orchestrate "build this"`."""
     if not argv:
-        return ["chat"] if sys.stdin.isatty() and sys.stdout.isatty() else ["--help"]
+        return default_entrypoint()
     if argv[0] in {"-h", "--help", "--version"}:
         return argv
     if argv[0] == "--root":
+        if len(argv) == 2:
+            return [argv[0], argv[1], *default_entrypoint()]
         if len(argv) >= 3 and argv[2] not in COMMANDS and not argv[2].startswith("-"):
             return [argv[0], argv[1], "orchestrate", " ".join(argv[2:])]
         return argv
     if argv[0].startswith("--root="):
+        if len(argv) == 1:
+            return [argv[0], *default_entrypoint()]
         if len(argv) >= 2 and argv[1] not in COMMANDS and not argv[1].startswith("-"):
             return [argv[0], "orchestrate", " ".join(argv[1:])]
         return argv
@@ -280,6 +293,13 @@ def _main(argv: list[str] | None = None) -> None:
     debate_cmd.add_argument("--participant", action="append", choices=["claude", "gemini", "codex"], help="provider participant; repeatable")
     debate_cmd.add_argument("--execute", action="store_true", help="execute supported non-Codex providers and wait at each round barrier")
     debate_cmd.add_argument("--json", action="store_true")
+    demo_cmd = sub.add_parser("demo", help="safe live demo that animates a Hive Mind run for the TUI")
+    demo_sub = demo_cmd.add_subparsers(dest="demo_cmd", required=True)
+    demo_live_cmd = demo_sub.add_parser("live", help="write a live coordination demo run without provider execution")
+    demo_live_cmd.add_argument("task", nargs="?", default="Watch Hive Mind agents coordinate in the TUI")
+    demo_live_cmd.add_argument("--run-id", help="animate an existing run instead of creating one")
+    demo_live_cmd.add_argument("--delay", type=float, default=0.45, help="seconds between demo state transitions")
+    demo_live_cmd.add_argument("--json", action="store_true")
 
     status_cmd = sub.add_parser("status", help="show current run status")
     status_cmd.add_argument("--run-id")
@@ -342,6 +362,10 @@ def _main(argv: list[str] | None = None) -> None:
     step_next_cmd = step_sub.add_parser("next", help="show the next runnable step")
     step_next_cmd.add_argument("--run-id")
     step_next_cmd.add_argument("--json", action="store_true")
+    step_fanout_cmd = step_sub.add_parser("fan-out", help="one scheduler round: parallel steps + barrier close + next sequential")
+    step_fanout_cmd.add_argument("--run-id")
+    step_fanout_cmd.add_argument("--execute", action="store_true", help="execute external agents (default: prepare-only)")
+    step_fanout_cmd.add_argument("--json", action="store_true")
 
     sub.add_parser("runs", help="list recent runs")
 
@@ -673,6 +697,16 @@ def _main(argv: list[str] | None = None) -> None:
         else:
             print(format_debate_report(report))
         return
+    if args.cmd == "demo":
+        if args.demo_cmd == "live":
+            report = demo_live_run(root, task=args.task, run_id=args.run_id, delay=args.delay)
+            if args.json:
+                import json
+
+                print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(format_demo_report(report))
+            return
     if args.cmd == "status":
         if args.json:
             print_status(root, run_id=args.run_id, json_output=True)
@@ -843,6 +877,37 @@ def _main(argv: list[str] | None = None) -> None:
                     print(f"  Next: hive step run {next_step.step_id}")
                 elif dag.is_complete():
                     print("  All steps complete.")
+            return
+        if sub_cmd == "fan-out":
+            execute = getattr(args, "execute", False)
+            result = execute_fan_out(root, dag, execute=execute)
+            save_dag(root, dag)
+            if args.json:
+                print(_json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                mode = result.get("mode", "?")
+                dispatched = result.get("dispatched", [])
+                closed = result.get("barriers_closed", [])
+                recovered = result.get("recovered_leases", [])
+                ok = result.get("ok")
+                icon = "✓" if ok else "✗"
+                print(f"{icon} fan-out [{mode}]")
+                for sid in dispatched:
+                    r = result["results"].get(sid, {})
+                    s_icon = "✓" if r.get("ok") else "✗"
+                    print(f"  {s_icon} {sid}  [{r.get('status', '?')}]")
+                if closed:
+                    print(f"  ⊞ barriers closed: {', '.join(closed)}")
+                if recovered:
+                    print(f"  ↩ recovered leases: {', '.join(recovered)}")
+                if result.get("dag_complete"):
+                    print("  All steps complete.")
+                elif result.get("dag_blocked"):
+                    print("  DAG blocked — check failed steps with: hive step list")
+                elif result.get("next"):
+                    print(f"  Next: hive step fan-out  (or: hive step run {result['next']})")
+                elif not dispatched and not closed:
+                    print("  Nothing to run.")
             return
     if args.cmd == "runs":
         for run in list_runs(root)[:20]:

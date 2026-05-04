@@ -13,6 +13,7 @@ from hivemind.plan_dag import (
     auto_close_barriers,
     build_dag,
     evaluate_step_output,
+    execute_fan_out,
     execute_step,
     format_dag,
     load_dag,
@@ -389,6 +390,116 @@ class StepEvaluationArtifactTest(unittest.TestCase):
             data = json.loads(artifact.read_text())
             self.assertIn("evaluator_votes", data)
             self.assertIn("evaluator_agreement", data)
+
+
+class FanOutTest(unittest.TestCase):
+    def test_fan_out_dispatches_parallel_steps(self):
+        """Both parallel steps in the implementation DAG are dispatched in one round."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "fan out parallel")
+            dag = build_dag(paths.run_id, "fan out parallel", "implementation")
+            result = execute_fan_out(root, dag, execute=False)
+            save_dag(root, dag)
+            self.assertEqual(result["mode"], "parallel")
+            self.assertIn("context", result["dispatched"])
+            self.assertIn("diff_review", result["dispatched"])
+            self.assertEqual(len(result["dispatched"]), 2)
+
+    def test_fan_out_closes_barrier_when_one_parallel_completed(self):
+        """completed + skipped is enough for barrier to close after fan-out."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "fan out barrier")
+            dag = build_dag(paths.run_id, "fan out barrier", "implementation")
+            # Pre-complete one parallel dep; the other will be dispatched and skip
+            update_step(dag, "context", status="completed")
+            result = execute_fan_out(root, dag, execute=False)
+            save_dag(root, dag)
+            # diff_review dispatched (skips), context already completed → barrier closes
+            self.assertIn("diff_review", result["dispatched"])
+            self.assertIn("barrier_context", result.get("barriers_closed", []))
+            self.assertEqual(dag.status_of("barrier_context"), "completed")
+
+    def test_fan_out_sequential_when_no_parallel_runnable(self):
+        """With no runnable parallel steps, fan-out runs the next sequential step."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "fan out seq")
+            dag = build_dag(paths.run_id, "fan out seq", "implementation")
+            # Force all parallel and barrier steps to completed
+            for sid in ("context", "diff_review", "barrier_context"):
+                update_step(dag, sid, status="completed")
+            result = execute_fan_out(root, dag, execute=False)
+            save_dag(root, dag)
+            self.assertEqual(result["mode"], "sequential")
+            self.assertIn("planner", result["dispatched"])
+
+    def test_fan_out_idle_when_dag_is_blocked(self):
+        """If a stop-failure step has blocked the DAG, fan-out returns idle."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "fan out blocked")
+            dag = build_dag(paths.run_id, "fan out blocked", "implementation")
+            # Force barrier_context to failed (on_failure=stop → blocks DAG)
+            update_step(dag, "context", status="completed")
+            update_step(dag, "diff_review", status="completed")
+            update_step(dag, "barrier_context", status="completed")
+            update_step(dag, "planner", status="failed")
+            result = execute_fan_out(root, dag, execute=False)
+            self.assertEqual(result["mode"], "idle")
+            self.assertEqual(result["dispatched"], [])
+            self.assertTrue(result["dag_blocked"])
+
+    def test_fan_out_all_skipped_barrier_stays_open(self):
+        """If all parallel deps are skipped (no completed), barrier must NOT close."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "fan out all skip")
+            dag = build_dag(paths.run_id, "fan out all skip", "implementation")
+            # Mark parallel steps as skipped before fan-out
+            update_step(dag, "context", status="skipped")
+            update_step(dag, "diff_review", status="skipped")
+            result = execute_fan_out(root, dag, execute=False)
+            # No parallel steps were runnable (already terminal), no barrier should close
+            self.assertNotIn("barrier_context", result.get("barriers_closed", []))
+            self.assertEqual(dag.status_of("barrier_context"), "pending")
+
+    def test_fan_out_partial_skip_closes_barrier(self):
+        """One completed + one skipped is sufficient for barrier to close."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "fan out partial skip")
+            dag = build_dag(paths.run_id, "fan out partial skip", "implementation")
+            update_step(dag, "context", status="completed")
+            update_step(dag, "diff_review", status="skipped")
+            result = execute_fan_out(root, dag, execute=False)
+            self.assertIn("barrier_context", result.get("barriers_closed", []))
+
+    def test_fan_out_result_persists_after_save_load(self):
+        """Barrier closed by fan-out is visible after save + reload."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "fan out persist")
+            dag = build_dag(paths.run_id, "fan out persist", "implementation")
+            update_step(dag, "context", status="completed")  # one dep pre-completed
+            execute_fan_out(root, dag, execute=False)
+            save_dag(root, dag)
+            loaded = load_dag(root, paths.run_id)
+            self.assertEqual(loaded.status_of("barrier_context"), "completed")
+
+    def test_fan_out_next_points_to_sequential_step_after_barrier(self):
+        """After barrier closes, 'next' should point to the step after the barrier."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "fan out next")
+            dag = build_dag(paths.run_id, "fan out next", "implementation")
+            # Pre-complete one dep so barrier can close after fan-out
+            update_step(dag, "context", status="completed")
+            result = execute_fan_out(root, dag, execute=False)
+            # diff_review dispatched (skip) + context completed → barrier closes → next=planner
+            self.assertIn("barrier_context", result.get("barriers_closed", []))
+            self.assertEqual(result.get("next"), "planner")
 
 
 if __name__ == "__main__":
