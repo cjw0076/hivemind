@@ -10,6 +10,8 @@ from hivemind.harness import create_run
 from hivemind.plan_dag import (
     PlanDAG,
     PlanStep,
+    REVERSIBILITY_BLOCK_THRESHOLD,
+    REVERSIBILITY_REVIEW_THRESHOLD,
     auto_close_barriers,
     build_dag,
     evaluate_step_output,
@@ -23,6 +25,7 @@ from hivemind.plan_dag import (
     DAG_TEMPLATES,
     _compute_evaluator_votes,
     _compute_agreement,
+    _estimate_reversibility,
     _evaluate_syntax,
     _evaluate_execution,
     _evaluate_claim,
@@ -500,6 +503,235 @@ class FanOutTest(unittest.TestCase):
             # diff_review dispatched (skip) + context completed → barrier closes → next=planner
             self.assertIn("barrier_context", result.get("barriers_closed", []))
             self.assertEqual(result.get("next"), "planner")
+
+
+class ReversibilityGradientTest(unittest.TestCase):
+    """Unit tests for _estimate_reversibility and the pre-execution gate."""
+
+    def _make_step(self, owner_role="claude-planner", permission_mode="read_only",
+                   input_artifacts=None):
+        from hivemind.plan_dag import _step
+        s = _step("s", "sequential", [], owner_role, [],
+                  permission_mode=permission_mode, status="pending")
+        s.input_artifacts = input_artifacts or []
+        return s
+
+    # --- estimation ---
+
+    def test_default_read_only_step_is_fully_reversible(self):
+        step = self._make_step()
+        score, factors = _estimate_reversibility(step, Path("/nonexistent_root"))
+        self.assertEqual(score, 1.0)
+        self.assertEqual(factors, [])
+
+    def test_workspace_write_permission_reduces_score(self):
+        step = self._make_step(permission_mode="workspace_write_with_policy")
+        score, factors = _estimate_reversibility(step, Path("/nonexistent_root"))
+        self.assertLess(score, 1.0)
+        self.assertTrue(any("permission" in f for f in factors))
+
+    def test_codex_executor_role_reduces_score(self):
+        step = self._make_step(owner_role="codex-executor",
+                               permission_mode="workspace_write_with_policy")
+        score, _ = _estimate_reversibility(step, Path("/nonexistent_root"))
+        # baseline 0.5 + permission penalty -0.3 = 0.2
+        self.assertLessEqual(score, 0.3)
+
+    def test_destructive_pattern_rm_rf_reduces_score(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            artifact = root / "handoff.yaml"
+            artifact.write_text("command: rm -rf /build/output")
+            step = self._make_step(input_artifacts=["handoff.yaml"])
+            score, factors = _estimate_reversibility(step, root)
+            self.assertLess(score, 1.0)
+            self.assertTrue(any("destructive_pattern" in f for f in factors))
+
+    def test_destructive_pattern_drop_table_reduces_score(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            artifact = root / "plan.sql"
+            artifact.write_text("DROP TABLE users;")
+            step = self._make_step(input_artifacts=["plan.sql"])
+            score, factors = _estimate_reversibility(step, root)
+            self.assertLess(score, 1.0)
+            self.assertIn("destructive_pattern:drop_table", factors)
+
+    def test_missing_artifact_does_not_crash(self):
+        step = self._make_step(input_artifacts=["missing_file.yaml"])
+        score, _ = _estimate_reversibility(step, Path("/nonexistent_root"))
+        # Should still return a valid score without crashing
+        self.assertGreaterEqual(score, 0.0)
+        self.assertLessEqual(score, 1.0)
+
+    def test_score_clamped_between_zero_and_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # Multiple destructive patterns in one artifact
+            artifact = root / "script.sh"
+            artifact.write_text("rm -rf /data\nDROP DATABASE prod;\nshutil.rmtree(path)")
+            step = self._make_step(owner_role="codex-executor",
+                                   permission_mode="workspace_write_with_policy",
+                                   input_artifacts=["script.sh"])
+            score, _ = _estimate_reversibility(step, root)
+            self.assertGreaterEqual(score, 0.0)
+            self.assertLessEqual(score, 1.0)
+
+    # --- reversibility stored on PlanStep ---
+
+    def test_default_reversibility_fields_on_planstep(self):
+        dag = build_dag("run_rv1", "task", "implementation")
+        step = dag.by_id("planner")
+        self.assertEqual(step.reversibility, 1.0)
+        self.assertEqual(step.reversibility_source, "default")
+
+    def test_reversibility_persists_through_save_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "rv persist")
+            dag = build_dag(paths.run_id, "rv persist", "review")
+            step = dag.by_id("context")
+            step.reversibility = 0.25
+            step.reversibility_source = "declared"
+            save_dag(root, dag)
+            loaded = load_dag(root, paths.run_id)
+            ls = loaded.by_id("context")
+            self.assertAlmostEqual(ls.reversibility, 0.25)
+            self.assertEqual(ls.reversibility_source, "declared")
+
+    # --- pre-execution gate ---
+
+    def test_execute_step_estimates_reversibility_when_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "rv estimate")
+            dag = build_dag(paths.run_id, "rv estimate", "implementation")
+            step = dag.by_id("verify")
+            self.assertEqual(step.reversibility_source, "default")
+            execute_step(root, dag, "verify", execute=False)
+            self.assertEqual(step.reversibility_source, "estimated")
+
+    def test_execute_step_reestimates_stale_estimated_reversibility(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "rv stale estimate")
+            dag = build_dag(paths.run_id, "rv stale estimate", "implementation")
+            step = dag.by_id("executor")
+            step.reversibility = 0.95
+            step.reversibility_source = "estimated"
+            step.reversibility_factors = []
+            paths.handoff.write_text("command: rm -rf /tmp/build-output\n", encoding="utf-8")
+
+            result = execute_step(root, dag, "executor", execute=False, force=False)
+
+            self.assertEqual(result["status"], "reversibility_gate")
+            self.assertLess(step.reversibility, REVERSIBILITY_BLOCK_THRESHOLD)
+            self.assertIn("destructive_pattern:rm_recursive_force", result["reversibility_factors"])
+
+    def test_declared_reversibility_is_not_overwritten_by_estimator(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "rv declared")
+            dag = build_dag(paths.run_id, "rv declared", "implementation")
+            step = dag.by_id("executor")
+            step.reversibility = 0.8
+            step.reversibility_source = "declared"
+            paths.handoff.write_text("command: rm -rf /tmp/build-output\n", encoding="utf-8")
+
+            result = execute_step(root, dag, "executor", execute=False, force=False)
+
+            self.assertNotEqual(result.get("status"), "reversibility_gate")
+            self.assertEqual(step.reversibility, 0.8)
+            self.assertEqual(step.reversibility_source, "declared")
+
+    def test_execute_step_blocks_irreversible_step_without_force(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "rv block")
+            dag = build_dag(paths.run_id, "rv block", "implementation")
+            step = dag.by_id("verify")
+            step.reversibility = 0.05   # below REVERSIBILITY_BLOCK_THRESHOLD
+            step.reversibility_source = "declared"
+            result = execute_step(root, dag, "verify", execute=False, force=False)
+            self.assertFalse(result.get("ok"))
+            self.assertEqual(result["status"], "reversibility_gate")
+            self.assertAlmostEqual(result["reversibility"], 0.05)
+            self.assertEqual(result["reversibility_source"], "declared")
+            self.assertIn("reversibility_factors", result)
+
+    def test_execute_step_force_bypasses_reversibility_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "rv force")
+            dag = build_dag(paths.run_id, "rv force", "implementation")
+            step = dag.by_id("verify")
+            step.reversibility = 0.05
+            step.reversibility_source = "declared"
+            result = execute_step(root, dag, "verify", execute=False, force=True)
+            # Should proceed past the gate (may complete or skip, not "reversibility_gate")
+            self.assertNotEqual(result.get("status"), "reversibility_gate")
+
+    def test_execute_step_gate_releases_lease(self):
+        """After reversibility gate blocks, no lease file should remain."""
+        from hivemind.dag_state import STEP_LEASES_DIR
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "rv lease release")
+            dag = build_dag(paths.run_id, "rv lease release", "implementation")
+            step = dag.by_id("verify")
+            step.reversibility = 0.05
+            step.reversibility_source = "declared"
+            execute_step(root, dag, "verify", execute=False, force=False)
+            lease_file = paths.run_dir / STEP_LEASES_DIR / "verify.json"
+            self.assertFalse(lease_file.exists())
+
+    def test_fan_out_reports_reversibility_gate_reasons(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "rv fanout gate")
+            dag = build_dag(paths.run_id, "rv fanout gate", "implementation")
+            for sid in ("context", "diff_review", "barrier_context", "planner"):
+                update_step(dag, sid, status="completed")
+            step = dag.by_id("executor")
+            step.reversibility = 0.95
+            step.reversibility_source = "estimated"
+            paths.handoff.write_text("command: rm -rf /tmp/build-output\n", encoding="utf-8")
+
+            result = execute_fan_out(root, dag, execute=False)
+
+            gates = result.get("reversibility_gates", [])
+            self.assertEqual(len(gates), 1)
+            self.assertEqual(gates[0]["step_id"], "executor")
+            self.assertIn("destructive_pattern:rm_recursive_force", gates[0]["factors"])
+
+    # --- evaluate_risk integration ---
+
+    def test_risk_elevates_to_high_on_low_reversibility(self):
+        from hivemind.plan_dag import _step
+        step = _step("s", "sequential", [], "local-context-compressor", [], status="pending")
+        step.reversibility = 0.05
+        step.reversibility_source = "estimated"
+        result = _evaluate_risk(step)
+        self.assertEqual(result["risk_level"], "high")
+        self.assertIn("low_reversibility", result["risk_factors"])
+
+    def test_risk_elevates_to_medium_on_medium_reversibility(self):
+        from hivemind.plan_dag import _step
+        step = _step("s", "sequential", [], "local-context-compressor", [], status="pending")
+        step.reversibility = 0.2
+        step.reversibility_source = "estimated"
+        result = _evaluate_risk(step)
+        self.assertEqual(result["risk_level"], "medium")
+        self.assertIn("medium_reversibility", result["risk_factors"])
+
+    def test_risk_not_elevated_when_reversibility_source_is_default(self):
+        """Default source means estimation hasn't run yet; risk evaluator ignores it."""
+        from hivemind.plan_dag import _step
+        step = _step("s", "sequential", [], "local-context-compressor", [], status="pending")
+        # reversibility=1.0 (default) and reversibility_source="default"
+        result = _evaluate_risk(step)
+        self.assertNotIn("low_reversibility", result["risk_factors"])
+        self.assertNotIn("medium_reversibility", result["risk_factors"])
 
 
 if __name__ == "__main__":

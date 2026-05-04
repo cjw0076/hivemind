@@ -900,6 +900,10 @@ def _main(argv: list[str] | None = None) -> None:
                     print(f"  ⊞ barriers closed: {', '.join(closed)}")
                 if recovered:
                     print(f"  ↩ recovered leases: {', '.join(recovered)}")
+                for gate in result.get("reversibility_gates", []):
+                    factors = gate.get("factors") or []
+                    reason = ", ".join(factors) if factors else gate.get("error", "low reversibility")
+                    print(f"  ⊘ reversibility gate: {gate.get('step_id')} score={gate.get('reversibility')} reason={reason}")
                 if result.get("dag_complete"):
                     print("  All steps complete.")
                 elif result.get("dag_blocked"):

@@ -60,6 +60,12 @@ class PlanStep:
     # Each point: {ts, value, source, attempt, provider, role, artifact}
     confidence_history: list[dict[str, Any]] = field(default_factory=list)
 
+    # Reversibility gradient: 0.0=irreversible, 1.0=fully reversible.
+    # "default" → not yet estimated; "declared" → set by operator; "estimated" → auto-computed.
+    reversibility: float = 1.0
+    reversibility_source: str = "default"  # "default" | "declared" | "estimated"
+    reversibility_factors: list[str] = field(default_factory=list)
+
 
 @dataclass
 class PlanDAG:
@@ -450,6 +456,77 @@ def _read_artifact_confidence(artifact_path: Path) -> float | None:
 
 
 # ---------------------------------------------------------------------------
+# Reversibility gradient
+# ---------------------------------------------------------------------------
+
+# Pre-execution gates
+REVERSIBILITY_BLOCK_THRESHOLD   = 0.1   # < 0.1 → block; irreversible without force
+REVERSIBILITY_REVIEW_THRESHOLD  = 0.3   # < 0.3 → add_review in risk evaluator
+
+# Roles that perform writes get a lower baseline
+_ROLE_REVERSIBILITY_BASELINE: dict[str, float] = {
+    "codex-executor":         0.5,
+    "harness":                1.0,
+    "verifier":               1.0,
+}
+
+_PERMISSION_REVERSIBILITY_PENALTY: dict[str, float] = {
+    "workspace_write_with_policy": -0.3,
+    "plan":                        -0.1,
+    "read_only":                    0.0,
+    "none":                         0.0,
+}
+
+# (regex_pattern, score_impact) — scanned against input artifact text
+_DESTRUCTIVE_PATTERNS: list[tuple[str, str, float]] = [
+    ("drop_table",        r"(?i)\bDROP\s+TABLE\b",    -0.3),
+    ("delete_from",       r"(?i)\bDELETE\s+FROM\b",   -0.15),
+    ("drop_database",     r"(?i)\bDROP\s+DATABASE\b", -0.5),
+    ("rm_recursive_force", r"\brm\s+-[^\s]*[rf][^\s]*", -0.4),
+    ("shutil_rmtree",     r"shutil\.rmtree\s*\(",     -0.3),
+    ("path_unlink",       r"\.unlink\s*\(",           -0.1),
+    ("os_remove",         r"os\.remove\s*\(",         -0.15),
+    ("truncate",          r"(?i)\btruncate\b",        -0.1),
+]
+
+
+def _estimate_reversibility(step: "PlanStep", root: "Path", run_id: str | None = None) -> tuple[float, list[str]]:
+    """Return (score, factors) where score ∈ [0.0, 1.0].
+
+    Score is driven down by write permissions, risky owner roles, and
+    destructive operation patterns found in input artifacts.
+    """
+    import re
+
+    score: float = _ROLE_REVERSIBILITY_BASELINE.get(step.owner_role, 1.0)
+    factors: list[str] = []
+
+    penalty = _PERMISSION_REVERSIBILITY_PENALTY.get(step.permission_mode, 0.0)
+    if penalty < 0:
+        score += penalty
+        factors.append(f"permission={step.permission_mode}")
+
+    for artifact_rel in step.input_artifacts:
+        artifact_path = root / artifact_rel
+        if not artifact_path.exists() and run_id:
+            run_artifact_path = root / ".runs" / run_id / artifact_rel
+            if run_artifact_path.exists():
+                artifact_path = run_artifact_path
+        if not artifact_path.exists():
+            continue
+        try:
+            text = artifact_path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        for label, pattern, impact in _DESTRUCTIVE_PATTERNS:
+            if re.search(pattern, text):
+                score += impact
+                factors.append(f"destructive_pattern:{label}")
+
+    return max(0.0, min(1.0, round(score, 2))), factors
+
+
+# ---------------------------------------------------------------------------
 # 5-evaluator helpers (syntax, execution, claim, risk, disagreement)
 # ---------------------------------------------------------------------------
 
@@ -538,7 +615,15 @@ def _evaluate_risk(step: "PlanStep") -> dict[str, Any]:
         factors.append("provider_cost")
     if step.kind == "verify" and step.on_failure == "escalate":
         factors.append("gate_step")
-    if "write_access" in factors or "filesystem_write" in factors:
+
+    # Reversibility gradient factors (only meaningful once estimated)
+    if step.reversibility_source != "default":
+        if step.reversibility < REVERSIBILITY_BLOCK_THRESHOLD:
+            factors.append("low_reversibility")
+        elif step.reversibility < REVERSIBILITY_REVIEW_THRESHOLD:
+            factors.append("medium_reversibility")
+
+    if "write_access" in factors or "filesystem_write" in factors or "low_reversibility" in factors:
         level = "high"
     elif factors:
         level = "medium"
@@ -906,6 +991,29 @@ def execute_step(
     except RuntimeError as exc:
         return {"ok": False, "step_id": step_id, "status": "lease_conflict", "error": str(exc)}
 
+    # Reversibility gate (pre-execution): declared values are operator-owned;
+    # auto-estimated values are refreshed every run because input artifacts can
+    # change after retries or prior steps.
+    if step.reversibility_source in {"default", "estimated"}:
+        est, factors = _estimate_reversibility(step, root, dag.run_id)
+        step.reversibility = est
+        step.reversibility_source = "estimated"
+        step.reversibility_factors = factors
+    if step.reversibility < REVERSIBILITY_BLOCK_THRESHOLD and not force:
+        lease.release()
+        return {
+            "ok": False,
+            "step_id": step_id,
+            "status": "reversibility_gate",
+            "reversibility": step.reversibility,
+            "reversibility_source": step.reversibility_source,
+            "reversibility_factors": step.reversibility_factors,
+            "error": (
+                f"reversibility={step.reversibility:.2f} below block threshold "
+                f"{REVERSIBILITY_BLOCK_THRESHOLD}. Use force=True to override."
+            ),
+        }
+
     paths, state = load_run(root, dag.run_id)
     step.status = "running"
     step.started_at = now_iso()
@@ -1053,6 +1161,17 @@ def execute_fan_out(
             if s and s.on_failure == "stop":
                 any_hard_fail = True
                 break
+    reversibility_gates = [
+        {
+            "step_id": r.get("step_id"),
+            "reversibility": r.get("reversibility"),
+            "source": r.get("reversibility_source"),
+            "factors": r.get("reversibility_factors", []),
+            "error": r.get("error", ""),
+        }
+        for r in results.values()
+        if r.get("status") == "reversibility_gate"
+    ]
 
     next_step = dag.next_sequential()
     return {
@@ -1062,6 +1181,7 @@ def execute_fan_out(
         "results": results,
         "barriers_closed": closed,
         "recovered_leases": recovered,
+        "reversibility_gates": reversibility_gates,
         "next": next_step.step_id if next_step else None,
         "dag_complete": dag.is_complete(),
         "dag_blocked": dag.is_blocked(),
