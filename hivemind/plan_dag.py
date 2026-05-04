@@ -33,9 +33,26 @@ SCHEMA_VERSION = 1
 # ---------------------------------------------------------------------------
 
 @dataclass
+class StepCriterion:
+    """Typed acceptance criterion for a probe step.
+
+    criterion_type:
+      "artifact_field_check"  — navigate field.path OP value in an artifact
+      "command_exit"          — run shell command; pass if exit code == 0
+      "local_worker_eval"     — call a local Ollama worker; pass if not failed
+      "human_review"          — block until operator writes an _override.json
+    """
+    criterion_type: str
+    criterion_value: str   # "field OP val" | command | worker_name | review prompt
+    evaluator: str | None = None
+    timeout: int = 60
+    on_failure: str = "block"  # "block" | "escalate" | "warn"
+
+
+@dataclass
 class PlanStep:
     step_id: str
-    kind: str  # sequential | parallel | barrier | verify | synthesize
+    kind: str  # sequential | parallel | barrier | verify | synthesize | probe
     depends_on: list[str]
     owner_role: str
     provider_candidates: list[str]
@@ -77,6 +94,10 @@ class PlanStep:
     reversibility: float = 1.0
     reversibility_source: str = "default"  # "default" | "declared" | "estimated"
     reversibility_factors: list[str] = field(default_factory=list)
+
+    # Typed acceptance criteria for probe steps (kind="probe").
+    # Empty list = trivially passes.
+    typed_criteria: list[StepCriterion] = field(default_factory=list)
 
 
 @dataclass
@@ -285,7 +306,16 @@ def _steps_to_dicts(steps: list[PlanStep]) -> list[dict[str, Any]]:
 def _steps_from_dicts(dicts: list[dict[str, Any]]) -> list[PlanStep]:
     import dataclasses
     known = {f.name for f in dataclasses.fields(PlanStep)}
-    return [PlanStep(**{k: v for k, v in d.items() if k in known}) for d in dicts]
+    steps = []
+    for d in dicts:
+        raw = {k: v for k, v in d.items() if k in known}
+        if "typed_criteria" in raw and isinstance(raw["typed_criteria"], list):
+            raw["typed_criteria"] = [
+                StepCriterion(**c) if isinstance(c, dict) else c
+                for c in raw["typed_criteria"]
+            ]
+        steps.append(PlanStep(**raw))
+    return steps
 
 
 def save_dag(root: Path, dag: PlanDAG, expected_version: int | None = None) -> Path:
@@ -1011,7 +1041,11 @@ def _post_execution_bridge(
         return
 
     try:
-        agreement = evaluation.get("evaluator_agreement", 1.0) or 1.0
+        raw_agreement = evaluation.get("evaluator_agreement", 1.0)
+        try:
+            agreement = 1.0 if raw_agreement is None else float(raw_agreement)
+        except (TypeError, ValueError):
+            agreement = 1.0
         recommended = evaluation.get("recommended_action", "accept")
         if recommended == "referee" or agreement < _REFEREE_AGREEMENT_THRESHOLD:
             reasons = [f"evaluator_agreement={agreement:.2f}"]
@@ -1030,6 +1064,410 @@ def _post_execution_bridge(
             )
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Probe step execution
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ProbeResult:
+    """Outcome artifact for a probe step evaluation."""
+    schema_version: int
+    step_id: str
+    run_id: str
+    criterion_type: str
+    criterion_value: str
+    status: str           # "completed" | "failed" — _read_artifact_status key
+    passed: bool | None   # None = pending human review
+    observed: str
+    expected: str
+    evidence: str
+    confidence: float
+    failure_disposition: str  # "block" | "escalate" | "warn"
+    next_action: str           # "accept" | "block" | "escalate" | "override_pending"
+    evaluated_at: str
+
+
+def save_probe_result(root: Path, run_id: str, step_id: str, result: ProbeResult) -> Path:
+    """Write ProbeResult to .runs/<run_id>/step_probes/<step_id>.json."""
+    from .harness import load_run
+    paths, _ = load_run(root, run_id)
+    probes_dir = paths.run_dir / "step_probes"
+    probes_dir.mkdir(exist_ok=True)
+    out = probes_dir / f"{step_id}.json"
+    out.write_text(json.dumps(asdict(result), ensure_ascii=False, indent=2), encoding="utf-8")
+    return out
+
+
+def _probe_override_path(root: Path, run_id: str, step_id: str) -> Path:
+    from .harness import load_run
+    paths, _ = load_run(root, run_id)
+    return paths.run_dir / "step_probes" / f"{step_id}_override.json"
+
+
+_FIELD_OPS = [("!=", "!="), (">=", ">="), ("<=", "<="), (">", ">"), ("<", "<"), ("==", "==")]
+
+
+def _parse_field_criterion(criterion_value: str) -> tuple[str, str, str]:
+    """Return (field_path, operator, expected) from criterion_value like 'status == completed'."""
+    for op, _ in _FIELD_OPS:
+        if op in criterion_value:
+            lhs, _, rhs = criterion_value.partition(op)
+            return lhs.strip(), op, rhs.strip()
+    return criterion_value.strip(), "exists", ""
+
+
+def _navigate_field(data: Any, field_path: str) -> Any:
+    """Navigate dot-separated path in a dict/list structure."""
+    current = data
+    for part in field_path.split("."):
+        if isinstance(current, dict):
+            current = current.get(part)
+        elif isinstance(current, list) and part.isdigit():
+            current = current[int(part)]
+        else:
+            return None
+        if current is None:
+            return None
+    return current
+
+
+def _compare_field(observed: Any, operator: str, expected: str) -> bool:
+    if operator == "exists":
+        return observed is not None
+    observed_str = str(observed).strip() if observed is not None else ""
+    try:
+        obs_n, exp_n = float(observed_str), float(expected)
+        if operator == "==":  return obs_n == exp_n
+        if operator == "!=":  return obs_n != exp_n
+        if operator == ">=":  return obs_n >= exp_n
+        if operator == "<=":  return obs_n <= exp_n
+        if operator == ">":   return obs_n > exp_n
+        if operator == "<":   return obs_n < exp_n
+    except (ValueError, TypeError):
+        pass
+    if operator == "==":  return observed_str == expected
+    if operator == "!=":  return observed_str != expected
+    return False
+
+
+def _load_probe_artifact(root: Path, run_id: str, step: "PlanStep") -> dict | None:
+    """Try to load the step's primary artifact or first input_artifact as a dict."""
+    candidates: list[Path] = []
+    if step.artifact:
+        candidates.append(root / step.artifact)
+    for ia in step.input_artifacts:
+        candidates.append(root / ".runs" / run_id / ia)
+        candidates.append(root / ia)
+    for path in candidates:
+        if not path.exists():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+            if path.suffix == ".json":
+                return json.loads(text)
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                result: dict[str, Any] = {}
+                for line in text.splitlines():
+                    if ":" in line and not line.startswith("#") and not line.startswith(" "):
+                        k, _, v = line.partition(":")
+                        result[k.strip()] = v.strip().strip('"').strip("'")
+                if result:
+                    return result
+        except Exception:
+            continue
+    return None
+
+
+def _eval_artifact_field_check(
+    root: Path, run_id: str, step: "PlanStep", criterion: StepCriterion,
+) -> ProbeResult:
+    field_path, operator, expected = _parse_field_criterion(criterion.criterion_value)
+    data = _load_probe_artifact(root, run_id, step)
+    if data is None:
+        return ProbeResult(
+            schema_version=1, step_id=step.step_id, run_id=run_id,
+            criterion_type="artifact_field_check", criterion_value=criterion.criterion_value,
+            status="failed", passed=False,
+            observed="no_artifact", expected=expected or field_path,
+            evidence=f"no readable artifact found for field check '{criterion.criterion_value}'",
+            confidence=0.0, failure_disposition=criterion.on_failure,
+            next_action=criterion.on_failure, evaluated_at=now_iso(),
+        )
+    observed = _navigate_field(data, field_path)
+    passed = _compare_field(observed, operator, expected)
+    return ProbeResult(
+        schema_version=1, step_id=step.step_id, run_id=run_id,
+        criterion_type="artifact_field_check", criterion_value=criterion.criterion_value,
+        status="completed" if passed else "failed",
+        passed=passed,
+        observed=str(observed) if observed is not None else "null",
+        expected=expected if expected else f"'{field_path}' exists",
+        evidence=f"field='{field_path}' observed='{observed}' op='{operator}' expected='{expected}'",
+        confidence=1.0 if passed else 0.0,
+        failure_disposition=criterion.on_failure,
+        next_action="accept" if passed else criterion.on_failure,
+        evaluated_at=now_iso(),
+    )
+
+
+def _eval_command_exit(
+    root: Path, run_id: str, step: "PlanStep", criterion: StepCriterion,
+) -> ProbeResult:
+    import subprocess
+    try:
+        proc = subprocess.run(
+            criterion.criterion_value,
+            shell=True,
+            capture_output=True,
+            timeout=criterion.timeout,
+            cwd=str(root),
+        )
+        passed = proc.returncode == 0
+        observed = str(proc.returncode)
+        stdout = proc.stdout.decode(errors="replace")
+        stderr = proc.stderr.decode(errors="replace")
+        evidence = (stdout + stderr)[:400].strip() or f"exit_code={proc.returncode}"
+    except subprocess.TimeoutExpired:
+        passed = False
+        observed = "timeout"
+        evidence = f"command timed out after {criterion.timeout}s"
+    except Exception as exc:
+        passed = False
+        observed = "error"
+        evidence = str(exc)[:200]
+    return ProbeResult(
+        schema_version=1, step_id=step.step_id, run_id=run_id,
+        criterion_type="command_exit", criterion_value=criterion.criterion_value,
+        status="completed" if passed else "failed",
+        passed=passed, observed=observed, expected="0",
+        evidence=evidence,
+        confidence=1.0 if passed else 0.0,
+        failure_disposition=criterion.on_failure,
+        next_action="accept" if passed else criterion.on_failure,
+        evaluated_at=now_iso(),
+    )
+
+
+def _eval_local_worker(
+    root: Path, run_id: str, step: "PlanStep", criterion: StepCriterion,
+) -> ProbeResult:
+    try:
+        from .harness import invoke_local
+        artifact_path = invoke_local(root, criterion.criterion_value, run_id=run_id)
+        status = _read_artifact_status(artifact_path)
+        passed = status not in {None, "failed"}
+        observed = status or "no_status"
+        evidence = f"worker={criterion.criterion_value} status={observed}"
+    except Exception as exc:
+        passed = False
+        observed = "error"
+        evidence = str(exc)[:200]
+    return ProbeResult(
+        schema_version=1, step_id=step.step_id, run_id=run_id,
+        criterion_type="local_worker_eval", criterion_value=criterion.criterion_value,
+        status="completed" if passed else "failed",
+        passed=passed, observed=observed, expected="not_failed",
+        evidence=evidence,
+        confidence=0.8 if passed else 0.2,
+        failure_disposition=criterion.on_failure,
+        next_action="accept" if passed else criterion.on_failure,
+        evaluated_at=now_iso(),
+    )
+
+
+def _eval_human_review(
+    root: Path, run_id: str, step: "PlanStep", criterion: StepCriterion,
+) -> ProbeResult:
+    try:
+        override_path = _probe_override_path(root, run_id, step.step_id)
+        if override_path.exists():
+            override = json.loads(override_path.read_text(encoding="utf-8"))
+            if override.get("approved"):
+                return ProbeResult(
+                    schema_version=1, step_id=step.step_id, run_id=run_id,
+                    criterion_type="human_review", criterion_value=criterion.criterion_value,
+                    status="completed", passed=True,
+                    observed="operator_approved", expected="operator_approved",
+                    evidence=f"override: {override.get('notes', '')[:200]}",
+                    confidence=1.0, failure_disposition=criterion.on_failure,
+                    next_action="accept", evaluated_at=now_iso(),
+                )
+    except Exception:
+        pass
+    # No valid override: pending review — step fails to block downstream.
+    # Operator writes step_probes/<step_id>_override.json with {"approved": true} then retries.
+    return ProbeResult(
+        schema_version=1, step_id=step.step_id, run_id=run_id,
+        criterion_type="human_review", criterion_value=criterion.criterion_value,
+        status="failed", passed=None,
+        observed="pending_review", expected="operator_approved",
+        evidence=f"review required: {criterion.criterion_value[:200]}",
+        confidence=0.0, failure_disposition=criterion.on_failure,
+        next_action="override_pending", evaluated_at=now_iso(),
+    )
+
+
+def _run_probe_step(
+    root: Path,
+    dag: "PlanDAG",
+    step: "PlanStep",
+    before_snapshot: list[str],
+    lease: Any,
+    execute: bool,
+    force: bool,
+) -> dict[str, Any]:
+    """Evaluate typed_criteria for a probe step. Called from execute_step."""
+    from .dag_state import guard_transition
+
+    step_id = step.step_id
+    run_id = dag.run_id
+
+    # Evaluate each criterion
+    results: list[ProbeResult] = []
+    for criterion in step.typed_criteria:
+        if criterion.criterion_type == "artifact_field_check":
+            r = _eval_artifact_field_check(root, run_id, step, criterion)
+        elif criterion.criterion_type == "command_exit":
+            r = _eval_command_exit(root, run_id, step, criterion)
+        elif criterion.criterion_type == "local_worker_eval":
+            r = _eval_local_worker(root, run_id, step, criterion)
+        elif criterion.criterion_type == "human_review":
+            r = _eval_human_review(root, run_id, step, criterion)
+        else:
+            r = ProbeResult(
+                schema_version=1, step_id=step_id, run_id=run_id,
+                criterion_type=criterion.criterion_type, criterion_value=criterion.criterion_value,
+                status="completed", passed=True,
+                observed="unknown_type", expected="known_type",
+                evidence=f"unknown criterion_type '{criterion.criterion_type}' — treated as warn",
+                confidence=0.5, failure_disposition="warn",
+                next_action="accept", evaluated_at=now_iso(),
+            )
+        results.append(r)
+
+    # No criteria → trivial pass
+    if not results:
+        probe_result = ProbeResult(
+            schema_version=1, step_id=step_id, run_id=run_id,
+            criterion_type="none", criterion_value="",
+            status="completed", passed=True,
+            observed="no_criteria", expected="no_criteria",
+            evidence="no typed_criteria defined; probe trivially passes",
+            confidence=1.0, failure_disposition="block",
+            next_action="accept", evaluated_at=now_iso(),
+        )
+    else:
+        blocking = [r for r in results if r.passed is False and r.failure_disposition in {"block", "escalate"}]
+        pending  = [r for r in results if r.passed is None]
+
+        if pending:
+            agg_passed, agg_status, agg_action = None, "failed", "override_pending"
+            agg_evidence = "; ".join(r.evidence for r in pending[:3])
+            agg_confidence = 0.0
+            agg_disp = pending[0].failure_disposition
+        elif blocking:
+            agg_passed, agg_status = False, "failed"
+            agg_action = blocking[0].next_action
+            agg_evidence = "; ".join(r.evidence for r in blocking[:3])
+            agg_confidence = min(r.confidence for r in blocking)
+            agg_disp = blocking[0].failure_disposition
+        else:
+            warns = [r for r in results if r.passed is False and r.failure_disposition == "warn"]
+            agg_passed, agg_status, agg_action = True, "completed", "accept"
+            agg_evidence = ("; ".join(r.evidence for r in warns[:2]) + " [warn only]"
+                            if warns else "all criteria passed")
+            agg_confidence = min((r.confidence for r in results), default=1.0)
+            agg_disp = "warn" if warns else "block"
+
+        probe_result = ProbeResult(
+            schema_version=1, step_id=step_id, run_id=run_id,
+            criterion_type="aggregate",
+            criterion_value=f"{len(results)}_criteria",
+            status=agg_status,
+            passed=agg_passed,
+            observed=str(sum(1 for r in results if r.passed is True)),
+            expected=str(len(results)),
+            evidence=agg_evidence,
+            confidence=agg_confidence,
+            failure_disposition=agg_disp,
+            next_action=agg_action,
+            evaluated_at=now_iso(),
+        )
+
+    # Write probe artifact (becomes step.artifact for evaluate_step_output)
+    artifact_path = save_probe_result(root, run_id, step_id, probe_result)
+    step.artifact = artifact_path.relative_to(root).as_posix()
+
+    # Transition step status
+    if probe_result.status == "completed":
+        new_status = "completed"
+        auto_close_barriers(dag)
+    else:
+        new_status = "failed" if step.on_failure == "stop" else "skipped"
+
+    guard_transition(step_id, "running", new_status, force=force)
+    step.status = new_status
+    step.finished_at = now_iso()
+
+    # Standard evaluation + bridge
+    evaluation = evaluate_step_output(root, dag, step)
+    files_touched = touched_files_between(
+        before_snapshot,
+        capture_worktree_snapshot(root),
+        root=root,
+        artifact_path=artifact_path,
+    )
+
+    ledger_event = ("step_completed" if new_status == "completed"
+                    else "step_failed" if new_status == "failed" else "step_skipped")
+    append_execution_ledger(
+        root, run_id, ledger_event,
+        actor=step.owner_role,
+        step_id=step_id,
+        status=step.status,
+        permission_mode=step.permission_mode,
+        bypass_mode="execute" if execute else "prepare",
+        files_touched=files_touched,
+        artifact=relative_artifact(root, artifact_path),
+        extra={
+            "probe_action": probe_result.next_action,
+            "probe_confidence": probe_result.confidence,
+            "criteria_count": len(step.typed_criteria),
+        },
+    )
+    append_execution_ledger(
+        root, run_id, "evaluation_complete",
+        actor="evaluator",
+        step_id=step_id,
+        status=evaluation.get("recommended_action", "accept"),
+        permission_mode=step.permission_mode,
+        bypass_mode="execute" if execute else "prepare",
+        extra={
+            "confidence": evaluation.get("confidence"),
+            "risk_level": evaluation.get("risk_level"),
+            "evaluator_agreement": evaluation.get("evaluator_agreement"),
+        },
+    )
+    _post_execution_bridge(root, dag, step, evaluation, files_touched)
+    lease.release()
+
+    return {
+        "ok": new_status == "completed",
+        "step_id": step_id,
+        "status": new_status,
+        "probe_passed": probe_result.passed,
+        "probe_action": probe_result.next_action,
+        "probe_confidence": probe_result.confidence,
+        "probe_evidence": probe_result.evidence,
+        "artifact": step.artifact,
+        "files_touched": files_touched,
+        "recommended_action": evaluation.get("recommended_action"),
+        "idempotency_key": lease.idempotency_key,
+    }
 
 
 def execute_step(
@@ -1228,6 +1666,10 @@ def execute_step(
     )
 
     try:
+        # Probe steps: evaluate typed_criteria before normal executor dispatch
+        if step.kind == "probe":
+            return _run_probe_step(root, dag, step, before_snapshot, lease, execute, force)
+
         mapping = _ROLE_MAP.get(step.owner_role)
         if mapping is None:
             raise ValueError(f"No executor mapping for owner_role='{step.owner_role}'")

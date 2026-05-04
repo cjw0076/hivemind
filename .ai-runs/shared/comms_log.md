@@ -737,6 +737,20 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Evidence: Added `build_ledger_view_rows()` and `build_protocol_authority_rows()` in `hivemind/tui.py`; focused tests cover the active gate and ledger panel. CLI smoke confirmed authority/intent/missing-vote/ledger rows, and full `npm test` passed 186 tests.
 - Next: Track A remains Claude-owned for Probe Step and evaluation/adversarial semantics. Codex Track B can next add supervisor/lease detail or wait for Claude's evaluation-to-protocol bridge.
 
+## 2026-05-04 15:24 KST - Codex
+
+- Context: Reviewed Claude's `8d0dba9` evaluation-to-protocol bridge and re-ran tests.
+- Decision: Accept the bridge design. The single reported failure was a stale test assumption about the last ledger record after `evaluation_complete`; fixed it to assert against the `step_completed` record directly. Also fixed `evaluator_agreement=0.0` being coerced to `1.0`, which could suppress `needs_referee`.
+- Evidence: Updated `tests/test_workloop_ledger.py`, `hivemind/plan_dag.py`, and `tests/test_plan_dag.py`. Focused bridge/protocol/workloop tests passed 88 tests; full `npm test` passed 194 tests.
+- Next: Instruct Claude to proceed with typed ProbeStep criterion first, then Disagreement Topology, then Referee Escrow.
+
+## 2026-05-04 15:39 KST - Codex
+
+- Context: User confirmed Codex should proceed with supervisor/lease detail and Claude should own typed ProbeStep criterion.
+- Decision: Added the first supervisor control slice: `hive run start/status/tail/stop`. It advances DAG rounds as a ledger client, records `supervisor_state.json`, writes `supervisor.log`, reports PID/host/command hash/git commit/replay health/active leases, and preserves prepare-only default execution.
+- Evidence: Added `hivemind/supervisor.py`, wired `hive run start/status/tail/stop`, added supervisor tests, and updated docs/TODO. Focused tests passed 85 tests. CLI smoke confirmed start/status/tail; full `npm test` passed 198 tests.
+- Next: Run full verification; later Codex slices can add heartbeat/timeout recovery and consume Claude's ProbeStep gate.
+
 ## 2026-05-04 KST - Claude
 
 - Context: Codex completed protocol substrate (workloop, protocol.py, TUI panels). Claude position: Track A evaluation-to-protocol bridge.
@@ -744,3 +758,11 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Evidence: Added `_EVALUATION_TO_VERIFIER_STATUS` mapping, `_evaluation_to_verifier_status()`, `_post_execution_bridge()`, and `evaluation_complete` ledger event to all 3 execute paths. 7 new bridge tests; 192 total, 191 pass (1 pre-existing failure in workloop test unrelated to bridge). Ledger sequence: `step_completed → evaluation_complete → execution_proof_created → optional vote_cast(needs_referee)`.
 - Boundary: `workloop.py` and `protocol.py` schemas not modified; bridge calls only existing APIs.
 - Next: Pending design (discuss before implementing): typed ProbeStep criterion, Disagreement Topology axis-level tracking, Referee Escrow, checkpoint steps, baseline_comparison evaluator, `hive inject` channel.
+
+## 2026-05-04 KST - Claude
+
+- Context: Track A typed ProbeStep criterion implementation.
+- Decision: Added `StepCriterion` dataclass and `kind="probe"` execution branch in plan_dag.py. Four criterion types: `artifact_field_check` (field.path OP value navigates JSON/YAML), `command_exit` (shell command, pass if exit 0), `local_worker_eval` (Ollama worker, pass if not failed), `human_review` (blocks via `next_action="override_pending"` until operator writes `step_probes/<step_id>_override.json`). `ProbeResult` artifact written to `step_probes/<step_id>.json` with status/passed/observed/expected/evidence/confidence/failure_disposition/next_action. Multiple criteria aggregate: `warn` tolerates failure, `block`/`escalate` fail the step. Probe step reuses `evaluation_complete` + protocol bridge. `typed_criteria` serializes/deserializes through save_dag/load_dag.
+- Evidence: 25 new ProbeStepTest cases; full suite 223/223 (previously-broken workloop test also fixed). Downstream blocking: failed probe → status="failed" → DAG runnable() naturally excludes dependents.
+- Boundary: workloop.py and protocol.py not modified.
+- Next: Disagreement Topology axis classification (conclusion/evidence/risk/approach). Codex: connect `probe_action`/`probe_confidence`/`criteria_count` to TUI ledger cockpit and replay health.

@@ -10,6 +10,10 @@ scripts/install-hive-cli.sh
 hive
 hive "Build Draft Review screen"
 hive run -q --json "Build Draft Review screen"
+hive run start --max-rounds 8
+hive run status
+hive run tail
+hive run stop
 hive plan
 hive check list
 hive check run
@@ -225,6 +229,24 @@ hive local benchmark \
 ```
 
 `hive orchestrate` is the default prompt path. It asks the local router to split the request into a small agent society, prepares each provider/local worker artifact, writes `society_plan.json`, and reports which member owns which role. `hive ask` remains available for route-only debugging.
+
+`hive run start` is the first supervised DAG runner. It is still a ledger client,
+not a hidden autonomy daemon: each round calls the DAG scheduler, writes
+`supervisor_state.json`, appends `supervisor_started` / `supervisor_stopped`
+ledger events, and logs to `supervisor.log`.
+
+```bash
+hive run start --max-rounds 8
+hive run start --run-id run_... --detach
+hive run status --run-id run_...
+hive run tail --run-id run_...
+hive run stop --run-id run_...
+```
+
+Default mode is prepare-only. `--execute` may run only protocol-approved
+provider steps; the existing `ExecutionDecision` gate still applies. Supervisor
+status includes PID, host, command hash, git commit, log path, replay health,
+and active step leases.
 
 Hive Mind keeps `events.jsonl` as a machine/audit log and `hive_events.jsonl` as the human activity feed. The TUI latest-events panel prefers `hive_events.jsonl`, so it shows role assignment and swarm decisions instead of only file-created events.
 

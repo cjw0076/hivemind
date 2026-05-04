@@ -200,7 +200,8 @@ Sources: `VG-03`, `VG-04`, `VG-13`, `VG-18`.
 - [x] Add `hive ledger` and TUI ledger view for real-time workloop visibility.
 - [x] Add `hive_events.jsonl` and `hive hive activity` so human activity shows role assignment, not only artifact creation.
 - [x] Harden provider result validation for all prepared/executed adapters.
-- [ ] Add supervised long-running run control: `hive run start/status/tail/stop` with real child PID, host, GPU, log path, command hash, commit, and output artifact validation.
+- [x] Add supervised run control: `hive run start/status/tail/stop` with PID, host, log path, command hash, commit, replay health, and active lease reporting.
+- [ ] Extend supervised run control with process heartbeat, timeout recovery, GPU/runtime snapshot, and stronger output artifact validation.
 - [ ] Add `hive git guard` / scoped commit proposal that refuses out-of-scope staged files unless explicitly approved.
 - [ ] Make `hive "task"` and `hive ask` return a readable operator summary with artifact links, next command, risk, and expected artifact.
 - [ ] Add Korean-first operator summaries when the input prompt is Korean.

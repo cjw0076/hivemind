@@ -25,6 +25,8 @@ The active build target is the installable `hive` CLI/TUI harness:
 hive init
 hive doctor
 hive run "your task"
+hive run start --max-rounds 8
+hive run status
 hive live "your task"
 hive live --memoryos
 hive ledger replay

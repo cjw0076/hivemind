@@ -109,6 +109,15 @@ from .protocol import (
 from .tui import TUI_VIEWS, print_status, run_tui
 from .workloop import format_execution_ledger, format_ledger_replay, read_execution_ledger, replay_execution_ledger
 from .live import build_live_report, build_memoryos_observability_report, format_live_report, start_live_prompt
+from .supervisor import (
+    format_supervisor_status,
+    format_supervisor_tail,
+    run_supervisor,
+    start_supervisor_detached,
+    stop_supervisor,
+    supervisor_status_report,
+    tail_supervisor_log,
+)
 
 
 COMMANDS = {
@@ -318,8 +327,9 @@ def _main(argv: list[str] | None = None) -> None:
     local_checker_cmd.add_argument("--execute", action="store_true", help="run llm-checker commands instead of only writing the adapter plan")
     local_checker_cmd.add_argument("--json", action="store_true")
 
-    run_cmd = sub.add_parser("run", help="create a structured run folder")
-    run_cmd.add_argument("task", help="user task/request")
+    run_cmd = sub.add_parser("run", help="create a structured run folder or supervise a DAG run")
+    run_cmd.add_argument("task", nargs="?", help="user task/request, or start|status|tail|stop")
+    run_cmd.add_argument("task_rest", nargs="*", help=argparse.SUPPRESS)
     run_cmd.add_argument("--project", default="Hive Mind")
     run_cmd.add_argument("--type", default="implementation", dest="task_type")
     run_cmd.add_argument("-q", "--quiet", action="store_true", help="only print the run id/path")
@@ -327,6 +337,12 @@ def _main(argv: list[str] | None = None) -> None:
     run_cmd.add_argument("--flow", action="store_true", help="advance the new run through the prepare-only workflow")
     run_cmd.add_argument("--execute-local", action="store_true", help="allow local worker execution during --flow")
     run_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="fast")
+    run_cmd.add_argument("--run-id", help="run id for start/status/tail/stop")
+    run_cmd.add_argument("--max-rounds", type=int, default=20, help="supervisor max scheduler rounds")
+    run_cmd.add_argument("--interval", type=float, default=0.0, help="supervisor delay between rounds")
+    run_cmd.add_argument("--execute", action="store_true", help="supervisor may execute approved provider steps")
+    run_cmd.add_argument("--detach", action="store_true", help="start supervisor in a background process")
+    run_cmd.add_argument("--lines", type=int, default=80, help="lines for hive run tail")
 
     flow_cmd = sub.add_parser("flow", help="advance current or new run through event-driven prepare-only workflow")
     flow_cmd.add_argument("task", nargs="?", help="optional task; creates a new workflow run when provided")
@@ -793,7 +809,67 @@ def _main(argv: list[str] | None = None) -> None:
                 print("  scripts/start-ollama-local.sh")
         return
     if args.cmd == "run":
-        paths = create_run(root, args.task, project=args.project, task_type=args.task_type)
+        run_action = args.task if args.task in {"start", "status", "tail", "stop"} else None
+        if run_action:
+            if args.task_rest:
+                parser.error(f"hive run {run_action} does not accept a task argument")
+            if run_action == "start":
+                if args.detach:
+                    if not args.run_id:
+                        parser.error("hive run start --detach requires --run-id")
+                    report = start_supervisor_detached(
+                        root,
+                        args.run_id,
+                        max_rounds=args.max_rounds,
+                        execute=args.execute,
+                        interval=args.interval,
+                    )
+                else:
+                    report = run_supervisor(
+                        root,
+                        args.run_id,
+                        max_rounds=args.max_rounds,
+                        execute=args.execute,
+                        interval=args.interval,
+                    )
+                if args.json:
+                    import json
+
+                    print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+                else:
+                    print(format_supervisor_status(report))
+                return
+            if run_action == "status":
+                report = supervisor_status_report(root, args.run_id)
+                if args.json:
+                    import json
+
+                    print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+                else:
+                    print(format_supervisor_status(report))
+                return
+            if run_action == "tail":
+                report = tail_supervisor_log(root, args.run_id, lines=args.lines)
+                if args.json:
+                    import json
+
+                    print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+                else:
+                    print(format_supervisor_tail(report))
+                return
+            if run_action == "stop":
+                report = stop_supervisor(root, args.run_id)
+                if args.json:
+                    import json
+
+                    print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+                else:
+                    print(format_supervisor_status(report))
+                return
+        task = " ".join([item for item in [args.task, *args.task_rest] if item]).strip()
+        if not task:
+            parser.error('hive run requires a task, or one of: start/status/tail/stop')
+        paths = create_run(root, task, project=args.project, task_type=args.task_type)
         if args.flow:
             report = flow_advance(root, run_id=paths.run_id, complexity=args.complexity, execute_local=args.execute_local)
             if args.json:

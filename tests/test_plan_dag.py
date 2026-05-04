@@ -10,6 +10,8 @@ from hivemind.harness import create_run
 from hivemind.plan_dag import (
     PlanDAG,
     PlanStep,
+    StepCriterion,
+    ProbeResult,
     REVERSIBILITY_BLOCK_THRESHOLD,
     REVERSIBILITY_REVIEW_THRESHOLD,
     _REFEREE_AGREEMENT_THRESHOLD,
@@ -21,6 +23,7 @@ from hivemind.plan_dag import (
     format_dag,
     load_dag,
     save_dag,
+    save_probe_result,
     save_step_evaluation,
     update_step,
     DAG_TEMPLATES,
@@ -34,6 +37,11 @@ from hivemind.plan_dag import (
     _evaluate_disagreement,
     _evaluation_to_verifier_status,
     _post_execution_bridge,
+    _eval_artifact_field_check,
+    _eval_command_exit,
+    _eval_human_review,
+    _compare_field,
+    _navigate_field,
 )
 
 
@@ -846,6 +854,27 @@ class EvaluationProtocolBridgeTest(unittest.TestCase):
             self.assertTrue(len(referee_votes) >= 1,
                             "needs_referee vote should be cast on low evaluator agreement")
 
+    def test_bridge_casts_needs_referee_vote_on_zero_agreement(self):
+        from hivemind.protocol import load_votes
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "bridge zero agreement test")
+            dag = build_dag(paths.run_id, "bridge zero agreement test", "implementation")
+            save_dag(root, dag)
+            update_step(dag, "planner", status="completed")
+            intent = self._make_approved_decision(root, paths, dag, "planner")
+
+            step = dag.by_id("planner")
+            evaluation = {"recommended_action": "accept", "confidence": 0.2,
+                          "risk_level": "medium", "evaluator_agreement": 0.0}
+            _post_execution_bridge(root, dag, step, evaluation, [])
+
+            votes = load_votes(root, paths.run_id, intent.intent_id)
+            referee_votes = [v for v in votes if v.vote == "needs_referee"]
+            self.assertTrue(referee_votes,
+                            "needs_referee vote should be cast on zero evaluator agreement")
+            self.assertEqual(referee_votes[-1].confidence, 0.0)
+
     def test_bridge_casts_needs_referee_vote_on_referee_action(self):
         from hivemind.protocol import load_votes
         with tempfile.TemporaryDirectory() as tmp:
@@ -879,6 +908,323 @@ class EvaluationProtocolBridgeTest(unittest.TestCase):
             events = [r["event"] for r in records]
             self.assertIn("evaluation_complete", events,
                           "evaluation_complete should appear in ledger after execute_step")
+
+
+class ProbeStepTest(unittest.TestCase):
+    """Tests for typed StepCriterion, ProbeResult, and probe step execution."""
+
+    def _probe_step(self, criteria=None, owner_role="harness", on_failure="stop"):
+        from hivemind.plan_dag import _step
+        s = _step("probe_check", "probe", [], owner_role, [],
+                  permission_mode="read_only", status="pending")
+        s.typed_criteria = criteria or []
+        s.on_failure = on_failure
+        return s
+
+    # --- StepCriterion schema ---
+
+    def test_step_criterion_defaults(self):
+        c = StepCriterion(criterion_type="artifact_field_check", criterion_value="status == completed")
+        self.assertIsNone(c.evaluator)
+        self.assertEqual(c.timeout, 60)
+        self.assertEqual(c.on_failure, "block")
+
+    def test_typed_criteria_field_default_empty(self):
+        dag = build_dag("run_probe_default", "task", "implementation")
+        step = dag.by_id("planner")
+        self.assertEqual(step.typed_criteria, [])
+
+    def test_typed_criteria_persists_through_save_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "probe persist")
+            dag = build_dag(paths.run_id, "probe persist", "review")
+            step = dag.by_id("context")
+            step.kind = "probe"
+            step.typed_criteria = [
+                StepCriterion(criterion_type="command_exit", criterion_value="echo ok",
+                              timeout=30, on_failure="warn"),
+            ]
+            save_dag(root, dag)
+            loaded = load_dag(root, paths.run_id)
+            ls = loaded.by_id("context")
+            self.assertEqual(len(ls.typed_criteria), 1)
+            self.assertIsInstance(ls.typed_criteria[0], StepCriterion)
+            self.assertEqual(ls.typed_criteria[0].criterion_type, "command_exit")
+            self.assertEqual(ls.typed_criteria[0].timeout, 30)
+
+    # --- Field navigation and comparison ---
+
+    def test_navigate_field_simple_key(self):
+        data = {"status": "completed", "confidence": 0.9}
+        self.assertEqual(_navigate_field(data, "status"), "completed")
+
+    def test_navigate_field_nested(self):
+        data = {"output": {"parsed": {"confidence": 0.85}}}
+        self.assertEqual(_navigate_field(data, "output.parsed.confidence"), 0.85)
+
+    def test_navigate_field_missing_returns_none(self):
+        data = {"status": "completed"}
+        self.assertIsNone(_navigate_field(data, "output.missing"))
+
+    def test_compare_field_string_equal(self):
+        self.assertTrue(_compare_field("completed", "==", "completed"))
+        self.assertFalse(_compare_field("failed", "==", "completed"))
+
+    def test_compare_field_numeric_gte(self):
+        self.assertTrue(_compare_field(0.9, ">=", "0.7"))
+        self.assertFalse(_compare_field(0.5, ">=", "0.7"))
+
+    def test_compare_field_exists(self):
+        self.assertTrue(_compare_field("anything", "exists", ""))
+        self.assertFalse(_compare_field(None, "exists", ""))
+
+    # --- artifact_field_check evaluator ---
+
+    def test_eval_artifact_field_check_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "afc pass")
+            artifact = root / ".runs" / paths.run_id / "result.json"
+            artifact.write_text(json.dumps({"status": "completed", "confidence": 0.9}))
+            step = self._probe_step()
+            step.input_artifacts = ["result.json"]
+            criterion = StepCriterion(criterion_type="artifact_field_check",
+                                      criterion_value="status == completed")
+            r = _eval_artifact_field_check(root, paths.run_id, step, criterion)
+            self.assertTrue(r.passed)
+            self.assertEqual(r.status, "completed")
+            self.assertEqual(r.next_action, "accept")
+
+    def test_eval_artifact_field_check_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "afc fail")
+            artifact = root / ".runs" / paths.run_id / "result.json"
+            artifact.write_text(json.dumps({"status": "failed"}))
+            step = self._probe_step()
+            step.input_artifacts = ["result.json"]
+            criterion = StepCriterion(criterion_type="artifact_field_check",
+                                      criterion_value="status == completed",
+                                      on_failure="block")
+            r = _eval_artifact_field_check(root, paths.run_id, step, criterion)
+            self.assertFalse(r.passed)
+            self.assertEqual(r.status, "failed")
+            self.assertEqual(r.failure_disposition, "block")
+
+    def test_eval_artifact_field_check_numeric_threshold(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "afc numeric")
+            artifact = root / ".runs" / paths.run_id / "result.json"
+            artifact.write_text(json.dumps({"confidence": 0.45}))
+            step = self._probe_step()
+            step.input_artifacts = ["result.json"]
+            criterion = StepCriterion(criterion_type="artifact_field_check",
+                                      criterion_value="confidence >= 0.7")
+            r = _eval_artifact_field_check(root, paths.run_id, step, criterion)
+            self.assertFalse(r.passed)
+            self.assertIn("0.45", r.observed)
+
+    def test_eval_artifact_field_check_no_artifact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "afc no artifact")
+            step = self._probe_step()
+            criterion = StepCriterion(criterion_type="artifact_field_check",
+                                      criterion_value="status == completed")
+            r = _eval_artifact_field_check(root, paths.run_id, step, criterion)
+            self.assertFalse(r.passed)
+            self.assertIn("no_artifact", r.observed)
+
+    # --- command_exit evaluator ---
+
+    def test_eval_command_exit_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "cmd pass")
+            step = self._probe_step()
+            criterion = StepCriterion(criterion_type="command_exit",
+                                      criterion_value="true")
+            r = _eval_command_exit(root, paths.run_id, step, criterion)
+            self.assertTrue(r.passed)
+            self.assertEqual(r.observed, "0")
+
+    def test_eval_command_exit_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "cmd fail")
+            step = self._probe_step()
+            criterion = StepCriterion(criterion_type="command_exit",
+                                      criterion_value="false")
+            r = _eval_command_exit(root, paths.run_id, step, criterion)
+            self.assertFalse(r.passed)
+            self.assertNotEqual(r.observed, "0")
+
+    # --- human_review evaluator ---
+
+    def test_eval_human_review_pending_without_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "human pending")
+            step = self._probe_step()
+            criterion = StepCriterion(criterion_type="human_review",
+                                      criterion_value="Please verify the output.")
+            r = _eval_human_review(root, paths.run_id, step, criterion)
+            self.assertIsNone(r.passed)
+            self.assertEqual(r.next_action, "override_pending")
+            self.assertEqual(r.status, "failed")
+
+    def test_eval_human_review_passes_with_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "human override")
+            probes_dir = root / ".runs" / paths.run_id / "step_probes"
+            probes_dir.mkdir(parents=True, exist_ok=True)
+            override = probes_dir / "probe_check_override.json"
+            override.write_text(json.dumps({"approved": True, "notes": "LGTM"}))
+            step = self._probe_step()
+            criterion = StepCriterion(criterion_type="human_review",
+                                      criterion_value="Review output.")
+            r = _eval_human_review(root, paths.run_id, step, criterion)
+            self.assertTrue(r.passed)
+            self.assertEqual(r.next_action, "accept")
+            self.assertIn("LGTM", r.evidence)
+
+    # --- probe step execution ---
+
+    def test_probe_step_trivially_passes_no_criteria(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "probe trivial")
+            dag = build_dag(paths.run_id, "probe trivial", "implementation")
+            save_dag(root, dag)
+            step = dag.by_id("verify")
+            step.kind = "probe"
+            step.typed_criteria = []
+            result = execute_step(root, dag, "verify", execute=False)
+            self.assertTrue(result.get("ok"))
+            self.assertEqual(result["status"], "completed")
+            self.assertTrue(result.get("probe_passed"))
+            self.assertEqual(result.get("probe_action"), "accept")
+
+    def test_probe_step_passes_with_command_exit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "probe cmd pass")
+            dag = build_dag(paths.run_id, "probe cmd pass", "implementation")
+            save_dag(root, dag)
+            step = dag.by_id("verify")
+            step.kind = "probe"
+            step.typed_criteria = [
+                StepCriterion(criterion_type="command_exit", criterion_value="true")
+            ]
+            result = execute_step(root, dag, "verify", execute=False)
+            self.assertTrue(result.get("ok"))
+            self.assertEqual(result["probe_action"], "accept")
+
+    def test_probe_step_fails_with_failing_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "probe cmd fail")
+            dag = build_dag(paths.run_id, "probe cmd fail", "implementation")
+            save_dag(root, dag)
+            step = dag.by_id("verify")
+            step.kind = "probe"
+            step.on_failure = "stop"
+            step.typed_criteria = [
+                StepCriterion(criterion_type="command_exit", criterion_value="false",
+                              on_failure="block")
+            ]
+            result = execute_step(root, dag, "verify", execute=False)
+            self.assertFalse(result.get("ok"))
+            self.assertEqual(result["status"], "failed")
+            self.assertEqual(result["probe_action"], "block")
+
+    def test_probe_step_warn_still_completes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "probe warn")
+            dag = build_dag(paths.run_id, "probe warn", "implementation")
+            save_dag(root, dag)
+            step = dag.by_id("verify")
+            step.kind = "probe"
+            step.typed_criteria = [
+                StepCriterion(criterion_type="command_exit", criterion_value="false",
+                              on_failure="warn")
+            ]
+            result = execute_step(root, dag, "verify", execute=False)
+            self.assertTrue(result.get("ok"))
+            self.assertEqual(result["status"], "completed")
+
+    def test_probe_step_downstream_blocked_when_probe_fails(self):
+        """When probe step fails, steps that depend on it cannot run."""
+        dag = build_dag("run_probe_block", "task", "implementation")
+        # Inject a probe step at the barrier position
+        step = dag.by_id("verify")
+        step.kind = "probe"
+        step.status = "failed"
+        step.on_failure = "stop"
+        # close step should be blocked (depends on memory → verify chain)
+        runnable = {s.step_id for s in dag.runnable()}
+        self.assertNotIn("close", runnable)
+
+    def test_probe_result_artifact_written(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "probe artifact")
+            dag = build_dag(paths.run_id, "probe artifact", "implementation")
+            save_dag(root, dag)
+            step = dag.by_id("verify")
+            step.kind = "probe"
+            step.typed_criteria = [
+                StepCriterion(criterion_type="command_exit", criterion_value="true")
+            ]
+            execute_step(root, dag, "verify", execute=False)
+            probe_file = root / ".runs" / paths.run_id / "step_probes" / "verify.json"
+            self.assertTrue(probe_file.exists(), "probe result artifact should be written")
+            data = json.loads(probe_file.read_text())
+            self.assertIn("passed", data)
+            self.assertIn("next_action", data)
+            self.assertIn("confidence", data)
+            self.assertIn("evidence", data)
+
+    def test_probe_step_emits_evaluation_complete_ledger_event(self):
+        from hivemind.workloop import read_execution_ledger
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "probe ledger event")
+            dag = build_dag(paths.run_id, "probe ledger event", "implementation")
+            save_dag(root, dag)
+            step = dag.by_id("verify")
+            step.kind = "probe"
+            step.typed_criteria = [
+                StepCriterion(criterion_type="command_exit", criterion_value="true")
+            ]
+            execute_step(root, dag, "verify", execute=False)
+            records = read_execution_ledger(root, paths.run_id)
+            events = [r["event"] for r in records]
+            self.assertIn("evaluation_complete", events)
+            self.assertIn("step_completed", events)
+
+    def test_save_probe_result_roundtrip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "probe save roundtrip")
+            result = ProbeResult(
+                schema_version=1, step_id="s1", run_id=paths.run_id,
+                criterion_type="command_exit", criterion_value="true",
+                status="completed", passed=True,
+                observed="0", expected="0", evidence="exit_code=0",
+                confidence=1.0, failure_disposition="block",
+                next_action="accept", evaluated_at="2026-01-01T00:00:00",
+            )
+            path = save_probe_result(root, paths.run_id, "s1", result)
+            self.assertTrue(path.exists())
+            data = json.loads(path.read_text())
+            self.assertEqual(data["passed"], True)
+            self.assertEqual(data["status"], "completed")
+            self.assertEqual(data["next_action"], "accept")
 
 
 if __name__ == "__main__":

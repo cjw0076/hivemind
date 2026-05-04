@@ -54,7 +54,7 @@ class WorkloopLedgerTest(unittest.TestCase):
             events = [record.get("event") for record in records]
             self.assertIn("step_started", events)
             self.assertIn("step_completed", events)
-            completed = records[-1]
+            completed = next(record for record in records if record.get("event") == "step_completed")
             self.assertEqual(completed.get("step_id"), "verify")
             self.assertIn(".runs/", ",".join(completed.get("files_touched") or []))
 

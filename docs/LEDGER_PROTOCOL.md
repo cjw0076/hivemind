@@ -390,12 +390,15 @@ P0:
 
 P1:
 
-1. Add `hive supervisor start/status/tail/stop`.
-2. Add process heartbeat and timeout recovery.
-3. Add provider bypass execution through protocol-approved intents.
-4. Add verifier proof validation for stdout/stderr/output paths.
-5. Extend replay with artifact content hashes and command/prompt hash drift.
-6. Add richer TUI drilldown for per-intent artifacts and conditions.
+1. [x] Add `hive run start/status/tail/stop` as the first supervisor control
+   surface.
+2. [x] Add supervisor state/log with PID, host, command hash, git commit,
+   replay health, and active lease reporting.
+3. [ ] Add process heartbeat and timeout recovery.
+4. [ ] Add provider bypass execution through protocol-approved intents.
+5. [ ] Add verifier proof validation for stdout/stderr/output paths.
+6. [ ] Extend replay with artifact content hashes and command/prompt hash drift.
+7. [ ] Add richer TUI drilldown for per-intent artifacts and conditions.
 
 P2:
 

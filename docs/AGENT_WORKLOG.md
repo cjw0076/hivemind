@@ -154,3 +154,17 @@
 - Decision: The TUI ledger view now renders replay health, active intent, decision, missing voters, votes, proof status, replay issues, and recent ledger rows from the replayed authority state.
 - Evidence: Updated `hivemind/tui.py`, `tests/test_tui_composer.py`, `docs/TUI_HARNESS.md`, `docs/LEDGER_PROTOCOL.md`, and `docs/TODO.md`. Focused TUI tests pass with protocol panel coverage; CLI smoke confirmed panel rows include authority/intent/missing-vote/ledger sections; full `npm test` passed 186 tests.
 - Next: Keep Track B ready for supervisor/lease detail work; Claude can proceed with Probe Step and evaluation-to-protocol bridge design without UI conflict.
+
+## 2026-05-04 15:24 KST - Codex - Bridge Review And Fixture Repair
+
+- Context: User asked to evaluate Claude's evaluation-to-protocol bridge commit `8d0dba9` and give next direction.
+- Decision: Bridge direction is accepted. Fixed the lone failing workloop fixture: after `evaluation_complete`, the final ledger record is no longer necessarily `step_completed`, so the test now finds the `step_completed` record explicitly. Also fixed a bridge edge case where `evaluator_agreement=0.0` was coerced to `1.0` and could suppress `needs_referee`.
+- Evidence: Updated `tests/test_workloop_ledger.py`, `hivemind/plan_dag.py`, and `tests/test_plan_dag.py`. Focused bridge/protocol/workloop tests passed 88 tests; full `npm test` passed 194 tests.
+- Next: Claude should start typed ProbeStep criteria. Codex should avoid touching ProbeStep unless integrating the resulting schema into protocol/replay/TUI.
+
+## 2026-05-04 15:39 KST - Codex - Supervisor Run Control Start
+
+- Context: User clarified that bridge/proof/vote already reach TUI replay, so Codex should move to supervisor/lease detail while Claude handles typed ProbeStep.
+- Decision: Implement the first supervisor slice as a ledger client: `hive run start/status/tail/stop`, `supervisor_state.json`, `supervisor.log`, PID/host/command hash/git commit/replay health, and active step leases.
+- Evidence: Added `hivemind/supervisor.py`, wired `hivemind/hive.py`, added `tests/test_supervisor.py`, and updated docs/TODO. Focused supervisor/DAG/workloop tests passed 85 tests. CLI smoke confirmed `hive run start/status/tail` returns supervisor status/logs; full `npm test` passed 198 tests.
+- Next: Run full verification. Later slices should add heartbeat/timeout recovery and GPU/runtime snapshot, then integrate Claude's ProbeStep gate.
