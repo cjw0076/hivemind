@@ -69,6 +69,7 @@ class PlanDAG:
     intent: str
     created_at: str
     steps: list[PlanStep]
+    version: int = 0  # monotonically incremented on every atomic save (CAS key)
 
     def by_id(self, step_id: str) -> PlanStep | None:
         return next((s for s in self.steps if s.step_id == step_id), None)
@@ -269,19 +270,41 @@ def _steps_from_dicts(dicts: list[dict[str, Any]]) -> list[PlanStep]:
     return [PlanStep(**{k: v for k, v in d.items() if k in known}) for d in dicts]
 
 
-def save_dag(root: Path, dag: PlanDAG) -> Path:
+def save_dag(root: Path, dag: PlanDAG, expected_version: int | None = None) -> Path:
+    """Atomically persist the DAG.
+
+    expected_version: if set, performs a compare-and-swap check.
+    Raises RuntimeError if the version on disk doesn't match.
+    dag.version is incremented on every successful write.
+    """
+    from .dag_state import atomic_write
     from .harness import load_run  # lazy import to avoid circular
     paths, _ = load_run(root, dag.run_id)
     out = paths.run_dir / PLAN_DAG_FILE
+
+    if expected_version is not None and out.exists():
+        try:
+            on_disk_version = json.loads(out.read_text(encoding="utf-8")).get("version", 0)
+        except Exception:
+            on_disk_version = 0
+        if on_disk_version != expected_version:
+            raise RuntimeError(
+                f"DAG CAS conflict for '{dag.run_id}': "
+                f"expected version {expected_version}, disk has {on_disk_version}. "
+                "Reload the DAG and retry."
+            )
+
+    dag.version = (dag.version or 0) + 1
     data = {
         "schema_version": dag.schema_version,
+        "version": dag.version,
         "run_id": dag.run_id,
         "task": dag.task,
         "intent": dag.intent,
         "created_at": dag.created_at,
         "steps": _steps_to_dicts(dag.steps),
     }
-    out.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write(out, json.dumps(data, ensure_ascii=False, indent=2))
     return out
 
 
@@ -298,6 +321,7 @@ def load_dag(root: Path, run_id: str | None = None) -> PlanDAG | None:
         data = json.loads(dag_path.read_text(encoding="utf-8"))
         return PlanDAG(
             schema_version=data.get("schema_version", SCHEMA_VERSION),
+            version=data.get("version", 0),
             run_id=data["run_id"],
             task=data.get("task", ""),
             intent=data.get("intent", "unknown"),
@@ -318,6 +342,7 @@ def build_dag(run_id: str, task: str, intent: str) -> PlanDAG:
     steps = copy.deepcopy(template)
     return PlanDAG(
         schema_version=SCHEMA_VERSION,
+        version=0,
         run_id=run_id,
         task=task,
         intent=intent,
@@ -837,8 +862,14 @@ def execute_step(
     dag: PlanDAG,
     step_id: str,
     execute: bool = False,
+    force: bool = False,
 ) -> dict[str, Any]:
-    """Execute one step. Updates step status in dag. Caller must call save_dag after."""
+    """Execute one step. Updates step status in dag. Caller must call save_dag after.
+
+    force=True bypasses the transition guard and overwrites any live lease.
+    Use only for --retry and operator recovery flows.
+    """
+    from .dag_state import StepLease, guard_transition
     from .harness import (
         build_memory_draft,
         build_summary,
@@ -852,6 +883,7 @@ def execute_step(
     if step is None:
         return {"ok": False, "error": f"step '{step_id}' not found"}
 
+    # Terminal-state idempotency check (before guard so it's always fast)
     if step.status == "completed":
         return {"ok": True, "step_id": step_id, "status": "already_completed"}
 
@@ -861,6 +893,18 @@ def execute_step(
             return {"ok": True, "step_id": step_id, "status": "barrier_closed"}
         missing = [dep for dep in step.depends_on if dag.status_of(dep) != "completed"]
         return {"ok": False, "step_id": step_id, "status": "barrier_waiting", "waiting_on": missing}
+
+    # Status transition guard
+    try:
+        guard_transition(step_id, step.status, "running", force=force)
+    except ValueError as exc:
+        return {"ok": False, "step_id": step_id, "status": "transition_blocked", "error": str(exc)}
+
+    # Acquire step lease
+    try:
+        lease = StepLease.acquire(root, dag.run_id, step_id)
+    except RuntimeError as exc:
+        return {"ok": False, "step_id": step_id, "status": "lease_conflict", "error": str(exc)}
 
     paths, state = load_run(root, dag.run_id)
     step.status = "running"
@@ -886,41 +930,54 @@ def execute_step(
                 artifact_path = build_memory_draft(root, dag.run_id)
             else:
                 # harness/intake — already completed at dag creation
+                guard_transition(step_id, "running", "completed", force=force)
                 step.status = "completed"
                 step.finished_at = now_iso()
-                return {"ok": True, "step_id": step_id, "status": "completed"}
+                lease.release()
+                return {"ok": True, "step_id": step_id, "status": "completed",
+                        "idempotency_key": lease.idempotency_key}
         else:
             raise ValueError(f"Unknown executor kind: {kind}")
 
         artifact_status = _read_artifact_status(artifact_path)
         if artifact_status == "failed":
-            step.status = "failed" if step.on_failure == "stop" else "skipped"
+            new_status = "failed" if step.on_failure == "stop" else "skipped"
+            guard_transition(step_id, "running", new_status, force=force)
+            step.status = new_status
             step.finished_at = now_iso()
             step.artifact = artifact_path.relative_to(root).as_posix()
             evaluation = evaluate_step_output(root, dag, step)
+            lease.release()
             return {
                 "ok": False, "step_id": step_id, "status": step.status,
                 "artifact": step.artifact, "error": "artifact reported status=failed",
                 "recommended_action": evaluation.get("recommended_action"),
+                "idempotency_key": lease.idempotency_key,
             }
         # "prepared" = prompt ready, human must execute; "completed" = subprocess ran.
-        step.status = "prepared" if (not execute and artifact_status == "prepared") else "completed"
+        new_status = "prepared" if (not execute and artifact_status == "prepared") else "completed"
+        guard_transition(step_id, "running", new_status, force=force)
+        step.status = new_status
         step.finished_at = now_iso()
         step.artifact = artifact_path.relative_to(root).as_posix()
         evaluation = evaluate_step_output(root, dag, step)
         auto_close_barriers(dag)
+        lease.release()
         return {
             "ok": True, "step_id": step_id, "status": step.status,
             "artifact": step.artifact,
             "recommended_action": evaluation.get("recommended_action"),
             "confidence": evaluation.get("confidence"),
             "risk_level": evaluation.get("risk_level"),
+            "idempotency_key": lease.idempotency_key,
         }
 
     except Exception as exc:
-        step.status = "failed" if step.on_failure == "stop" else "skipped"
+        new_status = "failed" if step.on_failure == "stop" else "skipped"
+        step.status = new_status
         step.finished_at = now_iso()
         evaluation = evaluate_step_output(root, dag, step)
+        lease.release()
         return {
             "ok": False, "step_id": step_id, "status": step.status, "error": str(exc),
             "recommended_action": evaluation.get("recommended_action"),
