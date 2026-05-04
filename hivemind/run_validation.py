@@ -44,6 +44,8 @@ ALLOWED_EVENT_TYPES = {
     "auto_loop_ready",
     "workflow_advanced",
     "workflow_state_created",
+    "demo_started",
+    "demo_completed",
 }
 
 RUN_ARTIFACT_SPEC = {

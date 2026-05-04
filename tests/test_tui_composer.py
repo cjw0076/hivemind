@@ -7,6 +7,7 @@ from pathlib import Path
 from hivemind.harness import create_run, read_control_lock, release_control_lock
 from hivemind.tui import (
     ComposerState,
+    handle_tui_command,
     handle_local_composer_command,
     key_f,
     normalize_paste_text,
@@ -103,6 +104,13 @@ class TuiComposerTest(unittest.TestCase):
         self.assertEqual(handle_local_composer_command("/view agents"), {"action": "view", "view": "agents"})
         self.assertEqual(handle_local_composer_command("/view 3"), {"action": "view", "view": "transcript"})
         self.assertEqual(handle_local_composer_command("/quit"), {"action": "quit"})
+
+    def test_demo_command_creates_visible_demo_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            result = handle_tui_command(root, None, "/demo 0")
+            self.assertIn("demo ->", result)
+            self.assertIn("status=demo_complete", result)
 
     def test_function_keys_switch_views(self) -> None:
         self.assertEqual(view_for_key(key_f(1)), "board")

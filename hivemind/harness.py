@@ -1568,6 +1568,190 @@ def run_audit_report(root: Path, run_id: str | None = None) -> dict[str, Any]:
     }
 
 
+def demo_live_run(root: Path, task: str = "Watch Hive Mind agents coordinate in the TUI", run_id: str | None = None, delay: float = 0.45) -> dict[str, Any]:
+    """Create or animate a safe demo run so the TUI shows agents moving.
+
+    This intentionally does not execute external provider CLIs or local LLM
+    backends. It writes normal Hive artifacts with short delays so the board,
+    events, agents, artifacts, transcript, society, and memory views can prove
+    that the internal blackboard is alive.
+    """
+    delay = max(0.0, min(float(delay), 5.0))
+    paths = create_run(root, task, project="Hive Mind", task_type="demo") if run_id is None else load_run(root, run_id)[0]
+    paths, state = load_run(root, paths.run_id)
+    append_event(paths, "demo_started", {"task": state.get("user_request"), "delay": delay})
+    append_hive_activity(paths, "hive-mind", "demo_started", "Live TUI coordination demo started", {"delay": delay})
+    update_state(paths, phase="route", status="demo_running", latest_event="Demo started.")
+    _demo_pause(delay)
+
+    routing_plan = {
+        "schema_version": 1,
+        "intent": "implementation",
+        "route_source": "demo",
+        "confidence": 0.99,
+        "should_escalate": False,
+        "actions": [
+            {"provider": "local", "role": "context", "reason": "compress run context"},
+            {"provider": "claude", "role": "planner", "reason": "prepare plan prompt"},
+            {"provider": "codex", "role": "executor", "reason": "prepare execution handoff"},
+            {"provider": "gemini", "role": "reviewer", "reason": "prepare independent review"},
+        ],
+    }
+    routing_path = paths.run_dir / "routing_plan.json"
+    write_json(routing_path, routing_plan)
+    add_state_artifact(paths, "routing_plan", routing_path)
+    append_event(paths, "routing_plan_created", {"artifact": routing_path.relative_to(root).as_posix(), "source": "demo"})
+    append_hive_activity(paths, "hive-mind", "route", "Demo route assigned local, Claude, Codex, Gemini, and verifier roles")
+    update_state(paths, phase="route", status="ready", latest_event="Demo route ready.")
+    _demo_pause(delay)
+
+    society_path = paths.run_dir / "society_plan.json"
+    society = build_society_plan_from_routing(root, paths, state, routing_plan, execute=False)
+    write_json(society_path, society)
+    add_state_artifact(paths, "society_plan", society_path)
+    append_event(paths, "society_plan_created", {"artifact": society_path.relative_to(root).as_posix(), "members": len(society.get("members") or [])})
+    append_hive_activity(paths, "hive-mind", "society", "Demo society plan created; watch agent rows change status")
+    _demo_pause(delay)
+
+    _demo_local_context(root, paths, delay)
+    _demo_prepare_external(root, paths, "claude", "planner", delay)
+    _demo_prepare_external(root, paths, "codex", "executor", delay)
+    _demo_prepare_external(root, paths, "gemini", "reviewer", delay)
+    _demo_local_summary(root, paths, delay)
+
+    set_agent_status(paths, "verifier", "running")
+    append_event(paths, "agent_started", {"agent": "verifier", "role": "run"})
+    append_hive_activity(paths, "verifier", "running", "Verifier checks the demo run artifacts")
+    _demo_pause(delay)
+    verification_path = build_verification(root, paths.run_id)
+
+    memory_path = build_memory_draft(root, paths.run_id)
+    summary_path = build_summary(root, paths.run_id)
+    update_state(paths, phase="close", status="demo_complete", latest_event="Demo complete.")
+    append_event(paths, "demo_completed", {"verification": verification_path.relative_to(root).as_posix()})
+    append_hive_activity(paths, "hive-mind", "demo_completed", "Live TUI coordination demo completed", {"run_id": paths.run_id})
+
+    return {
+        "schema_version": 1,
+        "run_id": paths.run_id,
+        "status": "demo_complete",
+        "delay": delay,
+        "artifacts": {
+            "routing_plan": routing_path.relative_to(root).as_posix(),
+            "society_plan": society_path.relative_to(root).as_posix(),
+            "verification": verification_path.relative_to(root).as_posix(),
+            "memory_drafts": memory_path.relative_to(root).as_posix(),
+            "final_report": summary_path.relative_to(root).as_posix(),
+        },
+        "next": {
+            "command": f"hive tui --run-id {paths.run_id}",
+            "reason": "open the completed demo run in the Hive Mind TUI",
+        },
+    }
+
+
+def _demo_pause(delay: float) -> None:
+    if delay > 0:
+        time.sleep(delay)
+
+
+def _demo_local_context(root: Path, paths: RunPaths, delay: float) -> None:
+    role = "context"
+    agent_name = local_agent_name(role)
+    set_agent_status(paths, agent_name, "running")
+    append_event(paths, "agent_started", {"agent": "local", "role": role, "worker": "context_compressor"})
+    append_hive_activity(paths, "local/context", "running", "Local context worker compresses project/run context")
+    _demo_pause(delay)
+    out_path = paths.local_dir / "context.json"
+    result = {
+        "schema_version": 1,
+        "agent": "local",
+        "role": role,
+        "status": "completed",
+        "provider_mode": "demo_runtime",
+        "runtime": "demo",
+        "worker": "context_compressor",
+        "model": "demo",
+        "source_ref": paths.context_pack.relative_to(root).as_posix(),
+        "output_valid": True,
+        "output_issues": [],
+        "confidence": 0.92,
+        "should_escalate": False,
+        "escalation_reason": "",
+        "output": {
+            "summary": "Demo context pack prepared for Claude/Codex/Gemini coordination.",
+            "key_files": ["hivemind/tui.py", "hivemind/harness.py", "hivemind/plan_dag.py"],
+        },
+    }
+    write_json(out_path, result)
+    add_state_artifact(paths, "local_context", out_path)
+    set_agent_status(paths, agent_name, "completed")
+    append_event(paths, "agent_completed", {"agent": "local", "role": role, "worker": "context_compressor", "artifact": out_path.relative_to(root).as_posix()})
+    append_hive_activity(paths, "local/context", "completed", "Local context artifact ready", {"artifact": out_path.relative_to(root).as_posix()})
+    update_state(paths, phase="context", status="in_progress", latest_event="Local context completed.")
+    _demo_pause(delay)
+
+
+def _demo_prepare_external(root: Path, paths: RunPaths, agent: str, role: str, delay: float) -> None:
+    agent_name = f"{agent}-{role}"
+    set_agent_status(paths, agent_name, "running")
+    append_event(paths, "agent_started", {"agent": agent, "role": role, "mode": "demo_prepare"})
+    append_hive_activity(paths, f"{agent}/{role}", "running", f"{agent}/{role} prepares a provider prompt artifact")
+    update_state(paths, phase="handoff", status="in_progress", latest_event=f"{agent}/{role} running.")
+    _demo_pause(delay)
+    result_path = invoke_external_agent(root, agent, role, run_id=paths.run_id, execute=False)
+    append_hive_activity(paths, f"{agent}/{role}", "prepared", f"{agent}/{role} prepared prompt/result artifacts", {"artifact": result_path.relative_to(root).as_posix()})
+    _demo_pause(delay)
+
+
+def _demo_local_summary(root: Path, paths: RunPaths, delay: float) -> None:
+    role = "summarize"
+    agent_name = local_agent_name(role)
+    set_agent_status(paths, agent_name, "running")
+    append_event(paths, "agent_started", {"agent": "local", "role": role, "worker": "log_summarizer"})
+    append_hive_activity(paths, "local/summarize", "running", "Local summarizer watches the shared activity log")
+    _demo_pause(delay)
+    out_path = paths.local_dir / "summarize.json"
+    result = {
+        "schema_version": 1,
+        "agent": "local",
+        "role": role,
+        "status": "completed",
+        "provider_mode": "demo_runtime",
+        "runtime": "demo",
+        "worker": "log_summarizer",
+        "model": "demo",
+        "source_ref": paths.events.relative_to(root).as_posix(),
+        "output_valid": True,
+        "output_issues": [],
+        "confidence": 0.88,
+        "should_escalate": False,
+        "escalation_reason": "",
+        "output": {"summary": "Demo run shows local, Claude, Codex, Gemini, and verifier coordination."},
+    }
+    write_json(out_path, result)
+    add_state_artifact(paths, "local_summary", out_path)
+    set_agent_status(paths, agent_name, "completed")
+    append_event(paths, "agent_completed", {"agent": "local", "role": role, "worker": "log_summarizer", "artifact": out_path.relative_to(root).as_posix()})
+    append_hive_activity(paths, "local/summarize", "completed", "Local summary artifact ready", {"artifact": out_path.relative_to(root).as_posix()})
+    update_state(paths, phase="verify", status="in_progress", latest_event="Local summary completed.")
+    _demo_pause(delay)
+
+
+def format_demo_report(report: dict[str, Any]) -> str:
+    lines = [
+        f"Hive Mind live demo: {report.get('run_id')}",
+        f"Status: {report.get('status')}",
+        "",
+        "Artifacts:",
+    ]
+    for name, path in (report.get("artifacts") or {}).items():
+        lines.append(f"- {name}: {path}")
+    next_action = report.get("next") or {}
+    lines.extend(["", "Next:", f"  {next_action.get('command')}", f"  Reason: {next_action.get('reason')}"])
+    return "\n".join(lines)
+
+
 def auto_loop(
     root: Path,
     run_id: str | None = None,

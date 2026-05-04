@@ -23,6 +23,7 @@ from .harness import (
     build_memory_draft,
     build_summary,
     build_verification,
+    demo_live_run,
     append_event,
     acquire_control_lock,
     ask_router,
@@ -417,7 +418,16 @@ def handle_tui_command(root: Path, run_id: str | None, command: str) -> str:
     parts = command.split()
     name = parts[0].lower()
     if name in {"/help", "/h", "/?"}:
-        return "commands: /ask task, /route, /verify, /memory, /summary, /diff, /local, /claude, /codex, /gemini, /view, /quit"
+        return "commands: /demo, /ask task, /route, /verify, /memory, /summary, /diff, /local, /claude, /codex, /gemini, /view, /quit"
+    if name == "/demo":
+        delay = 0.6
+        if len(parts) > 1:
+            try:
+                delay = float(parts[1])
+            except ValueError:
+                return "usage: /demo [delay-seconds]"
+        report = demo_live_run(root, run_id=run_id, delay=delay)
+        return f"demo -> {report.get('run_id')} status={report.get('status')}"
     if name == "/ask" and len(parts) > 1:
         report = orchestrate_prompt(root, " ".join(parts[1:]), run_id=None, complexity="default")
         return f"society plan -> {report.get('run_id')} ({len(report.get('members') or [])} members)"
