@@ -481,3 +481,83 @@ Naming note as of 2026-05-02 12:24 KST:
 - Decision: Treat `plan_dag.py` as the right scheduler direction, but gate the next work order: safety/correctness first, parallel fan-out second. Current DAG CLI works, but execution is still one-step-at-a-time and provider execution has a Claude danger-mode workaround that must not become a default automation path.
 - Evidence: Temp-workspace smoke verified `hive plan dag --intent implementation`, `hive step list`, `hive step next`, and `hive step run context --json`. `npm test` passed 80 tests. `python scripts/hive-product-eval.py --deep --out -` passed 21/21.
 - Next: Harden DAG `execute_step()` result semantics, reconcile `hive flow` and `plan_dag.json`, policy-gate Claude execute, then implement bounded parallel fan-out and barrier join.
+
+## 2026-05-03 15:10 KST - Codex
+
+- Context: User asked for an ideal multi-adversarial coordinator design beyond the current implementation.
+- Decision: Specified the adaptive adversarial chair as the next target: task feature vector -> epistemic-trial DAG step -> multi-dimensional StepEvaluation -> append-only mutation proposal -> referee/test decision -> optional adaptive mutation.
+- Evidence: Added `docs/ADAPTIVE_ADVERSARIAL_CHAIR.md`, `VG-16`, and TODO items for StepEvaluation artifacts, TaskFeatureVector, observe-only `dag_mutations.jsonl`, evaluation-aware barriers, RefereeDecision, and provider capability memory. Preserved the existing uncommitted `plan_dag.py` evaluation-policy seed instead of overwriting it.
+- Next: Persist step evaluations as separate artifacts and add tests for mutation proposals before enabling parallel fan-out or real adaptive DAG mutation.
+
+## 2026-05-04 11:10 KST - Codex
+
+- Context: User wanted to see Hive Mind agents visibly coordinating on top of the TUI.
+- Decision: Added a safe live-demo command and TUI slash command that animate a multi-agent run through real run artifacts without executing provider CLIs.
+- Evidence: `hive demo live` writes routing, society, local context, prepared Claude/Codex/Gemini artifacts, verifier output, memory draft, summary, and `demo_started`/`demo_completed` activity. PTY smoke showed `hive tui` following the run through the board.
+- Next: Treat this as the visible baseline for TUI/read-model verification; add filesystem transaction/lease semantics before real parallel fan-out.
+
+## 2026-05-04 KST - Claude (Sonnet 4.6)
+
+### Work completed this session
+
+**Bug fixes (3)**
+- `context_compressor` timeout: `default_model` qwen3:8b → phi4-mini
+- `default_context_pack()` boilerplate: added `root` param, scans real project files + git status
+- Claude execute in non-TTY: `--permission-mode plan` → `--dangerously-skip-permissions` + stdin prompt
+
+**DAG evaluation layer (plan_dag.py)**
+- Rewrote `evaluate_step_output()` with 5 discrete evaluators: syntax (schema/parseability), execution (score 0–1), claim (unsupported claims from confidence/escalation fields), risk (write_access/filesystem_write/provider_cost/gate_step), disagreement (parallel sibling conflict)
+- `_recommend_action()`: derives action from `evaluation_policy.accept_if` + `escalate_if` with priority ordering
+- P0: `confidence_history` — append-only trajectory per step, `{ts, value, source, attempt, provider, role, artifact}`
+- P1: `StepEvaluation` artifact — `step_evaluations/<step_id>.json` written after every evaluation
+- P2: `evaluator_votes` + `evaluator_agreement` — each evaluator votes independently; agreement = fraction matching recommended_action
+- EVI-lite seed: `confidence_delta / attempts` when history >= 2 points; `positive/flat/negative` estimated value
+
+**DAG transaction substrate (dag_state.py — new file)**
+- `atomic_write(path, content)`: tmp → fsync → rename; POSIX-atomic on same filesystem
+- `guard_transition(step_id, from, to, force)`: step status machine; illegal transitions raise ValueError; force bypasses for --retry/recovery
+- `StepLease`: per-step JSON lock at `step_leases/<step_id>.json` with TTL, `idempotency_key` (UUID), `heartbeat()`, `release()`; expired leases re-acquirable
+- `recover_expired_leases(root, run_id, dag)`: resets running steps with expired leases to pending (crash recovery)
+- `PlanDAG.version`: monotonic int, incremented on every `save_dag()` call
+- `save_dag(expected_version=N)`: CAS write; raises RuntimeError on conflict
+
+**WorkerTransport interface (worker_transport.py — new file)**
+- `WorkerTransport` Protocol (runtime_checkable): boundary only, no implementation
+- `TRANSPORT_LOCAL_SUBPROCESS / PROVIDER_CLI / LOCAL_LLM / REMOTE_WORKER` constants
+- `TRANSPORTS_IMPLEMENTED` / `TRANSPORTS_DEFERRED` sets; remote deferred explicitly
+
+**execute_step hardening**
+- `guard_transition` before status change; `StepLease` acquired at start, released in all paths (success/fail/exception)
+- Returns `idempotency_key` in result dict
+- `force=True` parameter for --retry/recovery flows
+
+**Tests**: 127 passing (99 before → 127 after; 28 new in `test_dag_state.py`, 19 new in `test_plan_dag.py`)
+
+---
+
+### My work scope (Claude, this repo)
+
+**Owns — active**
+- `hivemind/plan_dag.py`: DAG schema, templates, evaluators, barrier logic, persistence
+- `hivemind/dag_state.py`: filesystem transaction protocol (atomic_write, guard, lease, CAS)
+- `hivemind/worker_transport.py`: WorkerTransport interface boundary
+- `tests/test_plan_dag.py`, `tests/test_dag_state.py`
+
+**Next in queue**
+1. P0-4: parallel fan-out + barrier join — `execute_step` concurrent dispatch, `recover_expired_leases` at scheduler entry, barrier closes when sufficient deps return
+2. Reversibility Gradient — float 0–1 field on PlanStep, auto-estimated from diff patterns before executor step runs
+3. Probe Step — `kind: "probe"` + mandatory `falsification_criterion` field; gates next step if criterion unmet
+4. Disagreement Topology — per-axis disagreement dimensions, not just count; topology pattern → recommended_action mapping
+5. Referee Escrow — `choose_a/b` requires evidence artifact in escrow; referee overturn logged to `counterfactual_shadow.jsonl`
+
+**Explicitly deferred**
+- `--adaptive` (dynamic step insertion): after fan-out proven stable
+- `WorkerTransport` remote implementation: after local transaction + fan-out stable
+- MemoryOS/CapabilityOS work: sibling repos
+- Automatic threshold calibration from counterfactual log: human reads first (P4), calibration is v2+
+
+**Invariants I maintain**
+- `dag_mutations.jsonl` and `step_evaluations/` are observe-only until `--adaptive` is explicitly activated
+- `guard_transition` is never bypassed except with explicit `force=True` in recovery flows
+- `atomic_write` is the only path to write `plan_dag.json`; direct `write_text` is gone
+- `WorkerTransport.REMOTE_WORKER` stays in `TRANSPORTS_DEFERRED`; no remote implementation without local substrate stable
