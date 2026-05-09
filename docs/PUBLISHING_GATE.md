@@ -26,9 +26,9 @@ work without it. MemoryOS bridge is optional and gracefully degraded.
 ### 1. Provider CLI wrapping
 - [ ] Claude/Codex/Gemini/local native CLI stable passthrough (`hive provider`)
 - [ ] timeout, exit-code, stdout/stderr artifact, failure checkpoint
-- [ ] dangerous flag denylist + policy gate before execution
+- [x] dangerous flag denylist + policy gate before execution
 - [x] provider/profile allowlist for `hive provider --execute` safe native profiles
-- [ ] `--execute` always explicit; dry-run is default
+- [x] `--execute` always explicit; dry-run is default
 
 ### 2. Execution ledger / receipt / proof
 - [ ] every prompt/command/result/artifact path recorded in ledger
@@ -56,10 +56,10 @@ work without it. MemoryOS bridge is optional and gracefully degraded.
 - [ ] `hive live --memoryos` emits stable event taxonomy, not Hive action names
 
 ### 6. Release hygiene
-- [x] `scripts/public-release-check.sh` passes (9/9 checks green as of 2026-05-09)
-- [ ] README states "provider-CLI harness, production v0" clearly
-- [ ] security review record under `docs/security/`
-- [ ] no production-grade AIOS claims in README or CLI output
+- [x] `scripts/public-release-check.sh` passes (10/10 checks green as of 2026-05-09)
+- [x] README states "provider-CLI harness, production v0" clearly
+- [x] security review record under `docs/security/`
+- [x] no production-grade AIOS claims in README or CLI output
 
 ---
 

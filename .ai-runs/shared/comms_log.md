@@ -948,6 +948,48 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Evidence: Focused gate passed: `python -m unittest tests.test_inspect tests.test_provider_passthrough tests.test_production_hardening`, `python -m py_compile hivemind/*.py`, and `git diff --check`. `docs/HANDOFF.json`, `docs/TODO.md`, and `docs/PUBLISHING_GATE.md` were updated to reflect the completed slice.
 - Next: Continue H-P0.3 extraction for provider passthrough, flow runtime, and run receipts. H-P0.5 should add the Hive-only production smoke script.
 
+## 2026-05-09 19:28 KST - Codex
+
+- Context: User wants Hive Mind strong enough to sprint CapabilityOS later and to keep raising quality through adversarial/coopetitive agent structure. H-P0.3 module extraction is the current blocker.
+- Decision: Extracted native provider passthrough into `hivemind/provider_passthrough.py` and preserved `hivemind.harness.provider_passthrough` as a compatibility wrapper. This makes provider native CLI preservation testable as its own contract.
+- Evidence: The extracted module owns passthrough command artifact creation, execute allowlist, policy-block result receipts, subprocess execution, stdout/stderr/output capture, protocol proof creation, and ledger events. Focused gate passed after extraction.
+- Next: Continue with run receipt/inspect collection or flow runtime extraction, then add the Hive-only production smoke script. CapabilityOS should live in its own `myworld/capabilityOS` directory and be driven by Hive as an external capability substrate, not embedded into Hive runtime.
+
+## 2026-05-09 19:31 KST - Codex
+
+- Context: H-P0.5 production smoke gate needed to match the current Hive runtime contract after `hive inspect` changed shape.
+- Decision: Updated `scripts/public-release-check.sh` from an older 8-section gate into a 10-check runtime smoke gate. It now validates run/status, provider dry-run, ledger replay, and `hive inspect` kind/ledger count directly.
+- Evidence: `bash scripts/public-release-check.sh` passed 10/10 and `npm test` inside it passed 256 tests. Artifacts were written under `.hivemind/release/20260509_192448`.
+- Next: Keep CapabilityOS implementation in a separate `myworld/capabilityOS` directory; Hive should call it as a capability substrate through explicit artifacts/contracts. AIOS belongs above Hive/MemoryOS/CapabilityOS as a later prompt/log shell, not inside the Hive runtime package.
+
+## 2026-05-09 19:38 KST - Codex
+
+- Context: Continuing the pingpong sprint after user asked to push forward. H-P0.3 still required run receipt extraction and better validation coverage.
+- Decision: Added `hivemind/run_receipts.py` and moved receipt helpers out of `harness.py`. Validation now recurses into nested native passthrough provider results instead of only scanning one agent subdirectory level.
+- Evidence: Added `test_nested_native_provider_result_is_validated` and ran the focused gate successfully. This closes a real production QA gap: `hive provider <name> --dry-run` receipts are now visible to validation, audit, and inspect.
+- Next: Extract flow runtime, rerun `scripts/public-release-check.sh`, then freeze a commit boundary and call for Claude security/readiness review before public flip.
+
+## 2026-05-09 19:48 KST - Codex
+
+- Context: H-P0.3 required module extraction before more feature work. The last target was flow runtime.
+- Decision: Extracted prompt-to-workflow advancement into `hivemind/flow_runtime.py`. Hive still exposes the same `harness.py` function names through wrappers, but flow internals now live beside provider passthrough, memory bridge, and run receipts as independent runtime modules.
+- Evidence: Focused gate passed after extraction. `hivemind/harness.py` is now 5373 LOC, and all four H-P0.3 module targets exist: `memory_bridge.py`, `provider_passthrough.py`, `run_receipts.py`, `flow_runtime.py`.
+- Next: Run full H-P0 production gate, then prepare a clean commit boundary and final Claude security/readiness review.
+
+## 2026-05-09 19:55 KST - Codex
+
+- Context: Actual Claude Haiku security/readiness review was run through the Claude CLI and saved at `docs/security/H_P0_SECURITY_REVIEW.md`.
+- Decision: Treat the review as green for production-v0 tag after two small follow-ups: tighten README production scope wording and add destructive shell-wrapper passthrough regression coverage.
+- Evidence: README now scopes production v0 to the local provider-CLI harness only and explicitly says Hive Mind is not AIOS, not a complete memory-integrated swarm, and not autonomous long-horizon cognition. `tests/test_provider_passthrough.py` now checks `bash -c "rm -rf .runs"` is policy-blocked.
+- Next: Rerun the release gate. If green, commit the H-P0 production runtime boundary.
+
+## 2026-05-09 20:00 KST - Codex
+
+- Context: Final H-P0 release gate rerun after Claude review follow-ups.
+- Decision: Gate is clean. Treat this as the H-P0 production runtime boundary for commit/tag preparation.
+- Evidence: `bash scripts/public-release-check.sh` passed 10/10 with zero warnings; internal `npm test` passed 258 tests. Latest release artifacts are under `.hivemind/release/20260509_194432`.
+- Next: Commit the H-P0 boundary, then keep supervisor heartbeat/stop receipt hardening and post-v0 substrate work out of the production-v0 tag unless explicitly pulled in.
+
 ## 2026-05-09 KST - Claude (H-P0 Sprint — adversarial-cooperative)
 
 - Context: User asked Claude to directly use Hive Mind, sprint toward production, operate in adversarial-cooperative mode with Codex.

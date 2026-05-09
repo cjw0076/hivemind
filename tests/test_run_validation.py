@@ -54,6 +54,18 @@ class RunValidationTest(unittest.TestCase):
             self.assertEqual(report["verdict"], "needs_review")
             self.assertFalse(report["checks"]["provider_results_schema_valid"])
 
+    def test_nested_native_provider_result_is_validated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "bad nested provider result", project="Hive Mind")
+            result_dir = paths.run_dir / "agents" / "codex" / "native"
+            result_dir.mkdir(parents=True, exist_ok=True)
+            result_path = result_dir / "passthrough_01_result.yaml"
+            result_path.write_text('agent: codex\nrole: native\nstatus: "weird"\n', encoding="utf-8")
+            report = validate_run_artifacts(paths.run_dir, root)
+            self.assertEqual(report["verdict"], "needs_review")
+            self.assertFalse(report["checks"]["provider_results_schema_valid"])
+
     def test_failed_agent_state_fails_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

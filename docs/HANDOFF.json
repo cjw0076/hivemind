@@ -18,6 +18,7 @@
       ".ai-runs/shared/comms_log.md",
       "hivemind/harness.py",
       "hivemind/memory_bridge.py",
+      "hivemind/provider_passthrough.py",
       "hivemind/inspect_run.py",
       "hivemind/hive.py",
       "tests/test_inspect.py",
@@ -30,7 +31,7 @@
       "Focused tests pass before full gate"
     ],
     "status": "in_progress",
-    "notes": "MemoryOS bridge extraction, provider execute allowlist, and hive inspect are implemented. Continue extracting provider_passthrough, flow_runtime, and run_receipts."
+    "notes": "MemoryOS bridge, provider passthrough, run receipts, flow runtime, provider execute allowlist, and hive inspect are implemented."
   },
   "task_queue": [
     {
@@ -95,8 +96,9 @@
         "Existing public imports keep working",
         "Focused tests pass before full gate"
       ],
-      "status": "in_progress",
-      "notes": "MemoryOS bridge extracted into hivemind/memory_bridge.py. Provider passthrough, flow runtime, and run receipts still need extraction."
+      "status": "done",
+      "tests": "focused flow/runtime gate OK",
+      "notes": "MemoryOS bridge extracted into hivemind/memory_bridge.py. Provider passthrough extracted into hivemind/provider_passthrough.py. Run receipts extracted into hivemind/run_receipts.py. Flow runtime extracted into hivemind/flow_runtime.py. Public harness wrappers preserved."
     },
     {
       "id": "H-P0.4",
@@ -133,7 +135,9 @@
         "Script fails on production-runtime regressions",
         "MemoryOS is optional in the smoke"
       ],
-      "status": "queued"
+      "status": "done",
+      "tests": "bash scripts/public-release-check.sh PASS 10/10",
+      "notes": "Public release check now covers npm test, diff check, doctor, run/status, provider dry-run, ledger replay, inspect, MemoryOS optional presence/degrade, secret/private scan, and README overclaim audit."
     }
   ],
   "history": [
@@ -155,11 +159,26 @@
     {
       "at": "2026-05-09T19:15:00+09:00",
       "agent": "codex",
-      "summary": "Extracted MemoryOS context bridge into hivemind/memory_bridge.py, inverted provider passthrough execute policy toward safe-profile allowlists, and completed H-P0.4 hive inspect operator surface."
+      "summary": "Extracted MemoryOS context bridge into hivemind/memory_bridge.py, extracted provider passthrough into hivemind/provider_passthrough.py, inverted provider passthrough execute policy toward safe-profile allowlists, and completed H-P0.4 hive inspect operator surface."
+    },
+    {
+      "at": "2026-05-09T19:28:00+09:00",
+      "agent": "codex",
+      "summary": "Hardened scripts/public-release-check.sh into a 10-check Hive-only production smoke gate; latest run passed 10/10."
+    },
+    {
+      "at": "2026-05-09T19:38:00+09:00",
+      "agent": "codex",
+      "summary": "Extracted run receipt helpers into hivemind/run_receipts.py and changed provider result validation to recurse into native passthrough receipts."
+    },
+    {
+      "at": "2026-05-09T19:48:00+09:00",
+      "agent": "codex",
+      "summary": "Extracted prompt-to-workflow runtime advancement into hivemind/flow_runtime.py and closed H-P0.3 module extraction targets."
     }
   ],
   "quality_gate": {
-    "last_hive_tests": "focused H-P0 slice OK: tests.test_inspect + tests.test_provider_passthrough + tests.test_production_hardening",
+    "last_hive_tests": "bash scripts/public-release-check.sh PASS 10/10 WARN 0; npm test OK: 258/258",
     "required_before_commit": [
       "python -m py_compile hivemind/*.py",
       "python -m unittest discover -s tests -p 'test_*.py'",

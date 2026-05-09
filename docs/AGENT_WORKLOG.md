@@ -297,3 +297,45 @@
 - Decision: Kept the sprint in the MemoryOS-style `docs/HANDOFF.json` pingpong loop. Extracted the MemoryOS context bridge into `hivemind/memory_bridge.py`, added safe-profile allowlist checks for `hive provider --execute`, and added `hivemind/inspect_run.py` as the path-hidden run inspection surface.
 - Evidence: `hive inspect <run>` now reports run state, ledger replay/hash health, authority counts, provider result receipts, execution proofs, MemoryOS context trace, next action, and recommendations without requiring manual run-folder navigation. Focused gate passed: `python -m unittest tests.test_inspect tests.test_provider_passthrough tests.test_production_hardening`, `python -m py_compile hivemind/*.py`, and `git diff --check`.
 - Next: Continue H-P0.3 by extracting provider passthrough, flow runtime, and run receipt logic from `harness.py`; then add the Hive-only production smoke script.
+
+## 2026-05-09 19:28 KST - Codex - Provider Passthrough Extraction
+
+- Context: Continuing H-P0.3 after the full 256-test gate passed. Provider passthrough is the boundary that lets Hive preserve native Claude/Codex/Gemini CLI capability without burying execution authority inside the large harness file.
+- Decision: Moved native passthrough execution, safe-profile allowlist checks, policy-block receipts, command/stdout/stderr/output artifacts, intent/decision/proof creation, and ledger events into `hivemind/provider_passthrough.py`. `hivemind/harness.py` keeps a backward-compatible wrapper so existing imports continue to work.
+- Evidence: `hivemind/harness.py` dropped below 5800 LOC; `hivemind/provider_passthrough.py` owns the 416-line provider contract. Focused gate passed: `python -m unittest tests.test_provider_passthrough tests.test_inspect tests.test_production_hardening`, `python -m py_compile hivemind/*.py`, and `git diff --check`.
+- Next: Extract run receipt/inspect collection or flow runtime next, then add `scripts/public-release-check.sh` / Hive-only smoke gate.
+
+## 2026-05-09 19:31 KST - Codex - H-P0 Smoke Gate Pass
+
+- Context: `scripts/public-release-check.sh` existed but still reflected an older 8-section gate and parsed the old inspect `verdict` field.
+- Decision: Hardened it into the current H-P0 runtime contract: `npm test`, whitespace check, doctor, run/status, provider dry-run, ledger replay, `hive inspect`, MemoryOS optional/degrade check, secret/private scan, and README overclaim audit.
+- Evidence: `bash scripts/public-release-check.sh` passed 10/10. The inspect smoke now validates `kind=hive_run_inspection` and ledger record count instead of the old `verdict=?` path.
+- Next: Remaining H-P0.3 extraction targets are flow runtime and run receipts. After that, cut a clean commit boundary and ask Claude for a final public-release security/readiness review.
+
+## 2026-05-09 19:38 KST - Codex - Run Receipts Extraction
+
+- Context: H-P0.3 still had receipt logic in `harness.py`, and `run_validation.py` only scanned `agents/*/*_result.yaml`, which could miss nested native passthrough receipts under `agents/<provider>/native/`.
+- Decision: Added `hivemind/run_receipts.py` for provider result records, relative path normalization, git changed-file capture, recursive provider receipt discovery, and inspection-friendly receipt summaries. Updated validation and old/deep inspect paths to recurse through nested receipts.
+- Evidence: Added a regression test for nested native provider results in `tests/test_run_validation.py`. Focused gate passed: `python -m unittest tests.test_run_validation tests.test_provider_passthrough tests.test_inspect tests.test_production_hardening`, `python -m py_compile hivemind/*.py`, and `git diff --check`.
+- Next: Extract flow runtime last, then run the full release gate and prepare a commit boundary for Claude/public-readiness review.
+
+## 2026-05-09 19:48 KST - Codex - Flow Runtime Extraction
+
+- Context: The last H-P0.3 extraction target was prompt-to-workflow advancement: MemoryOS context hook, routing plan, society plan, DAG creation/sync, safe local execution, provider prompt refresh, and workflow state writing.
+- Decision: Added `hivemind/flow_runtime.py` and moved the flow lifecycle implementation there. `hivemind/harness.py` keeps wrappers for `flow_advance`, DAG sync helpers, workflow state helpers, and flow formatting so public imports remain stable.
+- Evidence: `hivemind/harness.py` is now 5373 LOC, down from the 6000+ LOC risk point. Focused gate passed: `python -m unittest tests.test_fast_router tests.test_production_hardening tests.test_provider_passthrough tests.test_inspect tests.test_run_validation`, `python -m py_compile hivemind/*.py`, and `git diff --check`.
+- Next: Run full H-P0 release gate again. If green, cut a commit boundary and ask Claude for final public-release security/readiness review.
+
+## 2026-05-09 19:55 KST - Codex - Claude Security Review Follow-Up
+
+- Context: Ran an actual Claude Haiku review for H-P0 public production-v0 readiness and recorded it under `docs/security/H_P0_SECURITY_REVIEW.md`.
+- Decision: Accepted Claude's verdict as ready-for-v0 with two immediate follow-ups: make the README production claim explicitly narrow and add regression coverage for destructive shell-wrapper passthrough attempts.
+- Evidence: Updated `README.md` to say production v0 candidate is only the local provider-CLI harness, not AIOS or a complete memory swarm. Added `test_execute_blocks_destructive_shell_wrapper` in `tests/test_provider_passthrough.py`.
+- Next: Rerun focused provider tests and full public-release gate; then commit the H-P0 boundary.
+
+## 2026-05-09 20:00 KST - Codex - H-P0 Gate Clean
+
+- Context: After Claude review follow-up, the README wording initially triggered the release script's overclaim grep because the disclaimer repeated forbidden production terms.
+- Decision: Reworded README scope into release-safe language: bounded local runtime orchestration, not a general agent operating system, not an end-to-end memory substrate, not a long-running autonomous planner.
+- Evidence: `bash scripts/public-release-check.sh` passed 10/10 with zero warnings. Internal `npm test` passed 258 tests. Latest artifacts: `.hivemind/release/20260509_194432`.
+- Next: Commit the H-P0 production runtime boundary and keep post-v0 items separate from the tag.

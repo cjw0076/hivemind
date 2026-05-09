@@ -243,16 +243,19 @@ and degrade cleanly without MemoryOS. MemoryOS and CapabilityOS remain optional
 substrates for memory/context and capability routing.
 
 - [x] Stabilize the current green runtime changes before adding new behavior.
-- [ ] Split or plan extraction from `hivemind/harness.py` into narrower runtime modules: memory bridge, provider passthrough, flow runtime, and run receipts.
+- [x] Split or plan extraction from `hivemind/harness.py` into narrower runtime modules: memory bridge, provider passthrough, flow runtime, and run receipts.
 - [x] Extract the MemoryOS context bridge from `hivemind/harness.py` into `hivemind/memory_bridge.py` while preserving public harness imports.
-- [ ] Harden provider passthrough policy from denylist-only toward provider/profile allowlists plus explicit approval-gated escape hatches.
+- [x] Extract native provider passthrough from `hivemind/harness.py` into `hivemind/provider_passthrough.py` while preserving the public harness wrapper.
+- [x] Extract provider/local run receipt helpers from `hivemind/harness.py` into `hivemind/run_receipts.py` and make validation inspect nested native passthrough receipts.
+- [x] Extract prompt-to-workflow advancement from `hivemind/harness.py` into `hivemind/flow_runtime.py` while preserving public harness wrappers.
+- [x] Harden provider passthrough policy from denylist-only toward provider/profile allowlists plus explicit approval-gated escape hatches.
 - [x] Add provider/profile allowlist enforcement for `hive provider --execute` while keeping dry-run passthrough broad for native CLI capability discovery.
 - [ ] Add terminal receipt coverage for completed, failed, timeout, skipped, policy-blocked, and partial provider/local runs.
 - [x] Add `hive inspect <run>` as a path-hidden operator summary over run state, ledger, provider results, receipts, policy decisions, and next action.
 - [ ] Harden supervisor heartbeat/timeout recovery and make `hive run stop/status/tail` production-safe for interrupted runs.
-- [ ] Add a Hive-only production smoke script that does not require MemoryOS: init, run, local step, provider dry-run, ledger replay, inspect, stop, validation.
+- [x] Add a Hive-only production smoke script that does not require MemoryOS: init, run, local step, provider dry-run, ledger replay, inspect, stop, validation.
 - [ ] Keep MemoryOS context hook optional and non-blocking; failed/absent MemoryOS must produce a receipt, not abort Hive runtime.
-- [ ] Update public-facing docs to claim only "production runtime harness v0" until MemoryOS/CapabilityOS loops are production-ready.
+- [x] Update public-facing docs to claim only "production runtime harness v0" until MemoryOS/CapabilityOS loops are production-ready.
 - [ ] Add redacted Grok fixture from current local structure.
 - [ ] Add redacted Perplexity markdown ZIP fixture.
 - [ ] Add Claude export parser after a sample export is available.

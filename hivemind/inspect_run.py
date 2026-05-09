@@ -7,6 +7,7 @@ from typing import Any
 
 from .harness import load_run, run_audit_report, safe_load_yaml
 from .live import build_live_report
+from .run_receipts import collect_provider_results
 from .workloop import replay_execution_ledger
 
 
@@ -56,38 +57,6 @@ def build_inspect_report(
         },
         "recommendations": recommendations,
     }
-
-
-def collect_provider_results(root: Path, run_dir: Path, *, show_paths: bool) -> list[dict[str, Any]]:
-    """Collect provider receipts recursively, including native passthrough runs."""
-    results: list[dict[str, Any]] = []
-    agents_dir = run_dir / "agents"
-    if not agents_dir.exists():
-        return results
-    for result_path in sorted(agents_dir.rglob("*_result.yaml")):
-        data = safe_load_yaml(result_path)
-        if not isinstance(data, dict):
-            data = {}
-        item = {
-            "agent": data.get("agent"),
-            "role": data.get("role"),
-            "status": data.get("status"),
-            "provider_mode": data.get("provider_mode"),
-            "permission_mode": data.get("permission_mode"),
-            "returncode": data.get("returncode"),
-            "risk_level": data.get("risk_level", "unknown"),
-            "policy_violations": data.get("policy_violations") or [],
-            "files_changed": data.get("files_changed") or [],
-            "commands_run": data.get("commands_run") or [],
-            "tests_run": data.get("tests_run") or [],
-        }
-        if show_paths:
-            item["path"] = result_path.relative_to(root).as_posix()
-            for key in ("command_path", "stdout_path", "stderr_path", "output_path", "prompt_path"):
-                if data.get(key):
-                    item[key] = data.get(key)
-        results.append(item)
-    return results
 
 
 def summarize_authority(authority: dict[str, Any]) -> dict[str, Any]:

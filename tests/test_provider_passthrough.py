@@ -75,7 +75,7 @@ class ProviderPassthroughTest(unittest.TestCase):
                 stderr="",
             )
             with patch("hivemind.harness.resolve_provider_binary", return_value="codex"):
-                with patch("hivemind.harness.subprocess.run", return_value=completed) as run:
+                with patch("hivemind.provider_passthrough.subprocess.run", return_value=completed) as run:
                     result_path = provider_passthrough(
                         root,
                         "codex",
@@ -107,6 +107,26 @@ class ProviderPassthroughTest(unittest.TestCase):
             self.assertEqual(data["status"], "failed")
             self.assertEqual(data["provider_mode"], "policy_blocked")
             self.assertIn("outside Codex allowlist", data["reason"])
+            events = [record.get("event") for record in read_execution_ledger(root, paths.run_id)]
+            self.assertIn("policy_blocked", events)
+
+    def test_execute_blocks_destructive_shell_wrapper(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "provider passthrough shell danger")
+
+            result_path = provider_passthrough(
+                root,
+                "codex",
+                ["bash", "-c", "rm -rf .runs"],
+                run_id=paths.run_id,
+                execute=True,
+            )
+
+            data = yaml.safe_load(result_path.read_text(encoding="utf-8"))
+            self.assertEqual(data["status"], "failed")
+            self.assertEqual(data["provider_mode"], "policy_blocked")
+            self.assertIn("destructive shell wrapper", data["reason"])
             events = [record.get("event") for record in read_execution_ledger(root, paths.run_id)]
             self.assertIn("policy_blocked", events)
 

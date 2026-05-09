@@ -1,7 +1,10 @@
 # Hive Mind
 
-Status: public alpha. Do not present this repository as production-grade until
-the production gates in `docs/TODO.md` are fully green.
+Status: production v0 candidate for the local provider-CLI harness only.
+This release is limited to bounded local runtime orchestration. It is not a
+general agent operating system, not an end-to-end memory substrate, and not a
+long-running autonomous planner. Alpha testing is expected outside the runtime
+harness boundary.
 
 Hive Mind is a local swarm harness for existing provider CLIs and local LLM workers.
 

@@ -300,7 +300,7 @@ def validate_memory_drafts(data: Any, issues: list[str]) -> bool:
 
 def validate_provider_results(run_dir: Path, root: Path, issues: list[str]) -> bool:
     ok = True
-    result_paths = sorted((run_dir / "agents").glob("*/*_result.yaml"))
+    result_paths = sorted((run_dir / "agents").rglob("*_result.yaml"))
     for path in result_paths:
         data = load_yaml(path, "provider_result", issues, required=False)
         if not isinstance(data, dict):
