@@ -20,7 +20,7 @@ from typing import Any
 
 from .dag_state import STEP_LEASES_DIR, atomic_write
 from .harness import load_run
-from .plan_dag import build_dag, execute_fan_out, load_dag, save_dag
+from .plan_dag import auto_close_barriers, build_dag, execute_fan_out, execute_step, load_dag, save_dag
 from .utils import now_iso
 from .workloop import append_execution_ledger, format_probe_confidence, replay_execution_ledger
 
@@ -134,13 +134,24 @@ def run_supervisor(
     max_rounds: int = 20,
     execute: bool = False,
     interval: float = 0.0,
+    scheduler: str = "fanout",
     command: list[str] | None = None,
 ) -> dict[str, Any]:
     paths_obj, state = load_run(root, run_id)
     run_id = paths_obj.run_id
     paths = supervisor_paths(root, run_id)
     paths["stop"].unlink(missing_ok=True)
-    command = command or [sys.executable, "-m", "hivemind.hive", "run", "start", "--run-id", run_id]
+    command = command or [
+        sys.executable,
+        "-m",
+        "hivemind.hive",
+        "run",
+        "start",
+        "--run-id",
+        run_id,
+        "--scheduler",
+        scheduler,
+    ]
 
     dag = load_dag(root, run_id)
     if dag is None:
@@ -158,6 +169,8 @@ def run_supervisor(
         "rounds": 0,
         "max_rounds": max_rounds,
         "execute": execute,
+        "scheduler": scheduler,
+        "kernel_level": "L0" if scheduler == "pingpong" else "L3",
         "log_path": paths["log"].relative_to(root).as_posix(),
         "command": command,
         "command_hash": supervisor_command_hash(command),
@@ -166,7 +179,7 @@ def run_supervisor(
         "output_artifacts_validated": False,
     }
     write_supervisor_state(root, run_id, sup_state)
-    append_supervisor_log(root, run_id, f"supervisor started pid={os.getpid()} execute={execute} max_rounds={max_rounds}")
+    append_supervisor_log(root, run_id, f"supervisor started pid={os.getpid()} execute={execute} max_rounds={max_rounds} scheduler={scheduler}")
     append_execution_ledger(
         root,
         run_id,
@@ -175,7 +188,13 @@ def run_supervisor(
         status="running",
         bypass_mode="execute" if execute else "prepare",
         artifact=paths["state"].relative_to(root).as_posix(),
-        extra={"pid": os.getpid(), "host": sup_state["host"], "command_hash": sup_state["command_hash"]},
+        extra={
+            "pid": os.getpid(),
+            "host": sup_state["host"],
+            "command_hash": sup_state["command_hash"],
+            "scheduler": scheduler,
+            "kernel_level": sup_state["kernel_level"],
+        },
     )
 
     final_status = "max_rounds_reached"
@@ -188,7 +207,7 @@ def run_supervisor(
             if dag.is_complete():
                 final_status = "completed"
                 break
-            result = execute_fan_out(root, dag, execute=execute)
+            result = execute_scheduler_round(root, dag, execute=execute, scheduler=scheduler)
             save_dag(root, dag)
             sup_state["rounds"] = round_index
             sup_state["last_result"] = result
@@ -241,6 +260,89 @@ def run_supervisor(
         extra={"rounds": sup_state.get("rounds"), "replay": sup_state.get("replay")},
     )
     return supervisor_status_report(root, run_id)
+
+
+def execute_scheduler_round(root: Path, dag: Any, *, execute: bool, scheduler: str) -> dict[str, Any]:
+    if scheduler == "pingpong":
+        return execute_pingpong_round(root, dag, execute=execute)
+    return execute_fan_out(root, dag, execute=execute)
+
+
+def execute_pingpong_round(root: Path, dag: Any, execute: bool = False, force: bool = False) -> dict[str, Any]:
+    """Run one serialized L0 turn: one runnable step, then yield.
+
+    This promotes the MemoryOS pingpong loop into Hive's ledger/protocol model:
+    the scheduler wakes, claims one bounded step, records proof/evaluation through
+    `execute_step()`, closes any newly satisfied barriers, and stops the round.
+    """
+    from .dag_state import recover_expired_leases
+
+    append_execution_ledger(
+        root,
+        dag.run_id,
+        "scheduler_round_started",
+        actor="harness",
+        status="running",
+        bypass_mode="execute" if execute else "prepare",
+        extra={"force": force, "scheduler": "pingpong", "kernel_level": "L0"},
+    )
+    recovered = recover_expired_leases(root, dag.run_id, dag)
+    closed = auto_close_barriers(dag)
+
+    dispatched: list[str] = []
+    results: dict[str, Any] = {}
+    mode = "idle"
+    next_step = dag.next_sequential()
+    if next_step:
+        mode = "pingpong"
+        result = execute_step(root, dag, next_step.step_id, execute=execute, force=force)
+        dispatched.append(next_step.step_id)
+        results[next_step.step_id] = result
+        closed.extend(auto_close_barriers(dag))
+
+    any_hard_fail = False
+    for result in results.values():
+        if result.get("status") == "failed":
+            step = dag.by_id(result.get("step_id", ""))
+            if step and step.on_failure == "stop":
+                any_hard_fail = True
+                break
+
+    next_after = dag.next_sequential()
+    report = {
+        "ok": not any_hard_fail,
+        "mode": mode,
+        "scheduler": "pingpong",
+        "kernel_level": "L0",
+        "turn_owner": next_step.owner_role if next_step else None,
+        "dispatched": dispatched,
+        "results": results,
+        "barriers_closed": closed,
+        "recovered_leases": recovered,
+        "next": next_after.step_id if next_after else None,
+        "dag_complete": dag.is_complete(),
+        "dag_blocked": dag.is_blocked(),
+    }
+    append_execution_ledger(
+        root,
+        dag.run_id,
+        "scheduler_round_completed",
+        actor="harness",
+        status=mode,
+        bypass_mode="execute" if execute else "prepare",
+        extra={
+            "scheduler": "pingpong",
+            "kernel_level": "L0",
+            "turn_owner": report["turn_owner"],
+            "dispatched": dispatched,
+            "barriers_closed": closed,
+            "recovered_leases": recovered,
+            "next": report["next"],
+            "dag_complete": report["dag_complete"],
+            "dag_blocked": report["dag_blocked"],
+        },
+    )
+    return report
 
 
 def supervisor_result_is_waiting(result: dict[str, Any]) -> bool:
@@ -299,6 +401,7 @@ def start_supervisor_detached(
     max_rounds: int,
     execute: bool,
     interval: float,
+    scheduler: str,
 ) -> dict[str, Any]:
     paths = supervisor_paths(root, run_id)
     paths["log"].parent.mkdir(parents=True, exist_ok=True)
@@ -316,6 +419,8 @@ def start_supervisor_detached(
         str(max_rounds),
         "--interval",
         str(interval),
+        "--scheduler",
+        scheduler,
     ]
     if execute:
         cmd.append("--execute")
@@ -332,6 +437,8 @@ def start_supervisor_detached(
         "rounds": 0,
         "max_rounds": max_rounds,
         "execute": execute,
+        "scheduler": scheduler,
+        "kernel_level": "L0" if scheduler == "pingpong" else "L3",
         "log_path": paths["log"].relative_to(root).as_posix(),
         "command": cmd,
         "command_hash": supervisor_command_hash(cmd),
@@ -399,6 +506,7 @@ def format_supervisor_status(report: dict[str, Any]) -> str:
         "Supervisor",
         f"Run: {report.get('run_id')}  Status: {report.get('status')}  PID: {report.get('pid') or '-'}  Host: {report.get('host') or '-'}",
         f"Rounds: {report.get('rounds', 0)}/{report.get('max_rounds', '-')}  Execute: {report.get('execute')}",
+        f"Scheduler: {report.get('scheduler') or 'fanout'}  Kernel: {report.get('kernel_level') or '-'}",
         f"Log: {report.get('log_path') or '-'}",
     ]
     replay = report.get("replay") or {}

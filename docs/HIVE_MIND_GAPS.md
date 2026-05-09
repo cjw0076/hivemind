@@ -796,3 +796,236 @@ Layers 0 and 1 absorb most of the user's polling and verification load. Layer 4 
 ### One-line conclusion
 
 > The header should not be one strong agent. It should be a thin code-or-small-LLM dispatcher plus four specialized frontier-LLM roles invoked on demand, with at least three model families participating across the working + judging layers — otherwise the hive collapses into a single-agent bottleneck wearing the user's hat.
+
+---
+
+## Foreign-Context Reviewers and Context-Basin Coupling
+
+*Added 2026-05-04 from user observation: agents working from a different
+directory often produce sharper critique than agents working inside the same
+repo, even when the underlying model family is identical. Repeated interaction
+between those agents then seems to make their thinking converge, like an edge
+between basins becoming stronger.*
+
+This is a real Hive Mind design signal.
+
+Same-directory agents are not just reading the same files. They are pulled by
+the same local TODOs, dirty worktree, recent commits, handoff language,
+ownership boundaries, and implicit consensus. That pressure is useful for
+execution because it creates depth and sympathy with the codebase. It is weaker
+for critique because the agent becomes part of the local basin.
+
+A foreign-context reviewer has a different advantage:
+
+- less attachment to the current implementation;
+- less exposure to recent local consensus;
+- less pressure from dirty state and ownership claims;
+- more willingness to call the direction wrong;
+- better ability to compare the project against a sibling system's needs.
+
+This is why a MemoryOS-side agent can sometimes critique Hive more sharply than
+a Hive-side agent, and why a quantum-workspace agent can spot process failures
+that a Hive implementation agent normalizes.
+
+### Context Basin
+
+A `ContextBasin` is the effective local pressure field an agent is operating
+inside:
+
+```text
+directory + docs route + active TODOs + dirty files + recent worklog
++ local social contract + known ownership + repeated agent interactions
+```
+
+Two agents can use the same model and still behave differently if their
+ContextBasins differ. Conversely, two different basins can become coupled after
+enough repeated exchange.
+
+### Basin Coupling / Edge Weight
+
+Foreign reviewers are most valuable when their independence is high. That
+independence decays with repeated interaction:
+
+```text
+first review from foreign basin
+  -> high independence, sharp critique
+
+repeated shared notes / mutual references / same accepted framing
+  -> edge weight increases
+  -> critique becomes more sympathetic
+  -> reviewer begins to share the local basin's priors
+```
+
+This is not bad. It is how long-running collaboration becomes efficient. But it
+means Hive should treat independence as a consumable resource, not a permanent
+property of a provider or model.
+
+### Routing Rule
+
+For high-impact architecture, policy, research-framing, or public-release
+decisions:
+
+1. Executor works in the target repo and owns local depth.
+2. Reviewer should be routed from a foreign context basin when possible.
+3. Referee should be from a different provider family or a different basin with
+   low coupling to both participants.
+4. The review artifact must record `source_basin`, `target_basin`,
+   `coupling_score`, and `prior_shared_rounds`.
+5. If coupling is high, Hive should rotate to a colder basin or explicitly mark
+   the review as `sympathetic_review`, not `independent_review`.
+
+### Minimal Artifact
+
+```json
+{
+  "schema_version": 1,
+  "review_id": "foreign_review_<run_id>_<n>",
+  "source_basin": "../memoryOS",
+  "target_basin": "../hivemind",
+  "reviewer": "claude",
+  "model_family": "anthropic",
+  "coupling_score": 0.2,
+  "prior_shared_rounds": 1,
+  "review_mode": "foreign_context",
+  "claims": [],
+  "risks": [],
+  "pushbacks": [],
+  "recommended_tests": []
+}
+```
+
+### Implementation Implication
+
+`foreign-context reviewer` is not just "ask another agent." It is a scheduler
+choice over context distance. Hive should eventually know when to ask:
+
+- local executor in the same directory for code reality;
+- sibling MemoryOS reviewer for memory/context/observability correctness;
+- quantum/research reviewer for adversarial truth-seeking discipline;
+- clean checkout reviewer for release/public trust;
+- external provider family for model-family blind spots.
+
+The edge-strength idea should feed capability memory. If a reviewer has been in
+the same debate for many rounds, its `independence_score` should decay. Hive can
+still use it, but should stop pretending it is independent pressure.
+
+### One-line conclusion
+
+> Different directories create different cognitive basins. Foreign-context review
+> is sharp because it has distance; repeated collaboration creates edge weight
+> and reduces that distance. Hive should route reviewers by context distance, not
+> only by provider name.
+
+## Hive-to-MemoryOS Live Bridge Smoke Feedback
+
+Date: 2026-05-06 03:16 KST
+
+### What Was Actually Used
+
+This was not a dry architecture note. Hive used MemoryOS end to end:
+
+1. Hive created run `run_20260506_031501_e9ad15`.
+2. Hive wrote `memory_drafts.json`.
+3. MemoryOS `import-run --dry-run` reported `3 nodes`, `2 edges`, `1 memory objects`, `1 hyperedges`, and `1 sources`.
+4. MemoryOS `import-run` appended the run.
+5. MemoryOS approved `mem_90b5cfe6570e6ee2` as accepted memory.
+6. A later Hive run `run_20260506_031526_238cb0` called `memoryos context build --for hive --json`.
+7. Hive received `status=available`, `trace_id=rtrace_99ba18cee3f58d54`, `accepted_memory_ids=["mem_90b5cfe6570e6ee2"]`, and `context_items=1`.
+
+This closes the first true feedback loop:
+
+```text
+Hive acts
+  -> Hive emits memory_drafts.json
+  -> MemoryOS imports and reviews
+  -> accepted memory returns through RetrievalTrace
+  -> Hive acts with remembered context
+```
+
+### Codex Executor Notes
+
+- `import-run` is usable, but it is too quiet for an operator loop. It should optionally emit JSON with `source_id`, imported `memory_object_ids`, skipped duplicate IDs, and the resulting `review_status`.
+- `drafts approve` works, but the bridge needs a safer review queue UX: show evidence refs, source run, confidence, review pressure, and whether this memory is a smoke/test artifact before approval.
+- `context build --for hive --json` returns the right contract, but selected items should include a compact `selection_reason` by default. Today the trace has the full rationale, but the context pack itself does not make the reason obvious enough.
+- MemoryOS has many imported graph nodes but zero MemoryObjects until Hive run drafts are imported. That is a product gap: MemoryOS should offer a guided "promote candidate memories from graph nodes" route, not rely only on run imports.
+- RetrievalTrace is the strongest part of the integration. It should become the audit handle everywhere: run_state, context pack, neural map event, MemoryOS review record, and later supersession/conflict records.
+
+### Claude Reviewer Slot
+
+First Claude attempt with the default model hit the account limit. A second
+read-only review using `claude --model claude-haiku-4-5` succeeded. Actual
+Claude reviewer notes:
+
+- RetrievalTrace captures selected IDs, but not each selected memory's status,
+  confidence, or supersession state at retrieval time. Add a
+  `memory_snapshot: {id -> {status, confidence, supersedes}}` field to trace
+  attrs so future audits can prove the object was accepted when context was
+  built.
+- Trace-to-memory linkage is mostly one-way. Add reverse query support or a
+  `remembers` hyperedge so MemoryOS can answer, "Which Hive context packs used
+  this memory?"
+- CSP signals are effectively frozen at draft creation. Approval/rejection
+  should append a signal update record or review-derived signal state so
+  accepted memory scores reflect review outcomes.
+- Import, approve, and context build are separate CLI calls with no transaction
+  boundary. Add `context build --validate-status` or `--approval-gate` so Hive
+  can verify selected objects are still accepted at retrieval/dispatch time.
+- Privacy scope needs a sharper contract. Hive run sources are local-only, but
+  raw refs still exist in ledgers. Document whether redaction is write-time or
+  read-time and which surfaces may expose refs.
+- RetrievalTrace should expose conflicts and supersession. If a selected memory
+  later conflicts with another accepted object or is superseded, the trace
+  should be able to show that history.
+- Connect ReviewRecord and RetrievalTrace. A future audit should answer, "Which
+  agents ran with memory approved by this reviewer?" without scanning all
+  ledgers.
+- Add explicit `valid_until` / staleness warnings for retrieved memories.
+  Context build should warn when accepted memory is near expiry or already stale.
+
+### Local LLM Worker Notes
+
+Local qwen3:1.7b was run through two paths:
+
+- `hive local benchmark --model qwen3:1.7b --role summarize --limit 1 --json`
+- direct Ollama prompt with `/no_think`
+
+Observed behavior:
+
+- The benchmark completed in `1616ms`, but returned raw `{}` and failed schema validation.
+- Direct Ollama produced generic notes plus leaked thinking despite `/no_think`.
+
+Useful local-worker conclusions:
+
+- Local LLMs are fine as cheap smoke-pressure, but not yet reliable as structured MemoryOS reviewers.
+- MemoryOS/Hive local workers need stronger prompt templates for qwen3 thinking behavior and a post-filter that strips thinking/control sequences.
+- JSON tasks should use a model/prompt pair that is benchmarked for schema validity, not only latency.
+- Local worker output should be stored as `draft_review`, never as final review or accepted memory.
+- The first local role worth productizing here is not "judge"; it is "summarize import result + list missing provenance fields".
+
+### MemoryOS Improvement Queue From This Smoke
+
+P0:
+
+- Add `memoryos import-run --json` with stable imported IDs and duplicate/skipped IDs.
+- Add `memoryos import-run --tag smoke|real|test` or equivalent source metadata so smoke-approved memory is not confused with durable project knowledge.
+- Add `memoryos context build --explain-lite` or make selected rationale available in the normal JSON pack.
+- Add `memoryos hive-loop smoke` that runs: validate Hive run -> import dry-run -> import -> list drafts -> approve/reject prompt -> context build -> verify selected IDs.
+
+P1:
+
+- Add MemoryOS-side validator for Hive `memory_context.json` artifacts.
+- Add review queue sorting by `source_run_id`, `project`, `risk`, `review_pressure`, and `source_quality`.
+- Add a "test memory" lifecycle or `valid_until` default for smoke-approved artifacts.
+- Add a compact graph/read-model endpoint for Hive to show accepted memory provenance in TUI/live logs.
+
+P2:
+
+- Add automatic candidate MemoryObject generation from existing graph nodes, with human review, so imported conversations can feed Hive context without waiting for new Hive run drafts.
+- Add retrieval quality metrics: selected/available ratio, stale accepted count, repeated-selection count, and context usefulness feedback.
+- Add reviewer provenance fields: `reviewer_role`, `review_context`, `review_basis`, and `counterfactual_if_rejected`.
+
+### One-line Conclusion
+
+The bridge works. The next MemoryOS gap is not storage; it is review ergonomics
+and provenance visibility. Hive can now remember through MemoryOS, but MemoryOS
+must make accepted-memory approval safer, explainable, and operator-friendly.

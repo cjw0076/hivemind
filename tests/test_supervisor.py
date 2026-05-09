@@ -9,6 +9,7 @@ from pathlib import Path
 
 from hivemind.dag_state import StepLease
 from hivemind.harness import create_run
+from hivemind.plan_dag import build_dag, save_dag
 from hivemind.supervisor import (
     active_step_leases,
     format_supervisor_status,
@@ -54,6 +55,26 @@ class SupervisorTest(unittest.TestCase):
             finally:
                 lease.release()
 
+    def test_pingpong_scheduler_runs_one_parallel_step_per_round(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "serialized l0 scheduler")
+            dag = build_dag(paths.run_id, "serialized l0 scheduler", "implementation")
+            save_dag(root, dag)
+
+            report = run_supervisor(root, paths.run_id, max_rounds=1, execute=False, scheduler="pingpong")
+            records = read_execution_ledger(root, paths.run_id)
+            completed_rounds = [record for record in records if record.get("event") == "scheduler_round_completed"]
+
+            self.assertEqual(report["scheduler"], "pingpong")
+            self.assertEqual(report["kernel_level"], "L0")
+            self.assertIn("pingpong", report["command"])
+            self.assertEqual(len(completed_rounds), 1)
+            self.assertEqual(completed_rounds[0]["extra"]["scheduler"], "pingpong")
+            self.assertEqual(completed_rounds[0]["extra"]["kernel_level"], "L0")
+            self.assertEqual(len(completed_rounds[0]["extra"]["dispatched"]), 1)
+            self.assertIn(completed_rounds[0]["extra"]["dispatched"][0], {"context", "diff_review"})
+
     def test_tail_supervisor_log(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -90,6 +111,8 @@ class SupervisorTest(unittest.TestCase):
                     run_id,
                     "--max-rounds",
                     "1",
+                    "--scheduler",
+                    "pingpong",
                     "--json",
                 ],
                 text=True,
@@ -110,6 +133,7 @@ class SupervisorTest(unittest.TestCase):
             )
 
             self.assertEqual(json.loads(started.stdout)["run_id"], run_id)
+            self.assertEqual(json.loads(started.stdout)["scheduler"], "pingpong")
             self.assertEqual(json.loads(status.stdout)["run_id"], run_id)
             self.assertTrue(json.loads(tail.stdout)["lines"])
 

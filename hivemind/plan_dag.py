@@ -399,6 +399,123 @@ def build_dag(run_id: str, task: str, intent: str) -> PlanDAG:
     )
 
 
+ACTION_OWNER_ROLES: dict[tuple[str, str], str] = {
+    ("local", "context"): "local-context-compressor",
+    ("local", "context-compressor"): "local-context-compressor",
+    ("local", "review"): "local-diff-reviewer",
+    ("local", "diff-reviewer"): "local-diff-reviewer",
+    ("local", "summarize"): "local-log-summarizer",
+    ("local", "log-summarizer"): "local-log-summarizer",
+    ("local", "memory"): "local-memory-curator",
+    ("local", "memory-curator"): "local-memory-curator",
+    ("local", "classify"): "local-classifier",
+    ("local", "handoff"): "local-handoff-drafter",
+    ("local", "handoff-drafter"): "local-handoff-drafter",
+    ("claude", "planner"): "claude-planner",
+    ("claude", "reviewer"): "claude-reviewer",
+    ("codex", "executor"): "codex-executor",
+    ("codex", "reviewer"): "codex-reviewer",
+    ("gemini", "planner"): "gemini-planner",
+    ("gemini", "reviewer"): "gemini-reviewer",
+}
+
+
+def build_dag_from_actions(
+    run_id: str,
+    task: str,
+    intent: str,
+    actions: list[dict[str, Any]],
+) -> PlanDAG:
+    """Build a lifecycle DAG from the router's provider/role actions.
+
+    This is the prompt-entry bridge: the intent router owns role selection, and
+    the DAG owns lifecycle state, ledger/probe/evaluation, and supervisor steps.
+    """
+    if not actions:
+        return build_dag(run_id, task, intent)
+    steps: list[PlanStep] = [
+        _step(
+            "intake",
+            "sequential",
+            [],
+            "harness",
+            [],
+            permission_mode="none",
+            expected_output_artifacts=["task.yaml"],
+            timeout=0,
+            on_failure="stop",
+            status="completed",
+        )
+    ]
+    previous = "intake"
+    used_ids = {"intake"}
+    for action in actions:
+        provider = str(action.get("provider") or "").strip().lower()
+        role = str(action.get("role") or "").strip().lower()
+        owner_role = ACTION_OWNER_ROLES.get((provider, role))
+        if not owner_role:
+            continue
+        step_id = unique_step_id(f"{provider}_{role}", used_ids)
+        used_ids.add(step_id)
+        permission = "read_only" if provider == "local" else ("plan" if provider == "claude" else "read_only")
+        if provider == "codex" and role == "executor":
+            permission = "workspace_write_with_policy"
+        steps.append(
+            _step(
+                step_id,
+                "sequential",
+                [previous],
+                owner_role,
+                [provider] if provider else [],
+                permission_mode=permission,
+                input_artifacts=action_input_artifacts(provider, role),
+                expected_output_artifacts=action_output_artifacts(provider, role),
+                acceptance_criteria=[str(action.get("reason") or "role action completes")],
+                timeout=600 if provider in {"claude", "codex", "gemini"} else 120,
+                on_failure="escalate" if provider in {"claude", "codex", "gemini"} else "skip",
+            )
+        )
+        previous = step_id
+    if len(steps) == 1:
+        return build_dag(run_id, task, intent)
+    steps.extend(_shared_tail([previous]))
+    return PlanDAG(
+        schema_version=SCHEMA_VERSION,
+        version=0,
+        run_id=run_id,
+        task=task,
+        intent=intent,
+        created_at=now_iso(),
+        steps=steps,
+    )
+
+
+def unique_step_id(base: str, used: set[str]) -> str:
+    clean = "".join(ch if ch.isalnum() else "_" for ch in base).strip("_") or "step"
+    candidate = clean
+    index = 2
+    while candidate in used:
+        candidate = f"{clean}_{index}"
+        index += 1
+    return candidate
+
+
+def action_input_artifacts(provider: str, role: str) -> list[str]:
+    if provider == "local" and role in {"summarize", "log-summarizer", "review", "diff-reviewer"}:
+        return ["events.jsonl"]
+    if provider == "local" and role in {"handoff", "handoff-drafter"}:
+        return ["task.yaml"]
+    if provider == "codex":
+        return ["handoff.yaml"]
+    return ["context_pack.md"]
+
+
+def action_output_artifacts(provider: str, role: str) -> list[str]:
+    if provider == "local":
+        return [f"agents/local/{role.replace('-', '_')}.json"]
+    return [f"agents/{provider}/{role}_result.yaml"]
+
+
 # ---------------------------------------------------------------------------
 # State transitions
 # ---------------------------------------------------------------------------
@@ -443,6 +560,7 @@ _ROLE_MAP: dict[str, tuple[str, str, str] | tuple[str, str, None]] = {
     "local-log-summarizer":     ("local", "summarize", None),
     "local-memory-curator":     ("local", "memory",    None),
     "local-classifier":         ("local", "classify",  None),
+    "local-handoff-drafter":    ("local", "handoff",   None),
     "claude-planner":           ("external", "claude", "planner"),
     "claude-reviewer":          ("external", "claude", "reviewer"),
     "codex-executor":           ("external", "codex",  "executor"),

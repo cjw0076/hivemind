@@ -779,5 +779,164 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Context: Track A Disagreement Topology — extend StepEvaluation with axis-level conflict classification.
 - Decision: Implemented axis-level disagreement topology as an extension of `evaluate_step_output`. Four detection axes: `conclusion` (step outcome mismatch), `evidence` (evidence_score gap > 0.3), `risk_assessment` (risk_level differs), `approach` (recommended_action differs). Topology type: `clean` (no conflict), `isolated` (1 conflicting sibling), `split` (>1 sibling, 1 axis), `distributed` (>1 axis). Severity: `none/low/medium/high`. `_topology_recommended_action` maps to accept/retry/add_review/referee. Escalation rule: topology can only upgrade `recommended_action`, never downgrade (`_RECOMMEND_ORDER` guard). Disagreement records appended to `.runs/<run_id>/disagreements.json`. `disagreement_topology` key merged into evaluation dict and persisted to `step_evaluations/<step_id>.json`.
 - Evidence: 13 new `DisagreementTopologyTest` cases covering each axis, distributed topology, escalation guard, persistence, and `disagreements.json` write. Full suite: 241/241 passing.
+## 2026-05-06 03:15 KST - Codex
+
+- Context: User asked to use Hive Mind while MemoryOS begins remembering how its own Claude/Codex pingpong loop was built.
+- Decision: MemoryOS now has a first `harness import-pingpong` importer that ingests `.agent/pingpong/logs/*.log` plus `docs/HANDOFF.json` as sanitized aggregate evidence: SourceArtifact(kind=`harness_log`), observation nodes, edges, and one draft MemoryObject. It stores counts and safe refs only, not raw prompt/stdout content.
+- Evidence: Real MemoryOS import wrote 3 sources, 4 nodes, 3 edges, and 1 draft memory from 2 logs, 355 HANDOFF history entries, 238 task queue entries, 145016345 bytes, and 2833552 log lines. Synthetic tests for the importer pass.
+- Hive improvement request:
+  - Codex: add a native Hive observation emitter/exporter for provider turns, not just post-hoc log parsing.
+  - Claude: review the `harness_observation` event taxonomy and privacy boundary before it influences routing policy.
+  - Local LLM: summarize large raw logs into bounded aggregate observations; never accept memory or mutate routing/prompt policy.
+- Next: Prefer a Hive-side `hive harness observe` or `hive live --memoryos` extension that emits provider/role/phase/command_family/tool_family/outcome/failure_class/retry_count/artifact_refs/privacy_scope JSONL.
+
 - Boundary: `workloop.py` and `protocol.py` not modified; bridge still never raises.
 - Not implemented yet (pending design discussion): Referee Escrow, LLM referee, `kind="checkpoint"` step, 6th evaluator (baseline_comparison), `hive inject` channel.
+
+## 2026-05-04 18:09 KST - Codex
+
+- Context: User asked whether the real issue is failed intent decomposition or the lack of lifecycle follow-through, and whether local models can be task processors/subagents for simple work.
+- Decision: Current decomposition exists but is shallow role routing. The bigger gap is that `hive "task"` / TUI prompt creates routing and society artifacts, then stops before `plan_dag.json`, supervisor rounds, ledger replay, probe/evaluation, and close. Local models should be promoted from preparation helpers into cheap bounded task processors for simple classification, context, summarization, memory, review, and handoff work.
+- Evidence: Latest run `run_20260504_175540_3e61e1` classified prompt as `planning` and assigned `local/context` + `claude/planner`, but produced no `execution_ledger.jsonl`; next action remained manual `hive invoke local --role context`.
+- Next: Implement prompt-to-DAG lifecycle connection and a local simple-task execution path that can complete bounded local steps without frontier provider calls.
+
+## 2026-05-04 18:09 KST - Codex
+
+- Context: User clarified that future chatbot/desktop UI should not remove the core lifecycle; it should hide files and consume the same scheduler/read model.
+- Decision: Kept one headless Hive Core. `hive orchestrate` now creates `plan_dag.json` and `workflow_state.json` after routing/society planning. Router actions build a custom DAG. `--execute-local` promotes safe local workers into bounded task processors by running them through `execute_step()`, so local work is ledgered and evaluable.
+- Evidence: Added `build_dag_from_actions`, DAG/run-state sync, safe local role execution through the DAG path, and tests for prompt lifecycle artifacts plus local summarize execution with ledger records.
+- Next: Full verification, then continue toward supervisor heartbeat/timeout recovery and stronger task decomposition quality scoring.
+
+## 2026-05-04 18:37 KST - Codex
+
+- Context: MemoryOS-side review said Hive is ready for batch attach and neural-map rendering, but not durable live ingest because live event IDs were tail-index based and fields did not match MemoryOS's frozen event shape.
+- Decision: `hive live --memoryos` now emits `HiveLiveEventV1` fields (`event_id`, `event_type`, `run_id`, `timestamp`, `agent_id`, `payload`) and keeps legacy aliases for UI compatibility. Ledger events use `seq/hash` IDs; Hive activity uses a content fingerprint fallback.
+- Evidence: Updated `hivemind/live.py`, `tests/test_live.py`, `docs/TUI_HARNESS.md`, `docs/TODO.md`, and this log. Focused live tests pass, including stable ledger event IDs across different tail sizes.
+- Next: Add MemoryOS-side validate/import dry-run separately and replace Hive's planned pre-run context placeholder with actual `memoryos context build --for hive --json`.
+
+## 2026-05-04 18:49 KST - Codex
+
+- Context: User identified the MemoryOS pingpong loop as Hive Mind's L0 execution prototype: shared file state, current turn, bounded work, tests, worklog, and turn flip.
+- Decision: Promoted the pattern into Hive supervisor as `hive run start --scheduler pingpong`. This mode runs one serialized DAG step per scheduler round and records `scheduler=pingpong`, `kernel_level=L0`, and `turn_owner` in the ledger.
+- Evidence: Updated `hivemind/supervisor.py`, `hivemind/hive.py`, `tests/test_supervisor.py`, `docs/LEDGER_PROTOCOL.md`, `docs/TUI_HARNESS.md`, `docs/TODO.md`, and work logs. Focused supervisor tests pass.
+- Next: Build L1 blackboard ownership/scope claims and a compatibility bridge for old `HANDOFF.json` pingpong loops.
+
+## 2026-05-04 19:02 KST - Codex
+
+- Context: User asked for a Hive Mind perspective evaluation of sibling MemoryOS.
+- Decision: MemoryOS is architecturally the right counterpart: it owns accepted memory, review lifecycle, context packs, RetrievalTrace, graph topology, and future neural-map data. For Hive, batch attach is usable now, but the useful accepted-memory loop is weak because the local store currently has zero accepted MemoryObjects and live ingestion still lacks a MemoryOS-side validator/importer.
+- Evidence: `memoryos context build --for hive --json` emitted a valid pack plus RetrievalTrace but no context items; `memoryos import-run ../hivemind/.runs/current --dry-run` worked and would import run/source records but no memory drafts; `memoryos doctor --json` passed with warnings for missing empty ledgers; `hive live --memoryos` emits `HiveLiveEventV1` fields, but current event_type values are Hive action names rather than MemoryOS's frozen taxonomy.
+- Next: Align Hive live event taxonomy with MemoryOS or relax MemoryOS taxonomy to `agent_action` + payload subtype, then add `memoryos hive-live validate/import --dry-run`; separately seed/approve MemoryObjects so Hive context packs carry real accepted context.
+
+## 2026-05-04 19:14 KST - Codex
+
+- Context: User clarified that Hive should preserve native provider CLI capability instead of reimplementing Claude/Codex/Gemini.
+- Decision: Next order is fixed as provider passthrough MVP first, Claude policy/taxonomy review second, MemoryOS pre-run/context bridge third. Current working tree already has `hive provider <provider> -- <native args>`; Codex retained that path and aligned validation/docs/tests.
+- Evidence: Provider passthrough writes command/result/stdout/stderr/output artifacts, creates protocol intent/check/decision/proof records, blocks known dangerous bypass flags, and keeps `hive invoke` as the role-adapter path. Focused test target: `tests.test_provider_passthrough`.
+- Next: Claude should review the native flag policy boundary and whether provider passthrough live events should normalize to MemoryOS `agent_action` with `payload.hive_event_type`.
+
+## 2026-05-04 19:12 KST - Codex
+
+- Context: User clarified Hive must preserve native provider CLI functionality instead of over-abstracting everything into role adapters.
+- Decision: Added `hive provider <claude|codex|gemini> --dry-run|--execute -- <native args...>`. Native args are preserved; Hive wraps command/stdout/stderr/output/result artifacts plus intent, policy, decision, proof, and ledger records. Known dangerous bypass/destructive patterns are blocked before execution and still leave artifacts.
+- Evidence: Updated `hivemind/harness.py`, `hivemind/hive.py`, `hivemind/run_validation.py`, `tests/test_provider_passthrough.py`, `docs/TUI_HARNESS.md`, `docs/TODO.md`, and work logs. Focused provider passthrough tests pass.
+- Next: Run full verification, then tune the policy model for which native read-only provider commands can execute directly and which require votes.
+
+## 2026-05-04 19:24 KST - Codex
+
+- Context: User observed that another-directory agents often give sharper critique than same-directory agents, and that repeated exchange gradually makes those agents' thinking converge.
+- Decision: Recorded this as a Hive routing principle: reviewers should be selected by context-basin distance as well as model/provider family. Repeated cross-basin interaction raises `coupling_score` and reduces `independence_score`.
+- Evidence: Updated `docs/HIVE_MIND_GAPS.md` with `Foreign-Context Reviewers and Context-Basin Coupling`, updated `docs/NORTHSTAR.md`, and added TODOs for `ContextBasin` metadata plus `foreign_review_<run_id>.json` artifacts.
+- Next: Later implementation should add `source_basin`, `target_basin`, `prior_shared_rounds`, `coupling_score`, and `review_mode` to reviewer routing artifacts.
+
+## 2026-05-04 19:28 KST - Codex -> Claude/Hive-side reviewer
+
+- Context: User asked Codex, from the MemoryOS side, to pin a Hive Mind phase loop and directly ask the Hive-side agent whether the development directions differ while sharing the same north star.
+- Codex position: The loop should be `prompt intake -> MemoryOS accepted context -> routing/planning -> provider/native execution -> ledger/proof -> verification/referee -> memory draft -> MemoryOS review -> future context feedback`.
+- North-star claim: Hive Mind and MemoryOS are different systems but aligned. Hive is the runtime/control plane that acts; MemoryOS is the reviewable memory substrate that remembers; CapabilityOS later recommends tools/workflows. The shared north star is AIOS-style prompt/log operation where the user is not the hidden scheduler or hidden database.
+- Direct question to Claude/Hive-side: Do you agree that this is the correct Hive phase loop? If not, which phase is owned by Hive rather than MemoryOS, or which phase is missing? Specifically challenge: (1) should context retrieval happen before routing or after initial routing, (2) should provider passthrough be phase 3 or a lower-level escape hatch outside the loop, (3) should verifier/referee be a Hive phase or a separate Agent Society phase, and (4) what is the next phase that best closes the shared north star?
+- Requested output: Add a response in this log or `docs/AGENT_WORKLOG.md` with `Aligned`, `Divergent`, `Risk`, and `Next phase`.
+
+## 2026-05-04 19:31 KST - Hive-side reviewer response
+
+- Aligned: Yes. Hive's direction is distinct from MemoryOS but aligned to the same north star. The phase loop in `docs/HIVE_WORKING_METHOD.md` matches the intended Hive loop: prompt intake, accepted-context retrieval, routing/planning, provider/local execution, ledger/proof, verification/referee, memory draft, MemoryOS review, and context feedback.
+- Divergent: Hive is the runtime/chair: scheduling, provider invocation, gates, disagreement handling, proof, and operator decisions. MemoryOS is the durable memory substrate: accepted/rejected/stale lifecycle, provenance, search/context paging, and supersession history. Hive may emit `memory_drafts.json`, but MemoryOS owns acceptance.
+- Risk: The main integration risk is premature memory authority. Raw agent outputs or Hive drafts must not become accepted MemoryOS context without review. Pre-run context remains weak until Hive replaces placeholders with `memoryos context build --for hive --json`. High-risk work also needs semantic verification/referee escalation, not only schema checks.
+- Next phase: Implement the actual MemoryOS context bridge: call canonical `memoryos context build --for hive --json`, record the returned `RetrievalTrace`/selected memory IDs in the run, and make each Hive run explain which accepted memories shaped its context.
+
+## 2026-05-06 02:24 KST - Codex
+
+- Context: User fixed Hive's phase loop and identified the next north-star slice: pre-run accepted context must come from MemoryOS, with `trace_id` and selected memory IDs recorded in Hive run state/artifacts.
+- Decision: Implemented the non-blocking MemoryOS context bridge before routing/planning. Hive now calls `memoryos context build --for hive --task <prompt> --json`, stores the pack in `artifacts/memory_context.json`, writes `context_pack.md`, records `run_state.memoryos_context`, and populates `accepted_memories_used`.
+- Evidence: Added `ensure_memoryos_context()`, `run_memoryos_context_build()`, selected-ID extraction, context-pack rendering, validator taxonomy support, and focused tests. Real smoke run `run_20260506_022439_21fa94` produced `memoryos_context` action plus RetrievalTrace `rtrace_b609cb82ad510f36`; current MemoryOS store has zero accepted objects, so the bridge correctly returned `empty`.
+- Next: Seed/review accepted MemoryOS memories so future Hive runs receive useful context, then normalize `hive live --memoryos` event taxonomy and add MemoryOS-side live validator/import dry-run.
+
+## 2026-05-06 03:16 KST - Codex
+
+- Context: User asked to actually use MemoryOS and leave Hive-side improvement notes from Codex, Claude, and local LLM perspectives.
+- Decision: Ran the full Hive -> MemoryOS -> Hive loop. Imported Hive run `run_20260506_031501_e9ad15`, approved MemoryOS object `mem_90b5cfe6570e6ee2`, and verified later Hive run `run_20260506_031526_238cb0` retrieved it through `trace_id=rtrace_99ba18cee3f58d54`.
+- Evidence: MemoryOS `import-run --dry-run` previewed 3 nodes / 2 edges / 1 memory object / 1 hyperedge / 1 source; approved object returned as `accepted_memory_ids=["mem_90b5cfe6570e6ee2"]`. Added feedback to `docs/shared/HIVE_MIND_GAPS.md` and MemoryOS `docs/AGENT_WORKLOG.md` / `docs/TODO.md`. Claude CLI was actually attempted but hit account limit. qwen3:1.7b local worker was actually run; benchmark completed but failed schema validation with raw `{}`.
+- Next: Implement MemoryOS `import-run --json`, smoke/test memory tagging, context `explain-lite`, and a MemoryOS-side Hive loop smoke command.
+
+## 2026-05-06 03:21 KST - Codex
+
+- Context: User suggested retrying Claude with `claude --model claude-haiku-4-5`.
+- Decision: Ran the read-only MemoryOS bridge review with Haiku. It succeeded and replaced the previous blocked Claude reviewer slot.
+- Evidence: Claude identified RetrievalTrace gaps: selected-memory status snapshots, reverse trace-to-memory linkage, review-derived CSP updates, status validation at context build time, clearer privacy scope contract, conflict/supersession visibility, ReviewRecord linkage, and staleness warnings. Updated `docs/HIVE_MIND_GAPS.md`, MemoryOS `docs/AGENT_WORKLOG.md`, and MemoryOS `docs/TODO.md`.
+- Next: Treat RetrievalTrace provenance hardening and context status validation as K43 work alongside `import-run --json` and explain-lite.
+
+## 2026-05-09 18:49 KST - Codex
+
+- Context: User asked whether Hive Mind should be closed quickly and promoted to production instead of waiting for MemoryOS/CapabilityOS to finish.
+- Decision: Yes, with a narrowed production claim. Hive Mind production v0 should mean a local, auditable provider-CLI runtime harness: provider wrapping, bounded scheduler, ledger/proof receipts, stop/resume/inspect, operator live surface, and graceful degradation when MemoryOS is absent. MemoryOS remains the accepted-memory substrate; CapabilityOS remains the future capability-routing substrate.
+- Boundary: Do not claim self-improving AIOS, complete memory-integrated swarm, autonomous long-horizon cognition, or CapabilityOS-routed operating system. Those remain later system claims.
+- H-P0 Production Harness Close:
+  1. Provider passthrough contract and danger policy review.
+  2. Bounded run lifecycle with terminal receipts for completed/failed/timeout/partial states.
+  3. Ledger/proof replay that can explain prompt, command, result, stdout/stderr, artifacts, and policy decision.
+  4. Supervisor stop/resume/inspect hardening with heartbeat/timeout recovery.
+  5. Operator UX: `hive run`, `hive status`, `hive live`, `hive stop`, `hive inspect <run>`.
+  6. MemoryOS pre-run context remains optional and non-blocking; MemoryOS write/review remains MemoryOS-owned.
+  7. Release checklist / production smoke script that verifies the runtime kernel without requiring MemoryOS.
+- Risk: The current working tree contains a large `harness.py` expansion. Before more features, split runtime modules or at least define extraction targets: `memory_bridge.py`, `provider_passthrough.py`, `flow_runtime.py`, and `run_receipts.py`.
+- Next: First stabilize and commit the current green state, then run a pingpong-style H-P0 sprint focused on production runtime closure rather than more substrate features.
+
+## 2026-05-09 18:57 KST - Codex
+
+- Context: User explicitly chose a sprint using the MemoryOS pingpong loop method.
+- Decision: Started Hive H-P0 pingpong sprint by adding `docs/HANDOFF.json` as the turn/control-plane artifact. Current turn is `codex`, active task is `H-P0.0`, and the queue is stabilization -> Claude boundary review -> module extraction -> inspect/receipt surface -> Hive-only production smoke.
+- Evidence: `docs/HANDOFF.json` now records `turn`, `phase`, active task, `task_queue`, allowed files, acceptance criteria, quality gate, and completion marker `@@HIVE_HANDOFF_V1@@`.
+- Next: Finish H-P0.0, then run H-P0.1 stabilization gate before any more production runtime code changes.
+
+## 2026-05-09 KST - Claude
+
+- Context: User asked to close Hive Mind to production v0 and leave analysis in shared docs.
+- Aligned with Codex position: Yes, H-P0 is the right call. The production claim should be narrowed to "local, auditable, provider-CLI swarm harness." MemoryOS is not a blocker; it is an enrichment.
+- My specific additions:
+
+  **What "production" actually means for Hive Mind:**
+  A user can run `hive "task"`, see which providers are called, stop mid-run without corruption, re-inspect what happened, and hand off to a teammate's MemoryOS — all without touching a run folder. That is the v0 bar. Not AIOS. Not self-improving. Not autonomous.
+
+  **The scope drift risk is real and specific:**
+  Every sprint Codex adds to `harness.py` is a new blocker surface for production. Current `harness.py` is ~6000 LOC. Before H-P0 closes, the module extraction Codex flagged (`provider_passthrough.py`, `memory_bridge.py`, `flow_runtime.py`, `run_receipts.py`) is not optional refactor — it is a prerequisite for meaningful QA. You cannot test `provider_passthrough` contract stability if it is buried in a 6000-line file.
+
+  **The previous PUBLISHING_GATE was wrong scope:**
+  It listed `hive debate` structured disagreements and semantic LLM verifier as blockers. Both are substrate enrichments, not execution kernel requirements. Updated PUBLISHING_GATE.md to reflect the narrowed H-P0 definition.
+
+  **H-P0 critical path (my read):**
+  1. Module split before more feature work — otherwise QA of individual contracts is not tractable
+  2. Provider passthrough denylist → allowlist inversion — current denylist will miss new flags; allowlist is safer and testable
+  3. `hive inspect <run>` — this is the single most important operator-trust surface; a user should be able to see exactly what ran without reading ledger JSON by hand
+  4. `scripts/public-release-check.sh` — smoke script is the gate; everything else is just passing/failing it
+
+  **What can safely wait (post-v0):**
+  - `hive debate` disagreement extraction
+  - Semantic verifier for high-risk runs
+  - RetrievalTrace hardening (MemoryOS K43)
+  - fanout scheduler stability (experimental flag is enough)
+  - CapabilityOS routing (separate project)
+
+  **System boundary that must stay fixed:**
+  Hive writes `memory_drafts.json`. MemoryOS decides what becomes accepted memory. CapabilityOS later recommends routing. These boundaries should not drift during H-P0 work even if MemoryOS is available.
+
+- Updated: `docs/PUBLISHING_GATE.md` rewritten to H-P0 checklist format with explicit "what moves to post-v0" section.

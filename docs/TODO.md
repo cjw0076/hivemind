@@ -91,6 +91,8 @@ Sources: `VG-03`, `VG-04`, `VG-06`, `VG-13`.
 - [x] Define Hive Mind as the chair that controls turn order, barriers, disagreement records, convergence, and next action.
 - [x] Fix qwen3/Ollama JSON routing issue by sending top-level `think: false` plus `/no_think` instead of treating `{}` fallback as acceptable.
 - [x] Stop routing from auto-running local worker roles; provider/local execution remains explicit after prompt preparation.
+- [x] Bridge prompt routing into lifecycle setup: `hive "task"` / `hive orchestrate` now creates `plan_dag.json` and `workflow_state.json` instead of stopping at `society_plan.json`.
+- [x] Promote safe local workers into bounded task processors for simple local tasks through DAG/ledger execution with explicit `--execute-local`.
 - [ ] Add disagreement extraction from executed provider outputs into a structured `disagreements.json`.
 - [ ] Upgrade task decomposition beyond keyword heuristics with a schema-validated router, provider fallback, and route-quality scoring.
 - [ ] Add convergence scoring: evidence strength, reversibility, risk, and user-preference fit.
@@ -141,6 +143,12 @@ Source: `docs/HIVE_MIND_GAPS.md` section "Header Role Decomposition and Per-Laye
 - [ ] Implement L1 verifier checks for schema validity, process launch hygiene, stale artifact detection, forbidden-language scans, and file/scope checks.
 - [ ] Add provider-family metadata to provider capabilities so L2/L3/L5 can enforce model-family heterogeneity.
 - [ ] Add role routing policy: L0 code/local-only, L1 code/local/cheap-hosted, L2 frontier workers, L3 different-family referee, L4 long-context auditor, L5 different-family conflict reviewer.
+- [x] Promote the MemoryOS pingpong pattern into `hive run start --scheduler pingpong` as an L0 serialized execution kernel.
+- [ ] Add `HANDOFF.json`/shared-folder compatibility import so old MemoryOS pingpong loops can be replayed into Hive run artifacts.
+- [ ] Add L1 blackboard claim/scope artifacts for multi-agent ownership beyond a single current turn.
+- [ ] Add `foreign-context reviewer` routing: export a compact artifact for review from a sibling directory/context basin before accepting architecture, policy, or research-framing changes.
+- [ ] Add `ContextBasin` metadata and `coupling_score`/`independence_score` to reviewer routing so repeated cross-directory interaction can decay independence over time.
+- [ ] Add `foreign_review_<run_id>.json` artifact with source_basin, target_basin, prior_shared_rounds, review_mode, pushbacks, risks, and recommended_tests.
 - [ ] Add `hive chair status` to show active layer, front, turn owner, pending verifier checks, and next escalation.
 - [ ] Add `hive chair audit` for event-triggered North-Star audits on front close, claim wording changes, frame edits, and publish gates.
 - [ ] Add `hive chair assign` dry-run to explain which provider family will be used for each layer and why.
@@ -173,12 +181,14 @@ Sources: `VG-03`, `VG-04`, `VG-13`, `VG-18`.
 - [x] Validate provider `*_result.yaml` artifacts during `hive verify`.
 - [x] Add `MemoryObject` and `Hyperedge` schemas in code.
 - [x] Add `hive invoke <provider> --dry-run` for prompt/command artifact generation.
+- [x] Add `hive provider <claude|codex|gemini> --dry-run|--execute -- <native args...>` passthrough so native CLI features remain available under Hive artifacts/ledger.
 - [x] Keep Codex prepare-only until non-interactive execution is explicitly stable.
 - [x] Record provider mode: `prepare_only`, `execute_supported`, or `unavailable`.
 - [x] Ensure failed provider/local invocations write artifacts and events.
 - [x] Add a minimal valid run fixture for harness tests.
 - [x] Add `memoryos import-run .runs/<run_id>` or equivalent draft import path.
 - [x] Add `hive settings detect/shell` and `scripts/hive-workbench.sh` for context editing plus fast provider artifact preparation.
+- [x] Add `hive provider <claude|codex|gemini> -- <native args>` passthrough so native CLI features stay available behind Hive artifacts, ledger intents, policy decisions, stdout/stderr capture, and proof records.
 - [x] Add TUI prompt routing controls: `n` for new prompt and `a` for auto-routing the current run.
 - [x] Add `hive run -q --json` and shell completion script generation for bash/zsh/fish.
 - [x] Add interactive slash-command shell for `hive` inspired by OpenClaude/Open Codex.
@@ -202,6 +212,7 @@ Sources: `VG-03`, `VG-04`, `VG-13`, `VG-18`.
 - [x] Add `hive_events.jsonl` and `hive hive activity` so human activity shows role assignment, not only artifact creation.
 - [x] Harden provider result validation for all prepared/executed adapters.
 - [x] Add supervised run control: `hive run start/status/tail/stop` with PID, host, log path, command hash, commit, replay health, and active lease reporting.
+- [x] Connect prompt intake to the DAG lifecycle read model so prompt/log and future desktop/chatbot surfaces consume the same core scheduler state.
 - [ ] Extend supervised run control with process heartbeat, timeout recovery, GPU/runtime snapshot, and stronger output artifact validation.
 - [ ] Add `hive git guard` / scoped commit proposal that refuses out-of-scope staged files unless explicitly approved.
 - [ ] Make `hive "task"` and `hive ask` return a readable operator summary with artifact links, next command, risk, and expected artifact.
@@ -210,6 +221,10 @@ Sources: `VG-03`, `VG-04`, `VG-13`, `VG-18`.
 - [x] Add a `hive live` / default prompt-log surface that follows ledger decisions without requiring users to browse TUI panels or filesystem artifacts.
 - [ ] Make bare interactive `hive` default to prompt/log live mode once supervisor/protocol replay is stable enough.
 - [x] Export `hive live` / ledger / protocol state as a stable MemoryOS-consumable read model for neural-map observability.
+- [x] Add `HiveLiveEventV1` fields to `hive live --memoryos` events: `event_id`, `event_type`, `run_id`, `timestamp`, `agent_id`, and `payload`.
+- [x] Derive MemoryOS live event IDs from execution ledger `seq/hash` when available, with content-hash fallback for older `hive_events.jsonl` activity.
+- [x] Replace planned MemoryOS context command placeholders with an actual `memoryos context build --for hive --json` pre-run context bridge.
+- [ ] Ask Claude to review provider passthrough policy boundaries: which native flags stay hard-blocked, which require protocol approval, and whether `event_type` should normalize provider passthrough as `agent_action`.
 
 ## Parser Work
 
@@ -218,6 +233,24 @@ Sources: `VG-01`, `VG-11`.
 - [ ] Create `tests/fixtures/exports/`.
 - [ ] Add redacted ChatGPT fixture.
 - [ ] Add redacted DeepSeek fixture from current local structure.
+
+## H-P0 Production Harness Close
+
+Definition: Hive Mind production v0 is the runtime harness only. It must be a
+local, auditable, provider-CLI swarm harness that can run bounded agent work,
+preserve native provider CLI capability, record execution receipts, stop safely,
+and degrade cleanly without MemoryOS. MemoryOS and CapabilityOS remain optional
+substrates for memory/context and capability routing.
+
+- [ ] Stabilize and commit the current green runtime changes before adding new behavior.
+- [ ] Split or plan extraction from `hivemind/harness.py` into narrower runtime modules: memory bridge, provider passthrough, flow runtime, and run receipts.
+- [ ] Harden provider passthrough policy from denylist-only toward provider/profile allowlists plus explicit approval-gated escape hatches.
+- [ ] Add terminal receipt coverage for completed, failed, timeout, skipped, policy-blocked, and partial provider/local runs.
+- [ ] Add `hive inspect <run>` as a path-hidden operator summary over run state, ledger, provider results, receipts, policy decisions, and next action.
+- [ ] Harden supervisor heartbeat/timeout recovery and make `hive run stop/status/tail` production-safe for interrupted runs.
+- [ ] Add a Hive-only production smoke script that does not require MemoryOS: init, run, local step, provider dry-run, ledger replay, inspect, stop, validation.
+- [ ] Keep MemoryOS context hook optional and non-blocking; failed/absent MemoryOS must produce a receipt, not abort Hive runtime.
+- [ ] Update public-facing docs to claim only "production runtime harness v0" until MemoryOS/CapabilityOS loops are production-ready.
 - [ ] Add redacted Grok fixture from current local structure.
 - [ ] Add redacted Perplexity markdown ZIP fixture.
 - [ ] Add Claude export parser after a sample export is available.
@@ -292,7 +325,7 @@ Sources: `VG-10`, `VG-01`, `VG-03`, `VG-18`.
 
 - [ ] Add local FastAPI or equivalent API.
 - [ ] Add endpoints: import status, audit summary, search, node detail, node review, graph neighborhood.
-- [ ] Add Hive run observability endpoints for MemoryOS using the `hive live --memoryos` read-model contract.
+- [ ] Add Hive run observability endpoints for MemoryOS using the `hive live --memoryos` read-model contract and `HiveLiveEventV1` event fields.
 - [ ] Build import center against real import runs.
 - [ ] Build memory cockpit against real graph counts.
 - [ ] Build Ask Memory with evidence-linked answers.
@@ -331,6 +364,9 @@ Sources: `VG-02`, `VG-04`, `VG-13`.
 Sources: `VG-06`, `VG-00`.
 
 - [ ] Define `AgentProfile`, `PerformanceRecord`, `PeerReview`, `UserFeedback`, `RoutingPolicyProposal`, and `PromptMutationProposal`.
+- [ ] Add `HarnessObservation` import contract for provider/pingpong runs: provider CLI, role, phase, command family, tool/MCP family, artifact refs, test/check outcome, failure class, retry count, and privacy scope. This should feed MemoryOS as draft operational memory, not accepted policy.
+- [ ] Add `hive harness observe` or equivalent export surface that emits sanitized observation JSONL for Claude/Codex/Gemini/local worker turns without raw prompt/stdout content.
+- [ ] Add local LLM summarizer role for harness observations: compress raw run logs into bounded tool-use/failure/retry summaries; never accept memory or mutate routing policy directly.
 - [ ] Add structured peer review artifact criteria: acceptance fit, quality, risk, project alignment, missing tests, recommendation.
 - [ ] Add user feedback states: accepted, accepted_with_edits, rejected, redo_requested, manually_fixed, ignored.
 - [ ] Add failure attribution fields: context issue, prompt issue, provider limitation, task ambiguity, implementation bug, verification gap.

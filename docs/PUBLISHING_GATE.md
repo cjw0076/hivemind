@@ -1,38 +1,92 @@
 # Hive Mind Publishing Gate
 
-Status: release gate.
+Status: **production v0 close — active.**
 
-The GitHub repository may remain public alpha for collaboration and inspection,
-but official publishing means a release tag, package publication, announcement,
-or broader distribution. Do not do that until Hive Mind is closer to the North
-Star.
+---
 
-## North Star
+## Product Definition (as of 2026-05-09)
 
-Hive Mind is the chair for provider and local-agent work:
+> A local, auditable, provider-CLI swarm harness that can run bounded agent
+> work, preserve native CLI capabilities, record execution receipts, stop safely,
+> and degrade cleanly without MemoryOS.
 
-```text
-user intent
-  -> classify and decompose
-  -> gather role-specific context
-  -> chaired provider debate when judgment is needed
-  -> implementation / review / verification artifacts
-  -> disagreement and convergence records
-  -> MemoryOS-reviewed memory
-  -> next run with better context
-```
+Hive Mind production does **not** require:
+- self-improving AIOS
+- complete memory-integrated swarm
+- autonomous long-horizon cognition
+- CapabilityOS-routed agent operating system
 
-## Publish Requirements
+MemoryOS is a substrate for long-term memory. Hive Mind production v0 must
+work without it. MemoryOS bridge is optional and gracefully degraded.
 
-- `hive debate` extracts structured disagreements, not only round artifacts.
-- `hive gaps` connects to the canonical MemoryOS context builder.
-- `hive verify` includes semantic objective and acceptance checks for high-risk runs.
-- `hive next` gives a short operator decision list grounded in run state and conflicts.
-- Security review evidence is preserved under `docs/security/`.
-- `scripts/public-release-check.sh` passes.
-- README states public alpha limitations clearly and avoids production-grade claims.
+---
+
+## H-P0 Production Close Checklist
+
+### 1. Provider CLI wrapping
+- [ ] Claude/Codex/Gemini/local native CLI stable passthrough (`hive provider`)
+- [ ] timeout, exit-code, stdout/stderr artifact, failure checkpoint
+- [ ] dangerous flag denylist + policy gate before execution
+- [ ] `--execute` always explicit; dry-run is default
+
+### 2. Execution ledger / receipt / proof
+- [ ] every prompt/command/result/artifact path recorded in ledger
+- [ ] failed/timeout/partial runs leave a readable artifact
+- [ ] `hive inspect <run>` emits ledger replay with hash chain
+- [ ] `hive diff` reports touched files + ledger summary
+
+### 3. Scheduler stability
+- [ ] L0 pingpong (`--scheduler pingpong`) — one serialized turn per round
+- [ ] L1 blackboard/claim — step lease, single controller
+- [ ] fanout isolated as experimental / not default in production commands
+- [ ] `hive run stop` terminates cleanly and writes a stop receipt
+
+### 4. Operator UX (must not require file navigation)
+- [ ] `hive run` — start/status/tail/stop
+- [ ] `hive status` — current run health without opening run folder
+- [ ] `hive live` — real-time event stream
+- [ ] `hive inspect <run>` — replay/debug artifact report
+- [ ] `hive next` — one-line operator decision grounded in run state
+
+### 5. MemoryOS bridge (optional / graceful degrade)
+- [ ] if MemoryOS is absent, context build silently skips
+- [ ] if MemoryOS returns empty, run proceeds normally
+- [ ] Hive only writes `memory_drafts.json`; acceptance is MemoryOS's decision
+- [ ] `hive live --memoryos` emits stable event taxonomy, not Hive action names
+
+### 6. Release hygiene
+- [ ] `scripts/public-release-check.sh` passes
+- [ ] README states "provider-CLI harness, production v0" clearly
+- [ ] security review record under `docs/security/`
+- [ ] no production-grade AIOS claims in README or CLI output
+
+---
+
+## What Moves to Post-v0
+
+These are not v0 blockers. They belong in MemoryOS or CapabilityOS tracks:
+
+- Structured disagreement extraction in `hive debate` (publish gate item → moved to v1)
+- Semantic LLM verifier for high-risk runs (v1)
+- RetrievalTrace provenance hardening (MemoryOS K43)
+- CapabilityOS routing brain (separate project)
+
+---
+
+## Previous Publish Requirements (superseded)
+
+The prior gate required full MemoryOS integration before release. That was too
+broad. The items below are preserved for reference; they move to v1 or MemoryOS
+tracks:
+
+- `hive debate` structured disagreement extraction → v1
+- `hive gaps` canonical MemoryOS context builder → MemoryOS K43
+- `hive verify` semantic acceptance checks → v1
+- `hive next` conflict-grounded decision list → H-P0 item 4
+
+---
 
 ## Current Decision
 
-Continue implementation in public alpha. Defer release/tag/package/announcement
-publishing until the requirements above are met.
+Active close. H-P0 checklist drives the sprint.
+Tag `v0.1.0-production` when all H-P0 items pass and `public-release-check.sh` is green.

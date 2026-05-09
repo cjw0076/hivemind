@@ -230,6 +230,25 @@ hive local benchmark \
 
 `hive orchestrate` is the default prompt path. It asks the local router to split the request into a small agent society, prepares each provider/local worker artifact, writes `society_plan.json`, and reports which member owns which role. `hive ask` remains available for route-only debugging.
 
+Hive keeps two provider layers. The role adapter path (`hive invoke claude
+--role planner`) lets Hive strongly control prompt/result/proof shape for common
+swarm roles. The native passthrough path (`hive provider claude --dry-run --
+<native args...>`) keeps provider CLI features intact while Hive records command,
+policy, stdout, stderr, result, proof, and ledger artifacts.
+
+```bash
+hive provider claude --dry-run -- -p "summarize this" --permission-mode plan
+hive provider codex --dry-run -- exec --cd . --sandbox read-only "inspect"
+hive provider gemini --dry-run -- -p "review" --approval-mode plan
+hive provider codex --execute -- exec --cd . --sandbox read-only "inspect"
+```
+
+`hive provider` does not interpret native args beyond a small danger gate. It
+blocks known bypass/destructive patterns such as Claude
+`--dangerously-skip-permissions`, Gemini trust/yolo bypass flags, and Codex
+unsafe sandbox plus approval-never combinations. Everything else is preserved as
+native CLI surface and wrapped in Hive artifacts.
+
 `hive run start` is the first supervised DAG runner. It is still a ledger client,
 not a hidden autonomy daemon: each round calls the DAG scheduler, writes
 `supervisor_state.json`, appends `supervisor_started` / `supervisor_stopped`
@@ -237,6 +256,7 @@ ledger events, and logs to `supervisor.log`.
 
 ```bash
 hive run start --max-rounds 8
+hive run start --scheduler pingpong --max-rounds 8
 hive run start --run-id run_... --detach
 hive run status --run-id run_...
 hive run tail --run-id run_...
@@ -246,7 +266,14 @@ hive run stop --run-id run_...
 Default mode is prepare-only. `--execute` may run only protocol-approved
 provider steps; the existing `ExecutionDecision` gate still applies. Supervisor
 status includes PID, host, command hash, git commit, log path, replay health,
-and active step leases.
+active step leases, and scheduler/kernel mode.
+
+`--scheduler pingpong` is the L0 serialized kernel lifted from the MemoryOS
+pingpong loop. It runs exactly one runnable DAG step per round, then yields. That
+keeps the simple shared-state/current-turn/worklog rhythm while making the turn
+auditable through `execution_ledger.jsonl`, leases, probes, proof, and replay.
+The default `fanout` scheduler remains available for later L3 coordination where
+parallel branches and barrier joins are useful.
 
 Hive Mind keeps `events.jsonl` as a machine/audit log and `hive_events.jsonl` as the human activity feed. The TUI latest-events panel prefers `hive_events.jsonl`, so it shows role assignment and swarm decisions instead of only file-created events.
 
@@ -363,6 +390,18 @@ Claude planner, Codex executor, Gemini reviewer, local summarizer, verifier,
 memory, and close. It intentionally keeps provider CLIs in prepare-only mode, so
 it is a UI/read-model smoke test rather than an autonomous execution path.
 
+Normal prompt intake now connects to the lifecycle core. `hive "task"` and
+`hive orchestrate "task"` still create routing and society artifacts, but they
+also create `plan_dag.json` and `artifacts/workflow_state.json`. The intent
+router chooses provider/local roles; the DAG owns lifecycle state, ledger
+records, probes, evaluations, and supervisor progression. This is the same core
+state that a future desktop/chatbot UI should read.
+
+Safe local workers can also act as bounded task processors for simple work.
+Use `--execute-local` to let local workers such as summarize, classify, memory,
+review, handoff, and context run through DAG/ledger execution. Frontier provider
+execution remains explicit and policy-gated.
+
 `hive ledger --follow` opens the same TUI directly on the ledger view. The ledger
 is an append-only `execution_ledger.jsonl` per run: scheduler round, step start,
 step completion, reversibility gate, permission mode, bypass mode, output
@@ -409,6 +448,19 @@ JSON. The shape is intentionally graph-oriented: `graph.nodes`,
 authority gates, votes, memory drafts, disagreements, and live log records.
 MemoryOS can poll or import this contract and decide how to render the neural
 map without Hive growing a second visual UI.
+
+For durable MemoryOS ingest, each event also carries the `HiveLiveEventV1`
+fields: `event_id`, `event_type`, `run_id`, `timestamp`, `agent_id`, and
+`payload`. Ledger-backed rows derive `event_id` from the execution ledger
+`seq/hash` pair so tail size changes do not change dedupe identity. Older
+`hive_events.jsonl` activity uses a content fingerprint fallback. The legacy
+read-model aliases (`id`, `type`, `ts`, `actor`, `summary`, `refs`) remain for
+UI consumers, but durable import should prefer the `HiveLiveEventV1` fields.
+
+This is still a read model, not the final accepted-memory protocol. MemoryOS can
+render or validate it now, but accepted context injection is a separate pre-run
+bridge: Hive should eventually call `memoryos context build --for hive --json`
+instead of only writing a planned command placeholder.
 
 The TUI is not the final UX. It is a transitional operator/debug surface while
 the run substrate hardens. The desired AIOS UX is prompt input plus live
@@ -502,6 +554,8 @@ Provider CLIs are treated as workers behind the same artifact protocol.
 python -m hivemind.hive invoke claude --role planner
 python -m hivemind.hive invoke codex --role executor
 python -m hivemind.hive invoke gemini --role reviewer
+python -m hivemind.hive provider claude --dry-run -- -p "..." --permission-mode plan
+python -m hivemind.hive provider codex --execute -- exec --cd . --sandbox read-only --ask-for-approval never "review this run"
 ```
 
 These commands create:
@@ -509,7 +563,19 @@ These commands create:
 ```text
 agents/<provider>/<role>_prompt.md
 agents/<provider>/<role>_command.txt
+agents/<provider>/native/passthrough_XX_command.txt
+agents/<provider>/native/passthrough_XX_result.yaml
+agents/<provider>/native/passthrough_XX_stdout.txt
+agents/<provider>/native/passthrough_XX_stderr.txt
 ```
+
+`hive invoke` is the role adapter path: Hive builds the prompt contract and role
+output shape. `hive provider` is the native passthrough path: Hive does not
+reinterpret provider flags, but records the command, creates an
+`ExecutionIntent`, runs policy/vote/decision/proof records, captures
+stdout/stderr/output, and blocks known dangerous bypass combinations by default.
+Claude should periodically review the hard-block list and approval boundary as
+provider CLIs evolve.
 
 For supported non-interactive execution:
 

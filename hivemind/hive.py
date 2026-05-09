@@ -49,6 +49,7 @@ from .harness import (
     init_onboarding,
     invoke_external_agent,
     invoke_local,
+    provider_passthrough,
     list_runs,
     local_runtime_report,
     load_run,
@@ -87,6 +88,7 @@ from .harness import (
 )
 from .plan_dag import (
     build_dag,
+    build_dag_from_actions,
     execute_fan_out,
     execute_step,
     format_dag,
@@ -150,6 +152,7 @@ COMMANDS = {
     "context",
     "handoff",
     "invoke",
+    "provider",
     "loop",
     "verify",
     "summarize",
@@ -341,6 +344,12 @@ def _main(argv: list[str] | None = None) -> None:
     run_cmd.add_argument("--max-rounds", type=int, default=20, help="supervisor max scheduler rounds")
     run_cmd.add_argument("--interval", type=float, default=0.0, help="supervisor delay between rounds")
     run_cmd.add_argument("--execute", action="store_true", help="supervisor may execute approved provider steps")
+    run_cmd.add_argument(
+        "--scheduler",
+        choices=["fanout", "pingpong"],
+        default="fanout",
+        help="supervisor scheduler mode; pingpong runs one serialized L0 turn per round",
+    )
     run_cmd.add_argument("--detach", action="store_true", help="start supervisor in a background process")
     run_cmd.add_argument("--lines", type=int, default=80, help="lines for hive run tail")
 
@@ -361,6 +370,7 @@ def _main(argv: list[str] | None = None) -> None:
     orchestrate_cmd.add_argument("--run-id")
     orchestrate_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="default")
     orchestrate_cmd.add_argument("--execute", action="store_true", help="execute supported non-Codex providers instead of only preparing artifacts")
+    orchestrate_cmd.add_argument("--execute-local", action="store_true", help="allow safe local worker task execution during prompt lifecycle setup")
     orchestrate_cmd.add_argument("--json", action="store_true")
     debate_cmd = sub.add_parser("debate", help="run a provider debate with first-pass, review, and convergence artifacts")
     debate_cmd.add_argument("topic", help="topic or decision to debate")
@@ -480,6 +490,14 @@ def _main(argv: list[str] | None = None) -> None:
     invoke_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="default")
     invoke_cmd.add_argument("--dry-run", action="store_true", help="prepare prompt/command/result artifacts without executing")
     invoke_cmd.add_argument("--execute", action="store_true", help="execute the external agent when supported")
+    provider_cmd = sub.add_parser("provider", help="wrap a native provider CLI command in Hive artifacts/ledger")
+    provider_cmd.add_argument("provider", choices=["claude", "codex", "gemini"])
+    provider_cmd.add_argument("--run-id")
+    provider_cmd.add_argument("--dry-run", action="store_true", help="record command artifacts without executing; default")
+    provider_cmd.add_argument("--execute", action="store_true", help="execute native provider command after passthrough policy gate")
+    provider_cmd.add_argument("--timeout", type=int, default=600)
+    provider_cmd.add_argument("--json", action="store_true")
+    provider_cmd.add_argument("native_args", nargs="*", help="native provider args after --")
 
     loop_cmd = sub.add_parser("loop", help="option-only self-judgment loop over safe internal actions")
     loop_cmd.add_argument("--run-id")
@@ -823,6 +841,7 @@ def _main(argv: list[str] | None = None) -> None:
                         max_rounds=args.max_rounds,
                         execute=args.execute,
                         interval=args.interval,
+                        scheduler=args.scheduler,
                     )
                 else:
                     report = run_supervisor(
@@ -831,6 +850,7 @@ def _main(argv: list[str] | None = None) -> None:
                         max_rounds=args.max_rounds,
                         execute=args.execute,
                         interval=args.interval,
+                        scheduler=args.scheduler,
                     )
                 if args.json:
                     import json
@@ -917,7 +937,14 @@ def _main(argv: list[str] | None = None) -> None:
         prompt = args.prompt.strip()
         if not prompt:
             raise SystemExit("hive orchestrate: prompt cannot be empty")
-        report = orchestrate_prompt(root, prompt, run_id=args.run_id, complexity=args.complexity, execute=args.execute)
+        report = orchestrate_prompt(
+            root,
+            prompt,
+            run_id=args.run_id,
+            complexity=args.complexity,
+            execute=args.execute,
+            execute_local=args.execute_local,
+        )
         if args.json:
             import json
 
@@ -1078,8 +1105,12 @@ def _main(argv: list[str] | None = None) -> None:
             import json as _json
             paths, state = load_run(root, args.run_id)
             intent_override = getattr(args, "intent", None)
-            intent = intent_override or state.get("task_type") or "implementation"
-            dag = build_dag(paths.run_id, state.get("user_request", ""), intent)
+            plan = load_routing_plan(root, paths.run_id)
+            intent = intent_override or plan.get("intent") or state.get("task_type") or "implementation"
+            if intent_override:
+                dag = build_dag(paths.run_id, state.get("user_request", ""), intent)
+            else:
+                dag = build_dag_from_actions(paths.run_id, state.get("user_request", ""), intent, plan.get("actions") or [])
             dag_path = save_dag(root, dag)
             if args.json:
                 print(_json.dumps(_json.loads(dag_path.read_text(encoding="utf-8")), ensure_ascii=False, indent=2))
@@ -1233,6 +1264,32 @@ def _main(argv: list[str] | None = None) -> None:
             print(invoke_local(root, args.role, run_id=args.run_id, complexity=args.complexity))
             return
         print(invoke_external_agent(root, args.agent, args.role, run_id=args.run_id, execute=args.execute))
+        return
+    if args.cmd == "provider":
+        if args.execute and args.dry_run:
+            parser.error("hive provider: --execute and --dry-run are mutually exclusive")
+        native_args = list(args.native_args or [])
+        if native_args and native_args[0] == "--":
+            native_args = native_args[1:]
+        if not native_args:
+            parser.error("hive provider requires native args after --")
+        result_path = provider_passthrough(
+            root,
+            args.provider,
+            native_args,
+            run_id=args.run_id,
+            execute=bool(args.execute),
+            timeout=args.timeout,
+        )
+        if args.json:
+            import json
+            import yaml
+
+            data = yaml.safe_load(result_path.read_text(encoding="utf-8")) or {}
+            data["result_path"] = result_path.relative_to(root).as_posix()
+            print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(result_path)
         return
     if args.cmd == "loop":
         report = auto_loop(root, run_id=args.run_id, max_steps=args.max_steps, execute=args.execute, allowed_actions=args.allow, goal=args.goal)
@@ -1547,7 +1604,7 @@ def handle_chat_task(root: Path, prompt: str) -> None:
     print("Hive Mind: 새 작업을 받았습니다.")
     print("Hive Mind: local router가 의도를 분해하고, Claude/Codex/Gemini/local 역할을 배정합니다.")
     report = orchestrate_prompt(root, prompt, complexity="default")
-    print("Hive Mind: society plan 준비 완료.")
+    print("Hive Mind: society plan과 DAG lifecycle 준비 완료.")
     for member in report.get("members") or []:
         print(f"  - {member.get('provider')}/{member.get('role')}: {member.get('status') or 'planned'}")
     print_chat_run_update(root)

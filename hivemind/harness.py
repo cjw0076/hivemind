@@ -21,6 +21,11 @@ from typing import Any
 import yaml
 
 from .local_workers import choose_model, read_input, run_worker, validate_worker_result, worker_route_table
+from .memory_bridge import (
+    build_memoryos_context_report,
+    extract_memoryos_context_ids,
+    write_memoryos_context_pack,
+)
 from .run_validation import validate_run_artifacts
 from .utils import ensure_valid_run_id, is_valid_run_id, now_iso, stable_id
 
@@ -1881,24 +1886,51 @@ def flow_advance(
     actions_taken: list[dict[str, Any]] = []
 
     paths, state = load_run(root, paths.run_id)
+    memory_context = ensure_memoryos_context(root, paths.run_id)
+    if memory_context.get("status") in {"available", "empty"}:
+        actions_taken.append(
+            {
+                "action": "memoryos_context",
+                "artifact": memory_context.get("artifact"),
+                "status": memory_context.get("status"),
+                "trace_id": memory_context.get("trace_id"),
+            }
+        )
+    paths, state = load_run(root, paths.run_id)
     plan_path = paths.run_dir / "routing_plan.json"
     if not plan_path.exists():
         plan_path = ask_router(root, str(state.get("user_request") or ""), run_id=paths.run_id, complexity=complexity)
         actions_taken.append({"action": "route", "artifact": plan_path.relative_to(root).as_posix(), "status": "created"})
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
 
-    if execute_local:
-        for action in plan.get("actions") or []:
-            if action.get("provider") != "local" or action.get("role") != "context":
-                continue
-            status = agent_status(load_run(root, paths.run_id)[1], local_agent_name("context"))
-            if status in {"completed", "failed"}:
-                continue
-            result_path = invoke_local(root, "context", run_id=paths.run_id, complexity=complexity)
-            result = local_action_result(root, result_path)
-            actions_taken.append({"action": "local-context", **result})
-            if result.get("result") == "failed":
-                break
+    society_path = paths.run_dir / "society_plan.json"
+    if not society_path.exists():
+        society = build_society_plan_from_routing(root, paths, state, plan, execute=False)
+        write_json(society_path, society)
+        add_state_artifact(paths, "society_plan", society_path)
+        append_event(paths, "society_plan_created", {"artifact": society_path.relative_to(root).as_posix(), "members": len(society.get("members") or [])})
+        actions_taken.append({"action": "society", "artifact": society_path.relative_to(root).as_posix(), "status": "created"})
+
+    # Ensure plan_dag.json exists — canonical step scheduler.
+    from .plan_dag import build_dag_from_actions as _build_dag_from_actions, load_dag as _load_dag, save_dag as _save_dag
+    dag_path = paths.run_dir / "plan_dag.json"
+    dag = _load_dag(root, paths.run_id)
+    if dag is None:
+        intent = plan.get("intent") or state.get("task_type") or "implementation"
+        dag = _build_dag_from_actions(paths.run_id, str(state.get("user_request") or ""), intent, plan.get("actions") or [])
+        sync_dag_with_run_state(root, paths.run_id, dag)
+        _save_dag(root, dag)
+        actions_taken.append({"action": "plan_dag", "artifact": dag_path.relative_to(root).as_posix(), "status": "created"})
+    else:
+        sync_dag_with_run_state(root, paths.run_id, dag)
+        _save_dag(root, dag)
+
+    if execute_local and dag is not None:
+        local_results = execute_ready_local_steps(root, dag)
+        if local_results:
+            actions_taken.extend(local_results)
+            sync_dag_with_run_state(root, paths.run_id, dag)
+            _save_dag(root, dag)
 
     paths, state = load_run(root, paths.run_id)
     if execute_local and agent_status(state, local_agent_name("context")) == "completed":
@@ -1915,24 +1947,8 @@ def flow_advance(
                         "artifact": result_path.relative_to(root).as_posix(),
                     }
                 )
-
-    paths, state = load_run(root, paths.run_id)
-    society_path = paths.run_dir / "society_plan.json"
-    if not society_path.exists():
-        society = build_society_plan_from_routing(root, paths, state, plan, execute=False)
-        write_json(society_path, society)
-        add_state_artifact(paths, "society_plan", society_path)
-        append_event(paths, "society_plan_created", {"artifact": society_path.relative_to(root).as_posix(), "members": len(society.get("members") or [])})
-        actions_taken.append({"action": "society", "artifact": society_path.relative_to(root).as_posix(), "status": "created"})
-
-    # Ensure plan_dag.json exists — canonical step scheduler.
-    from .plan_dag import build_dag as _build_dag, load_dag as _load_dag, save_dag as _save_dag
-    dag_path = paths.run_dir / "plan_dag.json"
-    if not dag_path.exists():
-        intent = state.get("task_type") or plan.get("intent") or "implementation"
-        dag = _build_dag(paths.run_id, str(state.get("user_request") or ""), intent)
+        sync_dag_with_run_state(root, paths.run_id, dag)
         _save_dag(root, dag)
-        actions_taken.append({"action": "plan_dag", "artifact": dag_path.relative_to(root).as_posix(), "status": "created"})
 
     workflow = build_workflow_state(root, paths.run_id, actions_taken=actions_taken, execute_local=execute_local)
     out_path = paths.artifacts / "workflow_state.json"
@@ -1949,6 +1965,98 @@ def flow_advance(
         {"workflow": out_path.relative_to(root).as_posix(), "next": workflow.get("next")},
     )
     return workflow
+
+
+SAFE_LOCAL_TASK_ROLES = {
+    "context",
+    "context-compressor",
+    "summarize",
+    "log-summarizer",
+    "memory",
+    "memory-curator",
+    "review",
+    "diff-reviewer",
+    "classify",
+    "handoff",
+    "handoff-drafter",
+}
+
+
+def sync_dag_with_run_state(root: Path, run_id: str, dag: Any) -> None:
+    """Mark route-action DAG steps satisfied when prepared artifacts already exist."""
+    paths, state = load_run(root, run_id)
+    for step in dag.steps:
+        if step.status not in {"pending", "running"}:
+            continue
+        local_role = local_role_for_owner(step.owner_role)
+        if local_role:
+            status = agent_status(state, local_agent_name(local_role))
+            artifact = paths.local_dir / f"{local_role.replace('-', '_')}.json"
+            if status == "completed" and artifact.exists():
+                step.status = "completed"
+                step.finished_at = step.finished_at or now_iso()
+                step.artifact = artifact.relative_to(root).as_posix()
+            elif status == "failed" and artifact.exists():
+                step.status = "skipped" if step.on_failure != "stop" else "failed"
+                step.finished_at = step.finished_at or now_iso()
+                step.artifact = artifact.relative_to(root).as_posix()
+            continue
+        external = external_role_for_owner(step.owner_role)
+        if external:
+            provider, role = external
+            status = agent_status(state, f"{provider}-{role}")
+            artifact = paths.run_dir / "agents" / provider / f"{role}_result.yaml"
+            if status in {"prepared", "completed"} and artifact.exists():
+                step.status = "prepared" if status == "prepared" else "completed"
+                step.finished_at = step.finished_at or now_iso()
+                step.artifact = artifact.relative_to(root).as_posix()
+            elif status == "failed" and artifact.exists():
+                step.status = "failed" if step.on_failure == "stop" else "skipped"
+                step.finished_at = step.finished_at or now_iso()
+                step.artifact = artifact.relative_to(root).as_posix()
+
+
+def execute_ready_local_steps(root: Path, dag: Any) -> list[dict[str, Any]]:
+    """Execute runnable safe local steps through the DAG/ledger path."""
+    from .plan_dag import execute_step
+
+    actions: list[dict[str, Any]] = []
+    progressed = True
+    while progressed:
+        progressed = False
+        for step in list(dag.runnable()):
+            local_role = local_role_for_owner(step.owner_role)
+            if local_role not in SAFE_LOCAL_TASK_ROLES:
+                continue
+            result = execute_step(root, dag, step.step_id, execute=True)
+            actions.append({"action": f"local-{local_role}", "step_id": step.step_id, **result})
+            progressed = True
+            if result.get("status") in {"failed", "reversibility_gate", "protocol_gate", "lease_conflict"}:
+                return actions
+            break
+    return actions
+
+
+def local_role_for_owner(owner_role: str) -> str | None:
+    return {
+        "local-context-compressor": "context",
+        "local-diff-reviewer": "review",
+        "local-log-summarizer": "summarize",
+        "local-memory-curator": "memory",
+        "local-classifier": "classify",
+        "local-handoff-drafter": "handoff",
+    }.get(owner_role)
+
+
+def external_role_for_owner(owner_role: str) -> tuple[str, str] | None:
+    return {
+        "claude-planner": ("claude", "planner"),
+        "claude-reviewer": ("claude", "reviewer"),
+        "codex-executor": ("codex", "executor"),
+        "codex-reviewer": ("codex", "reviewer"),
+        "gemini-planner": ("gemini", "planner"),
+        "gemini-reviewer": ("gemini", "reviewer"),
+    }.get(owner_role)
 
 
 def build_society_plan_from_routing(
@@ -2023,8 +2131,9 @@ def build_workflow_state(
         status = "blocked"
         next_action = {"command": "hive audit", "reason": "workflow has failed members"}
     elif local_waiting and not execute_local:
-        status = "waiting_for_local_context"
-        next_action = {"command": f"hive flow --run-id {paths.run_id} --execute-local", "reason": "local context is ready but not executed"}
+        waiting_roles = {str(item.get("role")) for item in local_waiting}
+        status = "waiting_for_local_context" if waiting_roles <= {"context", "context-compressor"} else "waiting_for_local_workers"
+        next_action = {"command": f"hive flow --run-id {paths.run_id} --execute-local", "reason": "safe local worker task is ready but not executed"}
     elif provider_barrier_status == "waiting":
         status = "waiting_for_provider_outputs"
         next_action = {"command": f"hive events --run-id {paths.run_id}", "reason": "provider prompts are prepared; wait for provider results or run explicit invokes"}
@@ -2340,30 +2449,64 @@ def close_gap_loop(root: Path, run_id: str | None = None) -> dict[str, Any]:
 
 
 def build_memory_context_artifact(root: Path, run_id: str | None = None) -> dict[str, Any]:
+    report = ensure_memoryos_context(root, run_id, force=True)
+    paths, _ = load_run(root, run_id)
+    return {"path": report.get("artifact") or (paths.artifacts / "memory_context.json").relative_to(root).as_posix(), "artifact": report}
+
+
+def ensure_memoryos_context(root: Path, run_id: str | None = None, force: bool = False) -> dict[str, Any]:
     paths, state = load_run(root, run_id)
-    memoryos_root = root.parent / "memoryOS"
-    memoryos_cli = memoryos_root / "memoryos" / "cli.py"
-    status = "available" if memoryos_cli.exists() else "planned"
-    artifact = {
-        "schema_version": 1,
-        "generated_at": now_iso(),
-        "run_id": paths.run_id,
-        "gap": "pre_run_memory_context",
-        "status": status,
-        "memoryos_root": memoryos_root.as_posix(),
-        "accepted_memories_used": [],
-        "open_questions": [
-            "Which MemoryOS context command should be the canonical pre-run entrypoint?",
-            "Which accepted memories require human approval before inclusion in Hive context?",
-        ],
-        "planned_command": f'memoryos context build --for hive --task {json.dumps(state.get("user_request", ""), ensure_ascii=False)}',
-        "raw_refs": ["docs/HIVE_MIND_GAPS.md", paths.context_pack.relative_to(root).as_posix()],
-    }
+    existing = state.get("memoryos_context")
+    if (
+        not force
+        and isinstance(existing, dict)
+        and existing.get("status") in {"available", "empty", "unavailable", "failed"}
+        and (root / str(existing.get("artifact", ""))).exists()
+    ):
+        return dict(existing)
+    report = run_memoryos_context_build(root, paths, state)
+    update_state(
+        paths,
+        memoryos_context=report,
+        accepted_memories_used=report.get("accepted_memory_ids", []),
+    )
+    append_event(
+        paths,
+        "memoryos_context_retrieved",
+        {
+            "artifact": report.get("artifact"),
+            "status": report.get("status"),
+            "trace_id": report.get("trace_id"),
+            "accepted_memory_ids": report.get("accepted_memory_ids", []),
+            "context_items": report.get("context_items", 0),
+        },
+    )
+    append_hive_activity(
+        paths,
+        "memoryos",
+        "context_retrieved",
+        f"MemoryOS context {report.get('status')}; selected={len(report.get('accepted_memory_ids') or [])}; trace={report.get('trace_id') or 'none'}",
+        {
+            "artifact": report.get("artifact"),
+            "trace_id": report.get("trace_id"),
+            "accepted_memory_ids": report.get("accepted_memory_ids", []),
+            "context_items": report.get("context_items", 0),
+        },
+    )
+    return report
+
+
+def run_memoryos_context_build(root: Path, paths: RunPaths, state: dict[str, Any]) -> dict[str, Any]:
+    return _persist_memoryos_context_report(root, paths, build_memoryos_context_report(root, paths, state))
+
+
+def _persist_memoryos_context_report(root: Path, paths: RunPaths, artifact: dict[str, Any]) -> dict[str, Any]:
     path = paths.artifacts / "memory_context.json"
     write_json(path, artifact)
     add_state_artifact(paths, "memory_context", path)
-    append_event(paths, "memory_context_built", {"artifact": path.relative_to(root).as_posix(), "status": status})
-    return {"path": path.relative_to(root).as_posix(), "artifact": artifact}
+    artifact["artifact"] = path.relative_to(root).as_posix()
+    write_json(path, artifact)
+    return artifact
 
 
 def build_semantic_verification_artifact(root: Path, run_id: str | None = None) -> dict[str, Any]:
@@ -3786,6 +3929,7 @@ def orchestrate_prompt(
     run_id: str | None = None,
     complexity: str = "default",
     execute: bool = False,
+    execute_local: bool = False,
 ) -> dict[str, Any]:
     """Turn a prompt into a multi-agent society plan and prepare worker/provider artifacts."""
     plan_path = ask_router(root, prompt, run_id=run_id, complexity=complexity)
@@ -3841,6 +3985,15 @@ def orchestrate_prompt(
         {"members": members, "next": report.get("next")},
     )
     update_state(paths, phase="orchestration", status="ready")
+    workflow = flow_advance(root, run_id=paths.run_id, complexity=complexity, execute_local=execute_local)
+    report["workflow"] = {
+        "status": workflow.get("status"),
+        "scheduler": workflow.get("scheduler"),
+        "artifact": workflow.get("artifact"),
+        "next": workflow.get("next"),
+        "actions_taken": workflow.get("actions_taken", []),
+    }
+    report["next"] = workflow.get("next") or report.get("next")
     return report
 
 
@@ -4017,9 +4170,11 @@ def add_state_artifact(paths: RunPaths, name: str, path: Path) -> None:
 
 
 def format_orchestration_report(report: dict[str, Any]) -> str:
+    workflow = report.get("workflow") or {}
     lines = [
         f"Hive Mind Society: {report.get('run_id')}",
         f"Intent: {report.get('intent')} via {report.get('route_source')}",
+        f"Lifecycle: {workflow.get('scheduler', 'not_started')} / {workflow.get('status', 'not_started')}",
         f"Summary: {report.get('summary')}",
         "",
         "Members:",
@@ -4178,7 +4333,22 @@ def heuristic_route_prompt(prompt: str) -> dict[str, Any]:
     lowered = prompt.lower()
     actions = [{"provider": "local", "role": "context", "reason": "Prepare context before provider handoff.", "execute": False}]
     intent = "planning"
-    if any(token in lowered for token in ["debug", "trace", "왜", "원인", "오류", "에러", "멈추", "안됨", "안 돼", "error", "exception"]):
+    if any(token in lowered for token in ["summarize", "summary", "요약", "로그 정리", "정리해줘"]):
+        intent = "local_task"
+        actions = [
+            {"provider": "local", "role": "summarize", "reason": "Cheap local summary task.", "execute": False}
+        ]
+    elif any(token in lowered for token in ["classify", "classification", "분류", "라벨", "label"]):
+        intent = "local_task"
+        actions = [
+            {"provider": "local", "role": "classify", "reason": "Cheap local classification task.", "execute": False}
+        ]
+    elif any(token in lowered for token in ["handoff draft", "handoff", "인수인계", "작업지시"]):
+        intent = "local_task"
+        actions = [
+            {"provider": "local", "role": "handoff", "reason": "Draft a local handoff before provider work.", "execute": False}
+        ]
+    elif any(token in lowered for token in ["debug", "trace", "왜", "원인", "오류", "에러", "멈추", "안됨", "안 돼", "error", "exception"]):
         intent = "debugging"
         actions.extend(
             [
@@ -4487,6 +4657,8 @@ EXTERNAL_AGENT_ROLES: dict[str, set[str]] = {
     "gemini": {"reviewer", "planner", "alternate-planner", "multimodal-reviewer", "debate_initial", "debate_review"},
 }
 
+PROVIDER_PASSTHROUGH_AGENTS = {"claude", "codex", "gemini"}
+
 
 def invoke_external_agent(
     root: Path,
@@ -4496,6 +4668,8 @@ def invoke_external_agent(
     execute: bool = False,
 ) -> Path:
     paths, state = load_run(root, run_id)
+    ensure_memoryos_context(root, paths.run_id)
+    paths, state = load_run(root, paths.run_id)
     if agent not in EXTERNAL_AGENT_ROLES:
         raise ValueError(f"external agent must be one of: {', '.join(sorted(EXTERNAL_AGENT_ROLES))}")
     allowed_roles = EXTERNAL_AGENT_ROLES[agent]
@@ -4647,6 +4821,413 @@ def invoke_external_agent(
     append_event(paths, f"agent_{status}", {"agent": agent, "role": role, "artifact": result_path.relative_to(root).as_posix()})
     update_state(paths, phase="handoff", status="in_progress" if status == "completed" else "needs_attention")
     return result_path
+
+
+def provider_passthrough(
+    root: Path,
+    agent: str,
+    native_args: list[str],
+    *,
+    run_id: str | None = None,
+    execute: bool = False,
+    timeout: int = 600,
+) -> Path:
+    """Record or execute a native provider CLI command without abstracting its flags."""
+    from .protocol import (
+        ExecutionIntent,
+        cast_vote,
+        check_intent,
+        create_proof,
+        decide_intent,
+        save_intent,
+    )
+    from .workloop import append_execution_ledger
+
+    if agent not in PROVIDER_PASSTHROUGH_AGENTS:
+        raise ValueError(f"provider must be one of: {', '.join(sorted(PROVIDER_PASSTHROUGH_AGENTS))}")
+    if not native_args:
+        raise ValueError("native provider passthrough requires args after --")
+
+    paths, _ = load_run(root, run_id)
+    provider_dir = paths.run_dir / "agents" / agent / "native"
+    provider_dir.mkdir(parents=True, exist_ok=True)
+    index = next_passthrough_index(provider_dir)
+    prefix = f"passthrough_{index:02d}"
+    command_path = provider_dir / f"{prefix}_command.txt"
+    stdout_path = provider_dir / f"{prefix}_stdout.txt"
+    stderr_path = provider_dir / f"{prefix}_stderr.txt"
+    output_path = provider_dir / f"{prefix}_output.md"
+    result_path = provider_dir / f"{prefix}_result.yaml"
+
+    binary = resolve_provider_binary(root, agent) or agent
+    command = [binary, *native_args]
+    command_path.write_text(" ".join(shlex.quote(part) for part in command) + "\n", encoding="utf-8")
+    permission_mode = passthrough_permission_mode(agent, native_args)
+    danger = passthrough_danger_reason(agent, native_args) or (passthrough_execute_allowlist_reason(agent, native_args) if execute else None)
+    intent = build_provider_passthrough_intent(
+        root,
+        paths.run_id,
+        agent,
+        command_path,
+        command,
+        execute=execute,
+        permission_mode=permission_mode,
+        risk_level="high" if danger else ("low" if permission_mode == "read_only" else "medium"),
+    )
+    save_intent(root, intent)
+
+    append_agent_log(paths, agent, "native", f"passthrough_command artifact={command_path.relative_to(root).as_posix()} execute={execute}")
+    append_event(
+        paths,
+        "provider_passthrough_prepared",
+        {"agent": agent, "artifact": command_path.relative_to(root).as_posix(), "execute": execute},
+    )
+
+    if danger:
+        cast_vote(
+            root,
+            paths.run_id,
+            intent.intent_id,
+            voter_role="policy-gate",
+            vote="block",
+            confidence=0.98,
+            risk_level="high",
+            reasons=[danger],
+            allow_executor=False,
+        )
+        decision = decide_intent(root, paths.run_id, intent.intent_id, decided_by="policy-gate")
+        stdout_path.write_text("", encoding="utf-8")
+        stderr_path.write_text(danger + "\n", encoding="utf-8")
+        output_path.write_text("", encoding="utf-8")
+        result = provider_result_record(
+            root,
+            agent=agent,
+            role="native",
+            status="failed",
+            provider_mode="policy_blocked",
+            permission_mode=permission_mode,
+            command_path=command_path,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+            output_path=output_path,
+            returncode=None,
+            commands_run=[" ".join(shlex.quote(part) for part in command)],
+            artifacts_created=[rel_or_empty(root, result_path), rel_or_empty(root, command_path), rel_or_empty(root, stderr_path)],
+            risk_level="high",
+            policy_violations=[danger],
+            execute=execute,
+            reason=danger,
+        )
+        result_path.write_text(format_simple_yaml(result), encoding="utf-8")
+        create_proof(
+            root,
+            paths.run_id,
+            intent.intent_id,
+            status="blocked",
+            returncode=None,
+            stdout_path=rel_or_empty(root, stdout_path),
+            stderr_path=rel_or_empty(root, stderr_path),
+            output_path=rel_or_empty(root, output_path),
+            commands_run=[" ".join(shlex.quote(part) for part in command)],
+            artifacts_created=[rel_or_empty(root, result_path), rel_or_empty(root, command_path), rel_or_empty(root, stderr_path)],
+            policy_violations=[danger],
+            verifier_status="policy_blocked",
+        )
+        append_execution_ledger(
+            root,
+            paths.run_id,
+            "policy_blocked",
+            actor="policy-gate",
+            step_id=intent.step_id,
+            status=decision.decision,
+            permission_mode=permission_mode,
+            bypass_mode="execute" if execute else "prepare",
+            artifact=rel_or_empty(root, result_path),
+            extra={"intent_id": intent.intent_id, "reason": danger},
+        )
+        set_agent_status(paths, f"{agent}-native", "failed")
+        update_state(paths, phase="provider", status="needs_attention")
+        return result_path
+
+    check_intent(root, paths.run_id, intent.intent_id)
+    decision = decide_intent(root, paths.run_id, intent.intent_id, decided_by="policy-gate")
+
+    if not execute:
+        stdout_path.write_text("", encoding="utf-8")
+        stderr_path.write_text("", encoding="utf-8")
+        output_path.write_text("", encoding="utf-8")
+        result = provider_result_record(
+            root,
+            agent=agent,
+            role="native",
+            status="prepared",
+            provider_mode="native_passthrough",
+            permission_mode=permission_mode,
+            command_path=command_path,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+            output_path=output_path,
+            commands_run=[" ".join(shlex.quote(part) for part in command)],
+            artifacts_created=[rel_or_empty(root, result_path), rel_or_empty(root, command_path)],
+            risk_level=intent.risk_level,
+            execute=False,
+            reason=f"native passthrough prepared; decision={decision.decision}",
+        )
+        result_path.write_text(format_simple_yaml(result), encoding="utf-8")
+        create_proof(
+            root,
+            paths.run_id,
+            intent.intent_id,
+            status="prepared",
+            stdout_path=rel_or_empty(root, stdout_path),
+            stderr_path=rel_or_empty(root, stderr_path),
+            output_path=rel_or_empty(root, output_path),
+            commands_run=[" ".join(shlex.quote(part) for part in command)],
+            artifacts_created=[rel_or_empty(root, result_path), rel_or_empty(root, command_path)],
+            verifier_status="not_run",
+        )
+        set_agent_status(paths, f"{agent}-native", "prepared")
+        update_state(paths, phase="provider", status="ready")
+        return result_path
+
+    if decision.decision not in {"approved", "approved_with_conditions", "prepare_only"}:
+        reason = f"provider passthrough execution blocked by decision={decision.decision}"
+        stderr_path.write_text(reason + "\n", encoding="utf-8")
+        stdout_path.write_text("", encoding="utf-8")
+        output_path.write_text("", encoding="utf-8")
+        result = provider_result_record(
+            root,
+            agent=agent,
+            role="native",
+            status="failed",
+            provider_mode="policy_blocked",
+            permission_mode=permission_mode,
+            command_path=command_path,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+            output_path=output_path,
+            commands_run=[" ".join(shlex.quote(part) for part in command)],
+            artifacts_created=[rel_or_empty(root, result_path), rel_or_empty(root, command_path), rel_or_empty(root, stderr_path)],
+            risk_level=intent.risk_level,
+            policy_violations=[reason],
+            execute=True,
+            reason=reason,
+        )
+        result_path.write_text(format_simple_yaml(result), encoding="utf-8")
+        create_proof(
+            root,
+            paths.run_id,
+            intent.intent_id,
+            status="blocked",
+            stdout_path=rel_or_empty(root, stdout_path),
+            stderr_path=rel_or_empty(root, stderr_path),
+            output_path=rel_or_empty(root, output_path),
+            commands_run=[" ".join(shlex.quote(part) for part in command)],
+            artifacts_created=[rel_or_empty(root, result_path), rel_or_empty(root, command_path), rel_or_empty(root, stderr_path)],
+            policy_violations=[reason],
+            verifier_status="policy_blocked",
+        )
+        set_agent_status(paths, f"{agent}-native", "failed")
+        update_state(paths, phase="provider", status="needs_attention")
+        return result_path
+
+    started_at = now_iso()
+    started = time.monotonic()
+    try:
+        completed = subprocess.run(command, cwd=root, text=True, capture_output=True, timeout=timeout)
+        returncode = completed.returncode
+        stdout = completed.stdout or ""
+        stderr = completed.stderr or ""
+    except subprocess.TimeoutExpired as exc:
+        returncode = 124
+        stdout = exc.stdout if isinstance(exc.stdout, str) else ""
+        stderr = (exc.stderr if isinstance(exc.stderr, str) else "") + f"\nprovider passthrough timed out after {timeout}s\n"
+    finished_at = now_iso()
+    duration_ms = int((time.monotonic() - started) * 1000)
+    stdout_path.write_text(stdout, encoding="utf-8")
+    stderr_path.write_text(stderr, encoding="utf-8")
+    output_path.write_text(stdout, encoding="utf-8")
+    status = "completed" if returncode == 0 else "failed"
+    result = provider_result_record(
+        root,
+        agent=agent,
+        role="native",
+        status=status,
+        provider_mode="native_passthrough",
+        permission_mode=permission_mode,
+        command_path=command_path,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        output_path=output_path,
+        returncode=returncode,
+        started_at=started_at,
+        finished_at=finished_at,
+        duration_ms=duration_ms,
+        commands_run=[" ".join(shlex.quote(part) for part in command)],
+        artifacts_created=[
+            rel_or_empty(root, result_path),
+            rel_or_empty(root, command_path),
+            rel_or_empty(root, stdout_path),
+            rel_or_empty(root, stderr_path),
+            rel_or_empty(root, output_path),
+        ],
+        risk_level=intent.risk_level if status == "completed" else "medium",
+        execute=True,
+        reason=f"native passthrough executed; decision={decision.decision}",
+    )
+    result_path.write_text(format_simple_yaml(result), encoding="utf-8")
+    create_proof(
+        root,
+        paths.run_id,
+        intent.intent_id,
+        status=status,
+        returncode=returncode,
+        started_at=started_at,
+        duration_ms=duration_ms,
+        stdout_path=rel_or_empty(root, stdout_path),
+        stderr_path=rel_or_empty(root, stderr_path),
+        output_path=rel_or_empty(root, output_path),
+        commands_run=[" ".join(shlex.quote(part) for part in command)],
+        artifacts_created=[
+            rel_or_empty(root, result_path),
+            rel_or_empty(root, command_path),
+            rel_or_empty(root, stdout_path),
+            rel_or_empty(root, stderr_path),
+            rel_or_empty(root, output_path),
+        ],
+        verifier_status="not_run",
+    )
+    append_event(paths, f"provider_passthrough_{status}", {"agent": agent, "artifact": result_path.relative_to(root).as_posix()})
+    append_transcript(paths, "Ran", f"{agent}/native passthrough -> `{result_path.relative_to(root).as_posix()}` status={status}")
+    set_agent_status(paths, f"{agent}-native", status)
+    update_state(paths, phase="provider", status="in_progress" if status == "completed" else "needs_attention")
+    return result_path
+
+
+def next_passthrough_index(provider_dir: Path) -> int:
+    indexes: list[int] = []
+    for path in provider_dir.glob("passthrough_*_result.yaml"):
+        try:
+            indexes.append(int(path.name.split("_")[1]))
+        except (IndexError, ValueError):
+            continue
+    return (max(indexes) + 1) if indexes else 1
+
+
+def passthrough_permission_mode(agent: str, native_args: list[str]) -> str:
+    lowered = [arg.lower() for arg in native_args]
+    if agent == "codex":
+        sandbox = option_value(lowered, "--sandbox")
+        if sandbox == "read-only":
+            return "read_only"
+        if sandbox in {"workspace-write", "danger-full-access", "full", "open"}:
+            return "workspace_write_with_policy"
+    if agent == "claude" and option_value(lowered, "--permission-mode") in {"plan", "default"}:
+        return "read_only"
+    if agent == "gemini" and option_value(lowered, "--approval-mode") in {"plan", "default"}:
+        return "read_only"
+    return "provider_native"
+
+
+def option_value(args: list[str], option: str) -> str | None:
+    if option not in args:
+        return None
+    index = args.index(option)
+    if index + 1 >= len(args):
+        return ""
+    return args[index + 1]
+
+
+def passthrough_danger_reason(agent: str, native_args: list[str]) -> str | None:
+    lowered = [arg.lower() for arg in native_args]
+    if agent == "claude" and "--dangerously-skip-permissions" in lowered:
+        return "blocked dangerous Claude bypass flag: --dangerously-skip-permissions"
+    if agent == "gemini" and any(flag in lowered for flag in {"--yolo", "--skip-trust", "--trust-all", "--trusted"}):
+        return "blocked Gemini trust/approval bypass flag"
+    if agent == "codex":
+        sandbox = option_value(lowered, "--sandbox")
+        approval = option_value(lowered, "--ask-for-approval") or option_value(lowered, "--approval")
+        if sandbox in {"workspace-write", "danger-full-access", "full", "open"} and approval == "never":
+            return f"blocked Codex unsafe sandbox/approval combination: sandbox={sandbox} approval={approval}"
+    if native_args and Path(native_args[0]).name in {"sh", "bash", "zsh", "fish"}:
+        command_text = " ".join(lowered)
+        destructive = ["rm -rf", "git reset --hard", "mkfs", "dd if=", ":(){", ">/dev/sd", "> /dev/sd"]
+        if any(pattern in command_text for pattern in destructive):
+            return "blocked destructive shell wrapper in provider passthrough"
+    return None
+
+
+def passthrough_execute_allowlist_reason(agent: str, native_args: list[str]) -> str | None:
+    """Return a block reason unless native args match a safe execute profile."""
+    lowered = [arg.lower() for arg in native_args]
+    command_name = Path(lowered[0]).name if lowered else ""
+    if agent == "codex":
+        sandbox = option_value(lowered, "--sandbox")
+        if command_name == "exec" and sandbox == "read-only":
+            return None
+        return "blocked provider passthrough execute outside Codex allowlist: require `exec --sandbox read-only`"
+    if agent == "claude":
+        permission_mode = option_value(lowered, "--permission-mode")
+        if ("-p" in lowered or "--print" in lowered) and permission_mode in {"plan", "default"}:
+            return None
+        return "blocked provider passthrough execute outside Claude allowlist: require print mode with --permission-mode plan/default"
+    if agent == "gemini":
+        approval_mode = option_value(lowered, "--approval-mode")
+        if ("-p" in lowered or "--prompt" in lowered) and approval_mode in {"plan", "default"}:
+            return None
+        return "blocked provider passthrough execute outside Gemini allowlist: require prompt mode with --approval-mode plan/default"
+    return "blocked provider passthrough execute for unknown provider profile"
+
+
+def build_provider_passthrough_intent(
+    root: Path,
+    run_id: str,
+    agent: str,
+    command_path: Path,
+    command: list[str],
+    *,
+    execute: bool,
+    permission_mode: str,
+    risk_level: str,
+) -> Any:
+    from .protocol import ExecutionIntent
+    from .workloop import relative_artifact
+
+    intents_dir = root / ".runs" / run_id / "execution_intents"
+    attempt = len(list(intents_dir.glob(f"intent_{run_id}_provider_{agent}_native_*.json"))) + 1 if intents_dir.exists() else 1
+    prompt_hash = None
+    command_hash = stable_id("command", *command)
+    authority_class = "read_only" if execute and permission_mode == "read_only" else ("provider_bypass_reversible" if execute else "prepare_only")
+    return ExecutionIntent(
+        schema_version=1,
+        intent_id=f"intent_{run_id}_provider_{agent}_native_{attempt:02d}",
+        run_id=run_id,
+        step_id=f"provider_{agent}_native",
+        attempt=attempt,
+        requested_by="operator",
+        owner_role=f"{agent}-native",
+        provider=agent,
+        provider_family={"claude": "anthropic", "codex": "openai", "gemini": "google"}.get(agent, agent),
+        action_type="provider_cli",
+        authority_class=authority_class,
+        command_path=relative_artifact(root, command_path),
+        command_hash=command_hash,
+        prompt_path=None,
+        prompt_hash=prompt_hash,
+        cwd=root.as_posix(),
+        permission_mode=permission_mode,
+        bypass_mode="execute" if execute else "prepare",
+        reversibility=1.0 if permission_mode == "read_only" else 0.6,
+        reversibility_source="estimated",
+        reversibility_factors=["native_provider_passthrough", f"permission_mode={permission_mode}"],
+        expected_artifacts=[relative_artifact(root, command_path)],
+        expected_file_scopes=[],
+        timeout_seconds=600,
+        network_access="provider_default",
+        env_allowlist=["PATH", "HOME", "HIVE_*"],
+        risk_level=risk_level,
+        created_at=now_iso(),
+    )
 
 
 def provider_result_record(

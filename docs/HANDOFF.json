@@ -1,0 +1,162 @@
+{
+  "protocol_version": 1,
+  "turn": "codex",
+  "locked": false,
+  "updated_at": "2026-05-09T19:02:00+09:00",
+  "phase": "H-P0-production-runtime-close",
+  "north_star": "Hive Mind production v0 is a local, auditable provider-CLI runtime harness. MemoryOS and CapabilityOS are optional substrates, not blockers.",
+  "task": {
+    "id": "H-P0.3",
+    "title": "Module extraction plan",
+    "description": "Make harness.py production-testable by extracting or preparing extraction for memory bridge, provider passthrough, flow runtime, and receipts.",
+    "owner": "codex",
+    "turn_type": "implementation",
+    "files_to_touch": [
+      "docs/HANDOFF.json",
+      "docs/AGENT_WORKLOG.md",
+      "docs/TODO.md",
+      ".ai-runs/shared/comms_log.md"
+    ],
+    "acceptance_criteria": [
+      "No behavior change without tests",
+      "Existing public imports keep working",
+      "Focused tests pass before full gate"
+    ],
+    "status": "in_progress"
+  },
+  "task_queue": [
+    {
+      "id": "H-P0.0",
+      "owner": "codex",
+      "title": "Start pingpong control plane",
+      "status": "done"
+    },
+    {
+      "id": "H-P0.1",
+      "owner": "codex",
+      "title": "Stabilize current green runtime tree",
+      "description": "Run the full Hive test gate, inspect current uncommitted scope, and prepare a commit boundary without reverting other agents' edits.",
+      "files_to_touch": [
+        "docs/HANDOFF.json",
+        "docs/AGENT_WORKLOG.md",
+        ".ai-runs/shared/comms_log.md"
+      ],
+      "acceptance_criteria": [
+        "Full test command result recorded",
+        "Uncommitted file scope summarized",
+        "No unrelated changes reverted",
+        "Next turn owner and task are explicit"
+      ],
+      "status": "done",
+      "tests": "252/252"
+    },
+    {
+      "id": "H-P0.2",
+      "owner": "claude",
+      "title": "Production runtime boundary review",
+      "description": "Review H-P0 claim and decide which docs/release gates must stop blocking on MemoryOS/CapabilityOS substrate features.",
+      "files_to_touch": [
+        "docs/HANDOFF.json",
+        "docs/PUBLISHING_GATE.md",
+        "docs/AGENT_WORKLOG.md",
+        ".ai-runs/shared/comms_log.md"
+      ],
+      "acceptance_criteria": [
+        "No overclaim beyond runtime harness v0",
+        "Post-v0 substrate items are separated from H-P0 blockers",
+        "Provider passthrough policy risks are named"
+      ],
+      "status": "done",
+      "notes": "Claude boundary position and PUBLISHING_GATE update already recorded in shared comms."
+    },
+    {
+      "id": "H-P0.3",
+      "owner": "codex",
+      "title": "Module extraction plan",
+      "description": "Make harness.py production-testable by extracting or preparing extraction for memory bridge, provider passthrough, flow runtime, and receipts.",
+      "files_to_touch": [
+        "hivemind/harness.py",
+        "hivemind/memory_bridge.py",
+        "hivemind/provider_passthrough.py",
+        "hivemind/flow_runtime.py",
+        "hivemind/run_receipts.py",
+        "tests/"
+      ],
+      "acceptance_criteria": [
+        "No behavior change without tests",
+        "Existing public imports keep working",
+        "Focused tests pass before full gate"
+      ],
+      "status": "in_progress"
+    },
+    {
+      "id": "H-P0.4",
+      "owner": "codex",
+      "title": "Hive inspect and receipt surface",
+      "description": "Add or harden a path-hidden operator summary over run state, provider results, ledger/proof, receipts, policy decisions, and next action.",
+      "files_to_touch": [
+        "hivemind/hive.py",
+        "hivemind/harness.py",
+        "hivemind/live.py",
+        "tests/"
+      ],
+      "acceptance_criteria": [
+        "hive inspect <run> works without reading run folders",
+        "Completed/failed/timeout/policy-blocked receipts are visible",
+        "MemoryOS absence is shown as degraded, not failed"
+      ],
+      "status": "queued"
+    },
+    {
+      "id": "H-P0.5",
+      "owner": "codex",
+      "title": "Hive-only production smoke gate",
+      "description": "Add a release smoke script that verifies Hive runtime without requiring MemoryOS.",
+      "files_to_touch": [
+        "scripts/",
+        "docs/PUBLISHING_GATE.md",
+        "tests/"
+      ],
+      "acceptance_criteria": [
+        "Smoke covers init, run, local step, provider dry-run, ledger replay, inspect, stop, and validation",
+        "Script fails on production-runtime regressions",
+        "MemoryOS is optional in the smoke"
+      ],
+      "status": "queued"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-05-09T18:49:00+09:00",
+      "agent": "codex",
+      "summary": "Initialized Hive H-P0 pingpong sprint using MemoryOS HANDOFF.json method."
+    },
+    {
+      "at": "2026-05-09T18:58:00+09:00",
+      "agent": "codex",
+      "summary": "Completed H-P0.0 control-plane setup and advanced to H-P0.1 stabilization."
+    },
+    {
+      "at": "2026-05-09T19:02:00+09:00",
+      "agent": "codex",
+      "summary": "H-P0.1 full gate passed: npm test ran 252 tests OK. H-P0.2 accepted from existing Claude/PUBLISHING_GATE record. Advanced to H-P0.3 module extraction."
+    }
+  ],
+  "quality_gate": {
+    "last_hive_tests": "252/252 before H-P0 sprint start",
+    "required_before_commit": [
+      "python -m py_compile hivemind/*.py",
+      "python -m unittest discover -s tests -p 'test_*.py'",
+      "git diff --check"
+    ]
+  },
+  "handoff_protocol": {
+    "completion_marker": "@@HIVE_HANDOFF_V1@@",
+    "turn_values": [
+      "codex",
+      "claude",
+      "operator"
+    ],
+    "rule": "Only the current turn owner edits files_to_touch for the active task. Other agents observe or review."
+  }
+}

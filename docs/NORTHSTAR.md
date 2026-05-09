@@ -125,6 +125,11 @@ Roles:
 - Local LLM workers classify, extract, compress, summarize, and draft handoffs as cheap provider-like workers.
 - Claude, Codex, Gemini, and future providers plug into the same artifact protocol according to their strengths.
 - Agent Society records performance, peer review, user feedback, and routing proposals, but prompt/routing mutations require review.
+- Review independence is a function of both provider family and context basin.
+  Agents working from sibling directories or clean checkouts can produce sharper
+  critique because they are less coupled to the target repo's local consensus.
+  Repeated cross-basin interaction increases coupling and should be tracked
+  rather than treated as permanent independence.
 
 ## Key Questions The System Must Answer
 

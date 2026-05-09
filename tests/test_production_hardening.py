@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import subprocess
 import tempfile
 import unittest
 
@@ -13,14 +14,18 @@ from hivemind.harness import (
     close_gap_loop,
     create_run,
     debate_topic,
+    ensure_memoryos_context,
     flow_advance,
     invoke_external_agent,
     llm_checker_report,
     local_benchmark_report,
     local_model_profile,
+    orchestrate_prompt,
     policy_report,
     set_agent_status,
 )
+from hivemind.plan_dag import load_dag
+from hivemind.workloop import read_execution_ledger
 from hivemind.run_validation import validate_run_artifacts
 from unittest.mock import patch
 
@@ -59,6 +64,64 @@ class ProductionHardeningTest(unittest.TestCase):
             text = output.read_text(encoding="utf-8")
             self.assertIn("forbidden_scope", text)
             self.assertIn("evolution of Single Human Intelligence", text)
+
+    def test_memoryos_context_bridge_records_trace_and_selected_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "hivemind"
+            root.mkdir()
+            memoryos_root = base / "memoryOS"
+            (memoryos_root / "memoryos").mkdir(parents=True)
+            (memoryos_root / "memoryos" / "cli.py").write_text("# stub\n", encoding="utf-8")
+            paths = create_run(root, "use remembered provider policy", project="Hive Mind")
+            pack = {
+                "role": "hive",
+                "audience": "local",
+                "task": "use remembered provider policy",
+                "trace_id": "trace_123",
+                "decisions": [{"id": "mem_decision_1", "type": "decision", "content": "Hive owns execution authority.", "raw_refs": ["docs/HIVE_WORKING_METHOD.md"]}],
+                "constraints": [{"id": "mem_constraint_1", "type": "constraint", "content": "MemoryOS owns accepted memory."}],
+                "open_questions": [],
+                "recent_actions": [],
+                "other": [],
+                "total_accepted": 2,
+                "total_available": 2,
+                "context_items": 2,
+                "token_estimate": 42,
+            }
+
+            with patch("hivemind.memory_bridge.subprocess.run") as run:
+                run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(pack), stderr="")
+                report = ensure_memoryos_context(root, paths.run_id)
+
+            self.assertEqual(report["status"], "available")
+            self.assertEqual(report["trace_id"], "trace_123")
+            self.assertEqual(report["accepted_memory_ids"], ["mem_decision_1", "mem_constraint_1"])
+            state = json.loads(paths.state.read_text(encoding="utf-8"))
+            self.assertEqual(state["accepted_memories_used"], ["mem_decision_1", "mem_constraint_1"])
+            self.assertEqual(state["memoryos_context"]["trace_id"], "trace_123")
+            self.assertTrue((root / report["artifact"]).exists())
+            context_text = paths.context_pack.read_text(encoding="utf-8")
+            self.assertIn("MemoryOS Accepted Context", context_text)
+            self.assertIn("trace_123", context_text)
+            self.assertIn("Hive owns execution authority.", context_text)
+            command = run.call_args.args[0]
+            self.assertIn("context", command)
+            self.assertIn("build", command)
+            self.assertIn("--json", command)
+
+    def test_memoryos_context_bridge_is_nonblocking_when_memoryos_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "hivemind"
+            root.mkdir()
+            paths = create_run(root, "no memoryos sibling", project="Hive Mind")
+
+            report = ensure_memoryos_context(root, paths.run_id)
+
+            self.assertEqual(report["status"], "unavailable")
+            self.assertEqual(report["accepted_memory_ids"], [])
+            self.assertTrue((root / report["artifact"]).exists())
+            self.assertIn("no memoryos sibling", paths.context_pack.read_text(encoding="utf-8"))
 
     def test_local_model_profile_writes_role_assignments(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -232,6 +295,53 @@ class ProductionHardeningTest(unittest.TestCase):
             self.assertEqual(claude_result["status"], "prepared")
             validation = validate_run_artifacts(run_dir, root)
             self.assertEqual(validation["verdict"], "pass", validation["issues"])
+
+    def test_orchestrate_prompt_creates_dag_lifecycle_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            report = orchestrate_prompt(root, "한글 입력 버그 고치고 테스트 추가", complexity="fast")
+            run_dir = root / ".runs" / report["run_id"]
+            dag = load_dag(root, report["run_id"])
+
+            self.assertIsNotNone(dag)
+            self.assertTrue((run_dir / "routing_plan.json").exists())
+            self.assertTrue((run_dir / "society_plan.json").exists())
+            self.assertTrue((run_dir / "plan_dag.json").exists())
+            self.assertTrue((run_dir / "artifacts" / "workflow_state.json").exists())
+            self.assertEqual(report["workflow"]["scheduler"], "plan_dag")
+            self.assertEqual(report["next"]["command"], "hive step run local_context")
+
+    def test_local_simple_task_can_execute_as_bounded_worker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            worker_output = {
+                "runtime": "ollama",
+                "model": "qwen3:1.7b",
+                "raw": '{"changed": ["summarized"], "verification": [], "unresolved": [], "memory_update_candidates": [], "needs_followup": false}',
+                "parsed": {
+                    "changed": ["summarized"],
+                    "verification": [],
+                    "unresolved": [],
+                    "memory_update_candidates": [],
+                    "needs_followup": False,
+                },
+            }
+
+            with patch("hivemind.harness.run_worker", return_value=worker_output):
+                report = orchestrate_prompt(root, "요약해줘", complexity="fast", execute_local=True)
+
+            run_dir = root / ".runs" / report["run_id"]
+            dag = load_dag(root, report["run_id"])
+
+            self.assertIsNotNone(dag)
+            self.assertTrue((run_dir / "agents" / "local" / "summarize.json").exists())
+            self.assertEqual(dag.by_id("local_summarize").status, "completed")
+            self.assertEqual(report["workflow"]["status"], "ready_for_verification")
+            self.assertEqual(report["next"]["command"], "hive step run verify")
+            events = [record.get("event") for record in read_execution_ledger(root, report["run_id"])]
+            self.assertIn("step_started", events)
+            self.assertIn("step_completed", events)
 
     def test_flow_advance_injects_completed_local_context_into_provider_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

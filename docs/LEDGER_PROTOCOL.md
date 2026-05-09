@@ -27,6 +27,35 @@ The ledger is the source of truth for authority. Other files such as
 `plan_dag.json`, `workflow_state.json`, and TUI read models may cache state, but
 they should be derivable from the ledger plus artifacts.
 
+## Protocol Stack
+
+Hive's execution stack starts from the MemoryOS pingpong pattern and adds layers
+without discarding it:
+
+```text
+L0 Pingpong Kernel
+  one serialized agent turn per scheduler round
+  shared run folder -> current runnable step -> bounded work -> ledger proof -> yield
+
+L1 Blackboard
+  multiple agents can see the same run state and declare ownership/scope/claims
+
+L2 Protocol Ledger
+  intent, policy, vote, decision, lease, execution, proof, evaluation, verification
+
+L3 Scheduler
+  decides serialized vs fan-out execution, barrier joins, conflicts, and escalation
+
+L4 MemoryOS Bridge
+  exports drafts, decisions, uncertainty, and accepted context across runs
+```
+
+`hive run start --scheduler pingpong` is the L0 mode. It intentionally dispatches
+only one runnable DAG step per round, even when multiple parallel steps are
+available. This keeps the MemoryOS `HANDOFF.json` turn-flip discipline, but moves
+authority from a shell loop into `execution_ledger.jsonl`, leases, proof, replay,
+and verifier state.
+
 ## Core Invariants
 
 1. No hidden execution.
@@ -348,6 +377,14 @@ One round:
 The TUI should show the current round from ledger state, not from supervisor
 stdout.
 
+Scheduler modes:
+
+- `fanout`: the default alpha scheduler. It can dispatch all currently runnable
+  parallel steps in one round, then join barriers.
+- `pingpong`: the L0 serialized kernel. It dispatches exactly one runnable step
+  per round and records `scheduler=pingpong`, `kernel_level=L0`, and
+  `turn_owner` in the scheduler ledger event.
+
 The ledger is also a UX abstraction boundary. Normal users should eventually see
 only prompt input, live logs, decisions, blocked gates, and outcomes. Direct
 artifact paths, directory trees, and JSON files are for the AIOS runtime,
@@ -400,7 +437,9 @@ P1:
 6. [ ] Extend replay with artifact content hashes and command/prompt hash drift.
 7. [x] Surface typed ProbeStep action, confidence, and criteria count in replay,
    TUI ledger cockpit, and supervised run status.
-8. [ ] Add richer TUI drilldown for per-intent artifacts and conditions.
+8. [x] Promote the MemoryOS pingpong loop into `hive run start --scheduler pingpong`
+   as the L0 serialized execution kernel.
+9. [ ] Add richer TUI drilldown for per-intent artifacts and conditions.
 
 P2:
 
@@ -413,8 +452,8 @@ P2:
 
 - Should quorum defaults live in `.hivemind/policy.yaml` or a separate
   `.hivemind/protocol.yaml`?
-- Should the first supervisor execute one step per round or keep running until a
-  human gate is reached?
+- Should `pingpong` become the default supervisor mode before public alpha, or
+  should `fanout` remain the default with L0 available for debugging/replay?
 - Should provider bypass be allowed for Claude first, or should the first
   automated executor be a local-only command runner?
 - How much touched-file precision is required before public alpha?

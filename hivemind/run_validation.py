@@ -18,6 +18,9 @@ ALLOWED_EVENT_TYPES = {
     "agent_started",
     "agent_completed",
     "agent_failed",
+    "provider_passthrough_prepared",
+    "provider_passthrough_completed",
+    "provider_passthrough_failed",
     "verification_created",
     "summary_created",
     "memory_drafts_created",
@@ -35,6 +38,7 @@ ALLOWED_EVENT_TYPES = {
     "debate_round_created",
     "debate_convergence_created",
     "memory_context_built",
+    "memoryos_context_retrieved",
     "semantic_verification_created",
     "handoff_quality_created",
     "routing_evidence_created",
@@ -108,7 +112,15 @@ REQUIRED_PROVIDER_RESULT_KEYS = {
     "capability_refs_used",
 }
 ALLOWED_PROVIDER_STATUSES = {"prepared", "completed", "failed", "fallback"}
-ALLOWED_PROVIDER_MODES = {"prepare_only", "execute_supported", "unavailable", "local_runtime", "http"}
+ALLOWED_PROVIDER_MODES = {
+    "prepare_only",
+    "execute_supported",
+    "unavailable",
+    "local_runtime",
+    "http",
+    "native_passthrough",
+    "policy_blocked",
+}
 
 
 def validate_run_artifacts(run_dir: Path, root: Path) -> dict[str, Any]:

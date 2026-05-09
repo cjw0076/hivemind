@@ -7,6 +7,7 @@ out. It intentionally hides directory and artifact paths unless requested.
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 from pathlib import Path
 from typing import Any
@@ -102,18 +103,7 @@ def build_memoryos_observability_report(
     add_memory_draft_projection(nodes, edges, paths.run_dir, run_node_id, paths.run_id, show_paths=show_paths)
     add_disagreement_projection(nodes, edges, paths.run_dir, run_node_id, paths.run_id, show_paths=show_paths)
 
-    for index, row in enumerate(build_log_rows(activity, ledger, tail=tail, show_paths=show_paths)):
-        event_id = stable_node_id("run", paths.run_id, "event", str(index), row.get("ts"), row.get("kind"))
-        events.append(
-            {
-                "id": event_id,
-                "type": str(row.get("kind") or "event"),
-                "ts": row.get("ts"),
-                "actor": row.get("actor"),
-                "summary": row.get("summary"),
-                "refs": [run_node_id],
-            }
-        )
+    events.extend(build_memoryos_events(paths.run_id, run_node_id, activity, ledger, tail=tail, show_paths=show_paths))
 
     for record in ledger:
         step = record.get("step_id")
@@ -135,6 +125,7 @@ def build_memoryos_observability_report(
         "schema_version": 1,
         "kind": "memoryos_neural_map_read_model",
         "producer": "hive",
+        "memoryos_contract": "HiveLiveEventV1",
         "generated_at": now_iso(),
         "run_id": paths.run_id,
         "paths_hidden": not show_paths,
@@ -288,6 +279,134 @@ def read_json_file(path: Path) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
+
+
+def build_memoryos_events(
+    run_id: str,
+    run_node_id: str,
+    activity: list[dict[str, Any]],
+    ledger: list[dict[str, Any]],
+    *,
+    tail: int,
+    show_paths: bool,
+) -> list[dict[str, Any]]:
+    """Project Hive activity and execution ledger rows into MemoryOS live events.
+
+    Ledger events use seq/hash-derived IDs for durable dedupe. Hive activity rows
+    predate the ledger, so they use a content fingerprint instead of tail index.
+    """
+    rows: list[dict[str, Any]] = []
+    for item in activity:
+        event_type = str(item.get("action") or "activity")
+        timestamp = str(item.get("ts") or "")
+        agent_id = str(item.get("actor") or "hive")
+        summary = sanitize_summary(str(item.get("summary") or ""), show_paths=show_paths)
+        raw_payload = item.get("payload") or {}
+        payload = safe_projection(raw_payload, show_paths=show_paths)
+        source_key = stable_digest(
+            {
+                "run_id": run_id,
+                "source": "hive_activity",
+                "timestamp": timestamp,
+                "agent_id": agent_id,
+                "event_type": event_type,
+                "summary": item.get("summary") or "",
+                "payload": raw_payload,
+            }
+        )
+        event_id = stable_node_id("run", run_id, "activity_event", source_key[:20])
+        rows.append(
+            memoryos_event(
+                event_id=event_id,
+                event_type=event_type,
+                run_id=run_id,
+                timestamp=timestamp,
+                agent_id=agent_id,
+                summary=summary,
+                refs=[run_node_id],
+                payload={
+                    "source": "hive_activity",
+                    "summary": summary,
+                    "refs": [run_node_id],
+                    "activity_action": event_type,
+                    "activity_payload": payload,
+                },
+            )
+        )
+    for item in ledger:
+        event_type = str(item.get("event") or "event")
+        timestamp = str(item.get("ts") or "")
+        agent_id = str(item.get("actor") or "ledger")
+        summary = summarize_ledger_record(item, show_paths=show_paths)
+        ledger_hash = str(item.get("hash") or "")
+        seq = item.get("seq")
+        source_key = f"{seq}:{ledger_hash}" if seq and ledger_hash else stable_digest(item)
+        event_id = stable_node_id("run", run_id, "ledger_event", source_key[:28])
+        rows.append(
+            memoryos_event(
+                event_id=event_id,
+                event_type=event_type,
+                run_id=run_id,
+                timestamp=timestamp,
+                agent_id=agent_id,
+                summary=summary,
+                refs=[run_node_id],
+                payload={
+                    "source": "execution_ledger",
+                    "summary": summary,
+                    "refs": [run_node_id],
+                    "ledger_seq": seq,
+                    "ledger_hash": ledger_hash,
+                    "step_id": item.get("step_id"),
+                    "status": item.get("status"),
+                    "permission_mode": item.get("permission_mode"),
+                    "bypass_mode": item.get("bypass_mode"),
+                    "files_touched": safe_projection(item.get("files_touched") or [], show_paths=show_paths),
+                    "artifact": safe_projection(item.get("artifact"), show_paths=show_paths),
+                    "message": sanitize_summary(str(item.get("message") or ""), show_paths=show_paths),
+                    "extra": safe_projection(item.get("extra") or {}, show_paths=show_paths),
+                },
+            )
+        )
+    rows.sort(key=lambda row: (str(row.get("timestamp") or ""), str(row.get("event_id") or "")))
+    return rows[-max(1, tail) :]
+
+
+def memoryos_event(
+    *,
+    event_id: str,
+    event_type: str,
+    run_id: str,
+    timestamp: str,
+    agent_id: str,
+    summary: str,
+    refs: list[str],
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    payload = dict(payload)
+    payload.setdefault("summary", summary)
+    payload.setdefault("refs", refs)
+    return {
+        "schema_version": 1,
+        "event_id": event_id,
+        "event_type": event_type,
+        "run_id": run_id,
+        "timestamp": timestamp,
+        "agent_id": agent_id,
+        "payload": payload,
+        # Backward-compatible read-model aliases for existing UI consumers.
+        "id": event_id,
+        "type": event_type,
+        "ts": timestamp,
+        "actor": agent_id,
+        "summary": summary,
+        "refs": refs,
+    }
+
+
+def stable_digest(value: Any) -> str:
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def safe_projection(value: Any, *, show_paths: bool) -> Any:

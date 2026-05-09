@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from hivemind.harness import create_run
+from hivemind.harness import append_hive_activity, create_run
 from hivemind.live import build_live_report, build_memoryos_observability_report, format_live_report, sanitize_summary
 from hivemind.plan_dag import build_dag, save_dag
 from hivemind.protocol import build_execution_intent, check_intent, decide_intent, save_intent
@@ -129,8 +129,77 @@ class LiveSurfaceTest(unittest.TestCase):
             self.assertTrue(any(node["type"] == "agent_turn" for node in report["graph"]["nodes"]))
             self.assertTrue(any(node["type"] == "memory_draft" for node in report["graph"]["nodes"]))
             self.assertTrue(any(edge["type"] == "participates_in" for edge in report["graph"]["edges"]))
+            self.assertEqual(report["memoryos_contract"], "HiveLiveEventV1")
+            self.assertTrue(report["events"])
+            event = report["events"][0]
+            self.assertIn("event_id", event)
+            self.assertIn("event_type", event)
+            self.assertEqual(event["run_id"], paths.run_id)
+            self.assertIn("timestamp", event)
+            self.assertIn("agent_id", event)
+            self.assertIn("payload", event)
             self.assertNotIn(".runs/run_x", encoded)
             self.assertNotIn("/home/user", encoded)
+
+    def test_memoryos_events_use_stable_ledger_ids_across_tail_sizes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "stable memoryos events")
+            first = append_execution_ledger(
+                root,
+                paths.run_id,
+                "step_started",
+                actor="harness",
+                step_id="context",
+                status="running",
+            )
+            second = append_execution_ledger(
+                root,
+                paths.run_id,
+                "step_completed",
+                actor="harness",
+                step_id="context",
+                status="completed",
+            )
+
+            short_report = build_memoryos_observability_report(root, paths.run_id, tail=1)
+            long_report = build_memoryos_observability_report(root, paths.run_id, tail=4)
+            short_by_seq = {
+                event["payload"].get("ledger_seq"): event
+                for event in short_report["events"]
+                if event["payload"].get("source") == "execution_ledger"
+            }
+            long_by_seq = {
+                event["payload"].get("ledger_seq"): event
+                for event in long_report["events"]
+                if event["payload"].get("source") == "execution_ledger"
+            }
+
+            self.assertEqual(long_by_seq[first["seq"]]["payload"]["ledger_hash"], first["hash"])
+            self.assertEqual(short_by_seq[second["seq"]]["event_id"], long_by_seq[second["seq"]]["event_id"])
+            self.assertEqual(short_by_seq[second["seq"]]["payload"]["ledger_hash"], second["hash"])
+            self.assertEqual(short_by_seq[second["seq"]]["id"], short_by_seq[second["seq"]]["event_id"])
+
+    def test_memoryos_activity_event_identity_is_independent_from_path_hiding(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "activity id stable")
+            append_hive_activity(
+                paths,
+                "hive-mind",
+                "log",
+                "prepared result=.runs/run_x/result.json path=/home/user/workspaces/a",
+                {"artifact": ".runs/run_x/result.json"},
+            )
+
+            hidden = build_memoryos_observability_report(root, paths.run_id, tail=10, show_paths=False)
+            shown = build_memoryos_observability_report(root, paths.run_id, tail=10, show_paths=True)
+            hidden_event = next(event for event in hidden["events"] if event["event_type"] == "log")
+            shown_event = next(event for event in shown["events"] if event["event_type"] == "log")
+
+            self.assertEqual(hidden_event["event_id"], shown_event["event_id"])
+            self.assertIn("<hidden>", hidden_event["summary"])
+            self.assertIn(".runs/run_x", shown_event["summary"])
 
     def test_memoryos_observability_report_includes_authority_gate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
