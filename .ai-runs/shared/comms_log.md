@@ -940,3 +940,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
   Hive writes `memory_drafts.json`. MemoryOS decides what becomes accepted memory. CapabilityOS later recommends routing. These boundaries should not drift during H-P0 work even if MemoryOS is available.
 
 - Updated: `docs/PUBLISHING_GATE.md` rewritten to H-P0 checklist format with explicit "what moves to post-v0" section.
+
+## 2026-05-09 19:15 KST - Codex
+
+- Context: H-P0 sprint is running through the MemoryOS-style pingpong `docs/HANDOFF.json` loop. User asked to proceed with three critical judgments: module split first, provider passthrough allowlist, and `hive inspect <run>`.
+- Decision: Treat these as production-runtime prerequisites, not polish. Extracted MemoryOS context bridge logic into `hivemind/memory_bridge.py`, enforced provider/profile allowlists for passthrough `--execute`, and added `hivemind/inspect_run.py` as the path-hidden operator inspection surface.
+- Evidence: Focused gate passed: `python -m unittest tests.test_inspect tests.test_provider_passthrough tests.test_production_hardening`, `python -m py_compile hivemind/*.py`, and `git diff --check`. `docs/HANDOFF.json`, `docs/TODO.md`, and `docs/PUBLISHING_GATE.md` were updated to reflect the completed slice.
+- Next: Continue H-P0.3 extraction for provider passthrough, flow runtime, and run receipts. H-P0.5 should add the Hive-only production smoke script.

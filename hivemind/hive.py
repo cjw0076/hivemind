@@ -83,6 +83,8 @@ from .harness import (
     run_checks,
     run_board,
     run_audit_report,
+    inspect_run,
+    format_inspect_run,
     policy_report,
     workspace_layout_report,
 )
@@ -111,6 +113,7 @@ from .protocol import (
 from .tui import TUI_VIEWS, print_status, run_tui
 from .workloop import format_execution_ledger, format_ledger_replay, read_execution_ledger, replay_execution_ledger
 from .live import build_live_report, build_memoryos_observability_report, format_live_report, start_live_prompt
+from .inspect_run import build_inspect_report, format_inspect_report
 from .supervisor import (
     format_supervisor_status,
     format_supervisor_tail,
@@ -142,6 +145,7 @@ COMMANDS = {
     "events",
     "ledger",
     "live",
+    "inspect",
     "transcript",
     "artifacts",
     "society",
@@ -417,6 +421,12 @@ def _main(argv: list[str] | None = None) -> None:
     live_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="default")
     live_cmd.add_argument("--memoryos", action="store_true", help="emit MemoryOS neural-map observability read model as JSON")
     live_cmd.add_argument("--json", action="store_true")
+
+    inspect_cmd = sub.add_parser("inspect", help="inspect run receipts, ledger, provider results, and next action")
+    inspect_cmd.add_argument("run_id", nargs="?", help="run ID to inspect (default: most recent)")
+    inspect_cmd.add_argument("--paths", action="store_true", help="show artifact/file paths for debugging")
+    inspect_cmd.add_argument("--verbose", "-v", action="store_true", help="alias for --paths during production inspection")
+    inspect_cmd.add_argument("--json", action="store_true")
 
     transcript_cmd = sub.add_parser("transcript", help="show transcript or open transcript TUI view")
     transcript_cmd.add_argument("--run-id")
@@ -1389,6 +1399,16 @@ def _main(argv: list[str] | None = None) -> None:
             print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
         else:
             print(format_run_audit(report))
+        return
+    if args.cmd == "inspect":
+        import json as _json
+        run_id_arg = getattr(args, "run_id", None)
+        show_paths = bool(getattr(args, "paths", False) or getattr(args, "verbose", False))
+        report = build_inspect_report(root, run_id_arg, show_paths=show_paths)
+        if args.json:
+            print(_json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_inspect_report(report, show_paths=show_paths))
         return
     if args.cmd == "workspace":
         report = workspace_layout_report(args.layout)

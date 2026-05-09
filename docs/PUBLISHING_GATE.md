@@ -27,16 +27,17 @@ work without it. MemoryOS bridge is optional and gracefully degraded.
 - [ ] Claude/Codex/Gemini/local native CLI stable passthrough (`hive provider`)
 - [ ] timeout, exit-code, stdout/stderr artifact, failure checkpoint
 - [ ] dangerous flag denylist + policy gate before execution
+- [x] provider/profile allowlist for `hive provider --execute` safe native profiles
 - [ ] `--execute` always explicit; dry-run is default
 
 ### 2. Execution ledger / receipt / proof
 - [ ] every prompt/command/result/artifact path recorded in ledger
 - [ ] failed/timeout/partial runs leave a readable artifact
-- [ ] `hive inspect <run>` emits ledger replay with hash chain
+- [x] `hive inspect <run>` emits ledger replay with hash chain
 - [ ] `hive diff` reports touched files + ledger summary
 
 ### 3. Scheduler stability
-- [ ] L0 pingpong (`--scheduler pingpong`) — one serialized turn per round
+- [x] L0 pingpong (`--scheduler pingpong`) — one serialized turn per round
 - [ ] L1 blackboard/claim — step lease, single controller
 - [ ] fanout isolated as experimental / not default in production commands
 - [ ] `hive run stop` terminates cleanly and writes a stop receipt
@@ -45,17 +46,17 @@ work without it. MemoryOS bridge is optional and gracefully degraded.
 - [ ] `hive run` — start/status/tail/stop
 - [ ] `hive status` — current run health without opening run folder
 - [ ] `hive live` — real-time event stream
-- [ ] `hive inspect <run>` — replay/debug artifact report
+- [x] `hive inspect <run>` — replay/debug artifact report
 - [ ] `hive next` — one-line operator decision grounded in run state
 
 ### 5. MemoryOS bridge (optional / graceful degrade)
-- [ ] if MemoryOS is absent, context build silently skips
-- [ ] if MemoryOS returns empty, run proceeds normally
+- [x] if MemoryOS is absent, context build silently skips
+- [x] if MemoryOS returns empty, run proceeds normally
 - [ ] Hive only writes `memory_drafts.json`; acceptance is MemoryOS's decision
 - [ ] `hive live --memoryos` emits stable event taxonomy, not Hive action names
 
 ### 6. Release hygiene
-- [ ] `scripts/public-release-check.sh` passes
+- [x] `scripts/public-release-check.sh` passes (9/9 checks green as of 2026-05-09)
 - [ ] README states "provider-CLI harness, production v0" clearly
 - [ ] security review record under `docs/security/`
 - [ ] no production-grade AIOS claims in README or CLI output

@@ -2738,6 +2738,225 @@ def format_run_audit(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def inspect_run(root: "Path", run_id: str | None = None, *, verbose: bool = False) -> dict[str, Any]:
+    """Deep audit of a run: ledger chain, step evaluations, disagreements, ProbeStep results, provider receipts.
+
+    Returns a machine-readable dict. Use format_inspect_run() for operator output.
+    """
+    from .workloop import read_execution_ledger, replay_steps
+    from .plan_dag import load_dag
+
+    paths, state = load_run(root, run_id)
+    run_id = paths.run_id
+
+    # ── Ledger ────────────────────────────────────────────────────────────────
+    ledger: list[dict[str, Any]] = []
+    chain_ok = True
+    try:
+        ledger = read_execution_ledger(root, run_id)
+        # basic hash chain check: each entry's prev_hash matches prior entry's hash
+        for i, entry in enumerate(ledger):
+            if i > 0 and entry.get("prev_hash") != ledger[i - 1].get("hash"):
+                chain_ok = False
+                break
+    except Exception:
+        chain_ok = False
+
+    # ── DAG step evaluations ──────────────────────────────────────────────────
+    step_evals: list[dict[str, Any]] = []
+    evals_dir = paths.run_dir / "step_evaluations"
+    if evals_dir.exists():
+        for f in sorted(evals_dir.glob("*.json")):
+            try:
+                ev = json.loads(f.read_text(encoding="utf-8"))
+                ev["_step_id"] = f.stem
+                step_evals.append(ev)
+            except Exception:
+                pass
+
+    # ── Disagreements ─────────────────────────────────────────────────────────
+    disagreements: list[dict[str, Any]] = []
+    dis_path = paths.run_dir / "disagreements.json"
+    if dis_path.exists():
+        try:
+            disagreements = json.loads(dis_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    # ── ProbeStep results ─────────────────────────────────────────────────────
+    probes: list[dict[str, Any]] = []
+    probes_dir = paths.run_dir / "step_probes"
+    if probes_dir.exists():
+        for f in sorted(probes_dir.glob("*.json")):
+            if "_override" in f.name:
+                continue
+            try:
+                pr = json.loads(f.read_text(encoding="utf-8"))
+                probes.append(pr)
+            except Exception:
+                pass
+
+    # ── Provider receipts (agents/) ───────────────────────────────────────────
+    receipts: list[dict[str, Any]] = []
+    for result_path in sorted((paths.run_dir / "agents").glob("*/*_result.yaml")):
+        data = safe_load_yaml(result_path)
+        receipts.append({
+            "path": result_path.relative_to(root).as_posix(),
+            "provider": data.get("provider"),
+            "role": data.get("role"),
+            "status": data.get("status"),
+            "risk_level": data.get("risk_level"),
+            "artifacts": data.get("artifacts") or [],
+            "commands_run": data.get("commands_run") or [],
+            "tests_run": data.get("tests_run") or [],
+            "policy_violations": data.get("policy_violations") or [],
+        })
+
+    # ── Protocol proofs (artifacts/decisions/) ────────────────────────────────
+    proofs: list[dict[str, Any]] = []
+    proofs_dir = paths.run_dir / "artifacts" / "proofs"
+    if proofs_dir.exists():
+        for f in sorted(proofs_dir.glob("*.json")):
+            try:
+                proofs.append(json.loads(f.read_text(encoding="utf-8")))
+            except Exception:
+                pass
+
+    # ── DAG summary ───────────────────────────────────────────────────────────
+    dag = load_dag(root, run_id)
+    dag_summary: dict[str, Any] = {}
+    if dag:
+        by_status: dict[str, list[str]] = {}
+        for s in dag.steps:
+            by_status.setdefault(s.status, []).append(s.step_id)
+        dag_summary = {
+            "step_count": len(dag.steps),
+            "by_status": by_status,
+            "runnable": [s.step_id for s in dag.steps if dag.runnable()[:1] == [s]],
+        }
+
+    # ── Synthesis ─────────────────────────────────────────────────────────────
+    escalated = [e for e in step_evals if e.get("escalation_triggered")]
+    probe_failures = [p for p in probes if not p.get("passed")]
+    receipt_failures = [r for r in receipts if r.get("status") == "failed"]
+    verdict = "clean"
+    if not chain_ok:
+        verdict = "chain_tampered"
+    elif probe_failures or receipt_failures:
+        verdict = "failures"
+    elif escalated or disagreements:
+        verdict = "escalated"
+
+    return {
+        "schema_version": 1,
+        "generated_at": now_iso(),
+        "run_id": run_id,
+        "task": state.get("user_request"),
+        "phase": state.get("current_phase"),
+        "verdict": verdict,
+        "ledger": {
+            "entry_count": len(ledger),
+            "chain_ok": chain_ok,
+            "events": [e.get("event") for e in ledger] if verbose else [],
+            "last_event": ledger[-1].get("event") if ledger else None,
+        },
+        "dag": dag_summary,
+        "step_evaluations": step_evals if verbose else [
+            {"step_id": e["_step_id"], "recommended_action": e.get("recommended_action"),
+             "escalation_triggered": e.get("escalation_triggered"), "risk_level": e.get("risk_level")}
+            for e in step_evals
+        ],
+        "disagreements": disagreements,
+        "probes": probes if verbose else [
+            {"step_id": p.get("step_id"), "passed": p.get("passed"), "criterion_type": p.get("criterion_type"),
+             "next_action": p.get("next_action")}
+            for p in probes
+        ],
+        "receipts": receipts,
+        "proofs": proofs,
+        "summary": {
+            "ledger_entries": len(ledger),
+            "step_evals": len(step_evals),
+            "escalated_steps": len(escalated),
+            "disagreement_records": len(disagreements),
+            "probe_results": len(probes),
+            "probe_failures": len(probe_failures),
+            "provider_receipts": len(receipts),
+            "receipt_failures": len(receipt_failures),
+            "proofs": len(proofs),
+        },
+    }
+
+
+def format_inspect_run(report: dict[str, Any]) -> str:
+    """Human-readable operator output for hive inspect."""
+    lines = [
+        f"Hive Inspect: {report.get('run_id')}",
+        f"Task:    {(report.get('task') or '')[:80]}",
+        f"Phase:   {report.get('phase')}",
+        f"Verdict: {report.get('verdict').upper()}",
+        "",
+    ]
+    # Ledger
+    ledger = report.get("ledger") or {}
+    chain_sym = "✓" if ledger.get("chain_ok") else "✗"
+    lines.append(f"Ledger  {chain_sym} {ledger.get('entry_count')} entries  last={ledger.get('last_event')}")
+
+    # DAG
+    dag = report.get("dag") or {}
+    if dag:
+        status_summary = "  ".join(f"{k}={len(v)}" for k, v in sorted((dag.get("by_status") or {}).items()))
+        lines.append(f"DAG     {dag.get('step_count')} steps  {status_summary}")
+
+    # Step evaluations
+    evals = report.get("step_evaluations") or []
+    lines.append(f"\nStep Evaluations ({len(evals)}):")
+    if evals:
+        for e in evals:
+            esc = "⬆" if e.get("escalation_triggered") else " "
+            lines.append(f"  {esc} {e.get('step_id') or e.get('_step_id'):22}  {e.get('recommended_action'):12}  risk={e.get('risk_level')}")
+    else:
+        lines.append("  ○ none")
+
+    # Disagreements
+    disags = report.get("disagreements") or []
+    lines.append(f"\nDisagreements ({len(disags)}):")
+    if disags:
+        for d in disags:
+            lines.append(f"  ⚡ {d.get('step_id'):22}  {d.get('topology_type'):10}  severity={d.get('severity')}  axes={d.get('axes')}")
+    else:
+        lines.append("  ○ none")
+
+    # Probes
+    probes = report.get("probes") or []
+    lines.append(f"\nProbe Results ({len(probes)}):")
+    if probes:
+        for p in probes:
+            sym = "✓" if p.get("passed") else "✗"
+            lines.append(f"  {sym} {p.get('step_id'):22}  {p.get('criterion_type'):20}  next={p.get('next_action')}")
+    else:
+        lines.append("  ○ none")
+
+    # Provider receipts
+    receipts = report.get("receipts") or []
+    lines.append(f"\nProvider Receipts ({len(receipts)}):")
+    if receipts:
+        for r in receipts:
+            sym = "✓" if r.get("status") != "failed" else "✗"
+            lines.append(f"  {sym} {r.get('provider')}/{r.get('role'):20}  {r.get('status')}  risk={r.get('risk_level')}")
+    else:
+        lines.append("  ○ none")
+
+    # Summary
+    s = report.get("summary") or {}
+    lines.extend(["", "Summary:"])
+    for k, v in s.items():
+        if v:
+            lines.append(f"  {k}: {v}")
+
+    return "\n".join(lines)
+
+
 def workspace_layout_report(layout: str = "dev") -> dict[str, Any]:
     layouts = {
         "dev": [

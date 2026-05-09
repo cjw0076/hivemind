@@ -290,3 +290,10 @@
 - Decision: Added `docs/HANDOFF.json` as the sprint authority file. The active phase is `H-P0-production-runtime-close`; current turn is `codex`; the task queue starts with stabilization, Claude boundary review, module extraction, inspect/receipt surface, and Hive-only production smoke.
 - Evidence: `docs/HANDOFF.json` records turn owner, allowed files, acceptance criteria, quality gate, and completion marker. This mirrors the MemoryOS loop pattern while keeping Hive runtime production v0 scoped away from MemoryOS/CapabilityOS substrate claims.
 - Next: Complete `H-P0.0`, then move to `H-P0.1` by running the full Hive gate and summarizing the current uncommitted scope before any more runtime code changes.
+
+## 2026-05-09 19:15 KST - Codex - H-P0 Runtime Slice
+
+- Context: User accepted Claude's three critical judgments: split `harness.py` before more feature work, invert provider passthrough execute policy from denylist-only to allowlist, and make `hive inspect <run>` the operator trust surface.
+- Decision: Kept the sprint in the MemoryOS-style `docs/HANDOFF.json` pingpong loop. Extracted the MemoryOS context bridge into `hivemind/memory_bridge.py`, added safe-profile allowlist checks for `hive provider --execute`, and added `hivemind/inspect_run.py` as the path-hidden run inspection surface.
+- Evidence: `hive inspect <run>` now reports run state, ledger replay/hash health, authority counts, provider result receipts, execution proofs, MemoryOS context trace, next action, and recommendations without requiring manual run-folder navigation. Focused gate passed: `python -m unittest tests.test_inspect tests.test_provider_passthrough tests.test_production_hardening`, `python -m py_compile hivemind/*.py`, and `git diff --check`.
+- Next: Continue H-P0.3 by extracting provider passthrough, flow runtime, and run receipt logic from `harness.py`; then add the Hive-only production smoke script.

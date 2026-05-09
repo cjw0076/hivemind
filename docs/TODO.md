@@ -242,11 +242,13 @@ preserve native provider CLI capability, record execution receipts, stop safely,
 and degrade cleanly without MemoryOS. MemoryOS and CapabilityOS remain optional
 substrates for memory/context and capability routing.
 
-- [ ] Stabilize and commit the current green runtime changes before adding new behavior.
+- [x] Stabilize the current green runtime changes before adding new behavior.
 - [ ] Split or plan extraction from `hivemind/harness.py` into narrower runtime modules: memory bridge, provider passthrough, flow runtime, and run receipts.
+- [x] Extract the MemoryOS context bridge from `hivemind/harness.py` into `hivemind/memory_bridge.py` while preserving public harness imports.
 - [ ] Harden provider passthrough policy from denylist-only toward provider/profile allowlists plus explicit approval-gated escape hatches.
+- [x] Add provider/profile allowlist enforcement for `hive provider --execute` while keeping dry-run passthrough broad for native CLI capability discovery.
 - [ ] Add terminal receipt coverage for completed, failed, timeout, skipped, policy-blocked, and partial provider/local runs.
-- [ ] Add `hive inspect <run>` as a path-hidden operator summary over run state, ledger, provider results, receipts, policy decisions, and next action.
+- [x] Add `hive inspect <run>` as a path-hidden operator summary over run state, ledger, provider results, receipts, policy decisions, and next action.
 - [ ] Harden supervisor heartbeat/timeout recovery and make `hive run stop/status/tail` production-safe for interrupted runs.
 - [ ] Add a Hive-only production smoke script that does not require MemoryOS: init, run, local step, provider dry-run, ledger replay, inspect, stop, validation.
 - [ ] Keep MemoryOS context hook optional and non-blocking; failed/absent MemoryOS must produce a receipt, not abort Hive runtime.
