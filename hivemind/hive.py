@@ -125,6 +125,7 @@ from .supervisor import (
     tail_supervisor_log,
 )
 from .goal import build_goal_report, format_goal_report, write_attack_pack
+from .quickstart import DEFAULT_QUICKSTART_TASK, format_quickstart_demo, quickstart_demo
 
 
 COMMANDS = {
@@ -404,6 +405,10 @@ def _main(argv: list[str] | None = None) -> None:
     demo_live_cmd.add_argument("--run-id", help="animate an existing run instead of creating one")
     demo_live_cmd.add_argument("--delay", type=float, default=0.45, help="seconds between demo state transitions")
     demo_live_cmd.add_argument("--json", action="store_true")
+    demo_quickstart_cmd = demo_sub.add_parser("quickstart", help="provider-free 5-minute public-alpha value demo")
+    demo_quickstart_cmd.add_argument("task", nargs="?", default=DEFAULT_QUICKSTART_TASK)
+    demo_quickstart_cmd.add_argument("--delay", type=float, default=0.0, help="seconds between demo state transitions")
+    demo_quickstart_cmd.add_argument("--json", action="store_true")
 
     status_cmd = sub.add_parser("status", help="show current run status")
     status_cmd.add_argument("--run-id")
@@ -1000,6 +1005,15 @@ def _main(argv: list[str] | None = None) -> None:
                 print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
             else:
                 print(format_demo_report(report))
+            return
+        if args.demo_cmd == "quickstart":
+            report = quickstart_demo(root, task=args.task, delay=args.delay)
+            if args.json:
+                import json
+
+                print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(format_quickstart_demo(report))
             return
     if args.cmd == "status":
         if args.json:

@@ -90,7 +90,11 @@ after adversarial review:
 
 ## Current Verdict
 
-Hive Mind is not faster than direct CLI for trivial calls. That is acceptable.
+Hive Mind production-v0 is technically complete under the narrow local runtime
+harness definition. That does not mean the repository is ready for public alpha.
+
+Hive Mind is not faster than direct CLI for trivial calls. That is acceptable
+for production-v0 but not enough for public release.
 
 Hive Mind must be better when the task needs:
 
@@ -100,3 +104,15 @@ Hive Mind must be better when the task needs:
 - stop/resume/inspect/debug after a run;
 - disagreement, verifier, or reviewer pressure;
 - later MemoryOS import and context feedback.
+
+## Next Goal: Public Alpha Wow
+
+Before public release, Hive Mind needs a five-minute entry path:
+
+```bash
+hive demo quickstart
+```
+
+The demo must show prompt intake, role routing, agent artifacts, verification,
+memory draft, inspect report, and MemoryOS-compatible observability without
+requiring provider keys.

@@ -14,7 +14,7 @@ mkdir -p "$OUT_DIR"
 PASS=0
 FAIL=0
 WARNINGS=()
-TOTAL=14
+TOTAL=15
 
 ok()   { echo "  PASS  $*"; ((PASS++)) || true; }
 fail() { echo "  FAIL  $*"; ((FAIL++)) || true; }
@@ -167,8 +167,23 @@ else
     fail "user-value benchmark failed — see $OUT_DIR/user-value-benchmark.err"
 fi
 
-# ── 12. MemoryOS bridge graceful degrade ─────────────────────────────────────
-echo "[ 12/$TOTAL ] MemoryOS bridge graceful degrade"
+# ── 12. quickstart demo smoke ────────────────────────────────────────────────
+echo "[ 12/$TOTAL ] quickstart demo smoke"
+if python -m hivemind.hive demo quickstart "public alpha quickstart smoke" --json > "$OUT_DIR/quickstart-demo.json" 2>&1; then
+    QUICKSTART_RUN=$(python3 -c "import json; d=json.load(open('$OUT_DIR/quickstart-demo.json')); print(d.get('run_id',''))" 2>/dev/null || true)
+    QUICKSTART_NODES=$(python3 -c "import json; d=json.load(open('$OUT_DIR/quickstart-demo.json')); print((d.get('memoryos_summary') or {}).get('nodes',0))" 2>/dev/null || echo "0")
+    QUICKSTART_LEDGER=$(python3 -c "import json; d=json.load(open('$OUT_DIR/quickstart-demo.json')); print((d.get('inspect_summary') or {}).get('ledger_records',0))" 2>/dev/null || echo "0")
+    if [ -n "$QUICKSTART_RUN" ] && [ "$QUICKSTART_NODES" -gt 0 ] && [ "$QUICKSTART_LEDGER" -gt 0 ]; then
+        ok "quickstart run=$QUICKSTART_RUN nodes=$QUICKSTART_NODES ledger_records=$QUICKSTART_LEDGER"
+    else
+        fail "quickstart did not produce graph and ledger value signals"
+    fi
+else
+    fail "hive demo quickstart failed — see $OUT_DIR/quickstart-demo.json"
+fi
+
+# ── 13. MemoryOS bridge graceful degrade ─────────────────────────────────────
+echo "[ 13/$TOTAL ] MemoryOS bridge graceful degrade"
 if HIVE_DISABLE_MEMORYOS=1 python -m hivemind.hive orchestrate "smoke degrade test without MemoryOS" --json > "$OUT_DIR/degrade-test.json" 2>&1; then
     DEGRADED_RUN=$(python3 -c "import json; d=json.load(open('$OUT_DIR/degrade-test.json')); print(d.get('run_id',''))" 2>/dev/null || true)
     if [ -n "$DEGRADED_RUN" ] && python3 -c "import json, pathlib, sys; p=pathlib.Path('.runs')/'$DEGRADED_RUN'/'artifacts'/'memory_context.json'; d=json.load(open(p)); sys.exit(0 if d.get('status') == 'unavailable' and 'disabled' in str(d.get('reason','')).lower() else 1)" 2>/dev/null; then
@@ -180,8 +195,8 @@ else
     fail "hive orchestrate failed when MemoryOS bridge was disabled"
 fi
 
-# ── 13. Secret / private path scan ───────────────────────────────────────────
-echo "[ 13/$TOTAL ] Secret and private path scan"
+# ── 14. Secret / private path scan ───────────────────────────────────────────
+echo "[ 14/$TOTAL ] Secret and private path scan"
 SECRET_FILES=$(git ls-files \
     | grep -v 'public-release-check.sh' \
     | xargs grep -rlI \
@@ -208,8 +223,8 @@ if [ "$SECRET_HITS" -eq 0 ] && [ "$PRIVATE_HITS" -eq 0 ]; then
     ok "no secret or private path patterns in tracked files"
 fi
 
-# ── 14. README production claim audit ────────────────────────────────────────
-echo "[ 14/$TOTAL ] README production claim audit"
+# ── 15. README production claim audit ────────────────────────────────────────
+echo "[ 15/$TOTAL ] README production claim audit"
 OVERCLAIMS=$(grep -ciE \
     '(self.improving|autonomous.*long.horizon|AIOS|complete.*memory.*swarm|capabilityos.*routed)' \
     README.md 2>/dev/null || true)

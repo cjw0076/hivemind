@@ -1,5 +1,19 @@
 # Agent Worklog
 
+## 2026-05-11 19:36 KST - Codex - Public Alpha Quickstart Start
+
+- Context: User accepted that production-v0 is technically closed but not yet surprising enough for public release. The next sprint is to push toward a 5-minute wow path and MemoryOS feedback loop.
+- Ownership: Codex owns the first quickstart slice: a provider-free command that demonstrates the value loop through durable artifacts rather than another abstract doc.
+- Decision: Add `hive demo quickstart`, producing a run, agent artifacts, verification, memory draft, inspect summary, MemoryOS-compatible read model summary, and next commands.
+- Deferred: Real MemoryOS import/approve/context feedback loop and README simplification are next slices after quickstart is stable.
+
+## 2026-05-11 19:38 KST - Codex - Public Alpha Quickstart Complete
+
+- Context: First public-alpha wow slice needed to show value without provider keys.
+- Decision: `hive demo quickstart` is now the recommended first demo: it creates a real run, agent artifacts, verification, memory draft, inspect summary, execution ledger event, and MemoryOS-compatible graph/event read model.
+- Evidence: CLI smoke produced `verdict=clean`, `ledger_records=1`, provider artifacts=3, local worker artifacts=2, MemoryOS graph nodes=8, edges=7, events=24. Focused quickstart/demo tests passed; value benchmark passed; public release check passed 15/15 with quickstart included.
+- Next: Close the MemoryOS feedback loop demo: run -> memory draft/import -> accepted context -> next Hive run references the accepted memory.
+
 ## 2026-05-11 19:05 KST - Codex - Goal Sprint Contract
 
 - Context: User asked to set Codex goal mode from the official follow-goals workflow, set the final Hive Mind target, and keep sprinting while Claude attacks/debugs from a separate context.

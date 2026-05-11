@@ -11,6 +11,7 @@ Sources: `VG-03`, `VG-04`, `VG-05`, `VG-13`.
 - [x] Add repo-local Codex goal sprint contract and user-value benchmark so production-v0 is measured against direct CLI, manual shared-folder coordination, and adversarial review pressure.
 - [x] Add `hive goal` as the operator surface for the active production-v0 goal, validation loop, latest value benchmark, latest release gate, and Claude attack prompt.
 - [x] Add `hive goal --write-attack-pack` so Claude or a foreign-context reviewer can attack the v0 claim from one generated evidence packet.
+- [x] Add `hive demo quickstart` as the first public-alpha five-minute value demo: prompt intake, role routing, receipts/inspect, memory draft, and MemoryOS read model without provider keys.
 - [x] Fix `docs/MEMORYOS_MVP.md` examples that still mention `docs/1.md` and `docs/2.md`.
 - [x] Add source archive hash and import run ID to every imported node/edge.
 - [x] Add deduplication for re-imported files.

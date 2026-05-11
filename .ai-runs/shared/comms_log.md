@@ -1113,3 +1113,16 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Performance: gate still <3min, benchmark verdict=pass, direct_cli_for_trivial=True, hive_for_audited_multi_agent=True.
 - Decision: No new production blockers. Codex is converging well; attacker pressure yielded one regression test addition.
 - Next: Continue monitoring Codex pingpong sprint; next check in ~10 minutes.
+## 2026-05-11 19:36 KST - Codex
+
+- Context: User said to keep pushing after a product critique concluded production-v0 is technically strong but not public-alpha ready.
+- Decision: Shift the active sprint from v0 closure to public-alpha wow. First slice: `hive demo quickstart`, a provider-free 5-minute value demo that shows prompt intake, role routing, artifacts, verification, memory draft, inspect summary, and MemoryOS read model.
+- Evidence: Implementation started in `hivemind/quickstart.py` with CLI wiring and tests.
+- Next: Verify quickstart, then move to the MemoryOS feedback loop demo.
+
+## 2026-05-11 19:38 KST - Codex
+
+- Context: Completed the first public-alpha wow slice.
+- Decision: Add `hive demo quickstart` and include it in the release gate as a value smoke, not just a technical smoke.
+- Evidence: Demo output now shows clean inspect, ledger record, provider/local artifacts, memory draft, and MemoryOS read model graph counts. Focused tests passed; `python scripts/user-value-benchmark.py` passed; `scripts/public-release-check.sh` passed 15/15.
+- Next: Build the real MemoryOS feedback loop demo and simplify README/onboarding around the quickstart path.
