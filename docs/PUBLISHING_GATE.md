@@ -25,7 +25,7 @@ work without it. MemoryOS bridge is optional and gracefully degraded.
 
 ### 1. Provider CLI wrapping
 - [ ] Claude/Codex/Gemini/local native CLI stable passthrough (`hive provider`)
-- [ ] timeout, exit-code, stdout/stderr artifact, failure checkpoint
+- [x] timeout, exit-code, stdout/stderr artifact, failure checkpoint
 - [x] dangerous flag denylist + policy gate before execution
 - [x] provider/profile allowlist for `hive provider --execute` safe native profiles
 - [x] `--execute` always explicit; dry-run is default

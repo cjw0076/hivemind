@@ -90,6 +90,33 @@ class ProviderPassthroughTest(unittest.TestCase):
             self.assertEqual((root / data["stdout_path"]).read_text(encoding="utf-8"), "native output\n")
             self.assertEqual(run.call_args.kwargs["cwd"], root)
 
+    def test_execute_timeout_writes_timeout_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "provider passthrough timeout")
+            timeout = subprocess.TimeoutExpired(cmd=["codex", "exec"], timeout=1, output="partial out", stderr="partial err")
+            with patch("hivemind.harness.resolve_provider_binary", return_value="codex"):
+                with patch("hivemind.provider_passthrough.subprocess.run", side_effect=timeout):
+                    result_path = provider_passthrough(
+                        root,
+                        "codex",
+                        ["exec", "--cd", ".", "--sandbox", "read-only", "inspect"],
+                        run_id=paths.run_id,
+                        execute=True,
+                        timeout=1,
+                    )
+
+            data = yaml.safe_load(result_path.read_text(encoding="utf-8"))
+            self.assertEqual(data["status"], "timeout")
+            self.assertEqual(data["returncode"], 124)
+            self.assertIn("timed out", data["reason"])
+            self.assertIn("partial out", (root / data["stdout_path"]).read_text(encoding="utf-8"))
+            self.assertIn("partial err", (root / data["stderr_path"]).read_text(encoding="utf-8"))
+            report = validate_run_artifacts(paths.run_dir, root)
+            self.assertTrue(report["checks"]["provider_results_schema_valid"], report["issues"])
+            records = read_execution_ledger(root, paths.run_id)
+            self.assertTrue(any(record.get("event") == "execution_proof_created" and record.get("status") == "timeout" for record in records))
+
     def test_execute_blocks_native_command_outside_allowlist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

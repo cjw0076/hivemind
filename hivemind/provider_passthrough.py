@@ -220,12 +220,14 @@ def provider_passthrough(
 
     started_at = now_iso()
     started = time.monotonic()
+    timed_out = False
     try:
         completed = subprocess.run(command, cwd=root, text=True, capture_output=True, timeout=timeout)
         returncode = completed.returncode
         stdout = completed.stdout or ""
         stderr = completed.stderr or ""
     except subprocess.TimeoutExpired as exc:
+        timed_out = True
         returncode = 124
         stdout = exc.stdout if isinstance(exc.stdout, str) else ""
         stderr = (exc.stderr if isinstance(exc.stderr, str) else "") + f"\nprovider passthrough timed out after {timeout}s\n"
@@ -234,7 +236,8 @@ def provider_passthrough(
     stdout_path.write_text(stdout, encoding="utf-8")
     stderr_path.write_text(stderr, encoding="utf-8")
     output_path.write_text(stdout, encoding="utf-8")
-    status = "completed" if returncode == 0 else "failed"
+    status = "timeout" if timed_out else ("completed" if returncode == 0 else "failed")
+    reason = f"native passthrough timed out after {timeout}s; decision={decision.decision}" if timed_out else f"native passthrough executed; decision={decision.decision}"
     result = h.provider_result_record(
         root,
         agent=agent,
@@ -260,7 +263,7 @@ def provider_passthrough(
         ],
         risk_level=intent.risk_level if status == "completed" else "medium",
         execute=True,
-        reason=f"native passthrough executed; decision={decision.decision}",
+        reason=reason,
     )
     result_path.write_text(h.format_simple_yaml(result), encoding="utf-8")
     create_proof(
@@ -282,7 +285,7 @@ def provider_passthrough(
             h.rel_or_empty(root, stderr_path),
             h.rel_or_empty(root, output_path),
         ],
-        verifier_status="not_run",
+        verifier_status="timeout" if timed_out else "not_run",
     )
     h.append_event(paths, f"provider_passthrough_{status}", {"agent": agent, "artifact": result_path.relative_to(root).as_posix()})
     h.append_transcript(paths, "Ran", f"{agent}/native passthrough -> `{result_path.relative_to(root).as_posix()}` status={status}")

@@ -21,6 +21,7 @@ ALLOWED_EVENT_TYPES = {
     "provider_passthrough_prepared",
     "provider_passthrough_completed",
     "provider_passthrough_failed",
+    "provider_passthrough_timeout",
     "verification_created",
     "summary_created",
     "memory_drafts_created",
@@ -111,7 +112,7 @@ REQUIRED_PROVIDER_RESULT_KEYS = {
     "memory_refs_used",
     "capability_refs_used",
 }
-ALLOWED_PROVIDER_STATUSES = {"prepared", "completed", "failed", "fallback"}
+ALLOWED_PROVIDER_STATUSES = {"prepared", "completed", "failed", "fallback", "timeout", "partial", "skipped"}
 ALLOWED_PROVIDER_MODES = {
     "prepare_only",
     "execute_supported",

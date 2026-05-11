@@ -346,3 +346,10 @@
 - Decision: Hardened `hivemind/supervisor.py` so supervisor state records heartbeat fields, running states with dead PIDs become `stale`, and `hive run stop` always writes a `supervisor_receipts/stop_*.json` receipt plus a `supervisor_stop_requested` ledger event.
 - Evidence: Added supervisor tests for stale dead PID detection and stop receipt/ledger event. Updated `scripts/public-release-check.sh` to run `hive run stop` and verify the receipt. Release gate passed 11/11 with zero warnings; internal `npm test` passed 260 tests.
 - Next: Continue remaining runtime hardening: timeout/partial terminal receipts for provider/local execution and fuller ledger coverage for every prompt/command/result path.
+
+## 2026-05-11 18:27 KST - Codex - Provider Timeout Receipt
+
+- Context: Terminal receipt coverage still collapsed provider passthrough timeouts into generic failed receipts.
+- Decision: Made provider passthrough timeout explicit: status `timeout`, returncode `124`, preserved partial stdout/stderr, timeout reason, verifier status `timeout`, validation support, and inspect recommendations for timeout/partial receipts.
+- Evidence: Added `test_execute_timeout_writes_timeout_receipt` in `tests/test_provider_passthrough.py`. Focused provider/inspect/validation gate passed, and `bash scripts/public-release-check.sh` passed 11/11 with zero warnings; internal `npm test` passed 261 tests.
+- Next: Continue with fuller ledger provenance for every prompt/command/result/artifact path and local-worker partial/skipped receipt coverage.

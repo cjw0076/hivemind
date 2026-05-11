@@ -2,13 +2,13 @@
   "protocol_version": 1,
   "turn": "codex",
   "locked": false,
-  "updated_at": "2026-05-11T18:22:00+09:00",
+  "updated_at": "2026-05-11T18:27:00+09:00",
   "phase": "H-P0-production-runtime-close",
   "north_star": "Hive Mind production v0 is a local, auditable provider-CLI runtime harness. MemoryOS and CapabilityOS are optional substrates, not blockers.",
   "task": {
-    "id": "H-P0.6",
-    "title": "Supervisor stop receipt and heartbeat hardening",
-    "description": "Make hive run stop/status/tail production-safe with heartbeat freshness, stale process detection, and stop receipts.",
+    "id": "H-P0.7",
+    "title": "Provider timeout terminal receipt",
+    "description": "Make provider passthrough timeout outcomes explicit in receipts, validation, proofs, and inspection.",
     "owner": "codex",
     "turn_type": "implementation",
     "files_to_touch": [
@@ -16,19 +16,19 @@
       "docs/AGENT_WORKLOG.md",
       "docs/TODO.md",
       ".ai-runs/shared/comms_log.md",
-      "hivemind/supervisor.py",
-      "hivemind/hive.py",
-      "scripts/public-release-check.sh",
-      "tests/test_supervisor.py"
+      "hivemind/provider_passthrough.py",
+      "hivemind/run_validation.py",
+      "hivemind/inspect_run.py",
+      "tests/test_provider_passthrough.py"
     ],
     "acceptance_criteria": [
-      "hive run stop writes a receipt artifact",
-      "stale/dead supervisor state is visible in hive run status",
-      "public release gate covers stop receipt smoke"
+      "Timeout writes status=timeout and returncode=124",
+      "Partial stdout/stderr from timeout is preserved",
+      "Validation and release gate remain green"
     ],
     "status": "done",
-    "tests": "bash scripts/public-release-check.sh PASS 11/11 WARN 0; npm test OK 260/260",
-    "notes": "Supervisor state now records heartbeat fields, dead PID status becomes stale, hive run stop writes supervisor_receipts/stop_*.json and ledger event supervisor_stop_requested."
+    "tests": "bash scripts/public-release-check.sh PASS 11/11 WARN 0; npm test OK 261/261",
+    "notes": "Provider passthrough timeout now writes explicit timeout receipts, preserves partial stdout/stderr, validates status=timeout, and emits timeout proof status."
   },
   "task_queue": [
     {
@@ -155,6 +155,27 @@
       ],
       "status": "done",
       "tests": "python -m unittest tests.test_supervisor OK; bash scripts/public-release-check.sh PASS 11/11"
+    },
+    {
+      "id": "H-P0.7",
+      "owner": "codex",
+      "title": "Provider timeout terminal receipt",
+      "description": "Make provider passthrough timeout outcomes explicit in receipts, validation, proofs, and inspection.",
+      "files_to_touch": [
+        "hivemind/provider_passthrough.py",
+        "hivemind/run_validation.py",
+        "hivemind/inspect_run.py",
+        "tests/test_provider_passthrough.py",
+        "docs/TODO.md",
+        "docs/PUBLISHING_GATE.md"
+      ],
+      "acceptance_criteria": [
+        "Timeout writes status=timeout and returncode=124",
+        "Partial stdout/stderr is preserved",
+        "Provider result validation accepts timeout status"
+      ],
+      "status": "done",
+      "tests": "python -m unittest tests.test_provider_passthrough tests.test_inspect tests.test_run_validation OK; bash scripts/public-release-check.sh PASS 11/11"
     }
   ],
   "history": [
@@ -197,10 +218,15 @@
       "at": "2026-05-11T18:22:00+09:00",
       "agent": "codex",
       "summary": "Hardened supervisor heartbeat/stale state and stop receipts; public release gate now passes 11/11 with stop receipt smoke."
+    },
+    {
+      "at": "2026-05-11T18:27:00+09:00",
+      "agent": "codex",
+      "summary": "Added explicit provider passthrough timeout receipts and validation; public release gate still passes 11/11."
     }
   ],
   "quality_gate": {
-    "last_hive_tests": "bash scripts/public-release-check.sh PASS 11/11 WARN 0; npm test OK: 260/260",
+    "last_hive_tests": "bash scripts/public-release-check.sh PASS 11/11 WARN 0; npm test OK: 261/261",
     "required_before_commit": [
       "python -m py_compile hivemind/*.py",
       "python -m unittest discover -s tests -p 'test_*.py'",

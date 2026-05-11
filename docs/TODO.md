@@ -251,6 +251,7 @@ substrates for memory/context and capability routing.
 - [x] Harden provider passthrough policy from denylist-only toward provider/profile allowlists plus explicit approval-gated escape hatches.
 - [x] Add provider/profile allowlist enforcement for `hive provider --execute` while keeping dry-run passthrough broad for native CLI capability discovery.
 - [ ] Add terminal receipt coverage for completed, failed, timeout, skipped, policy-blocked, and partial provider/local runs.
+- [x] Add explicit provider passthrough timeout receipts with status `timeout`, returncode `124`, captured partial stdout/stderr, validation, proof, and inspect visibility.
 - [x] Add `hive inspect <run>` as a path-hidden operator summary over run state, ledger, provider results, receipts, policy decisions, and next action.
 - [x] Harden supervisor heartbeat/timeout recovery and make `hive run stop/status/tail` production-safe for interrupted runs.
 - [x] Add a Hive-only production smoke script that does not require MemoryOS: init, run, local step, provider dry-run, ledger replay, inspect, stop, validation.

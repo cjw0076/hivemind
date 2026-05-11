@@ -139,8 +139,8 @@ def inspect_recommendations(
     recommendations: list[str] = []
     if not ledger.get("ok"):
         recommendations.append("ledger replay needs review")
-    if any(item.get("status") == "failed" for item in provider_results):
-        recommendations.append("inspect failed provider result receipts")
+    if any(item.get("status") in {"failed", "timeout", "partial"} for item in provider_results):
+        recommendations.append("inspect failed/timeout/partial provider result receipts")
     if proofs.get("failed_count"):
         recommendations.append("review failed or flagged execution proofs")
     if (audit.get("validation") or {}).get("verdict") not in {None, "pass"}:

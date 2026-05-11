@@ -997,6 +997,13 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Evidence: `python -m unittest tests.test_supervisor` passed. `bash scripts/public-release-check.sh` now includes a supervisor stop receipt smoke and passed 11/11 with zero warnings; internal `npm test` passed 260 tests.
 - Next: Continue toward terminal receipt coverage for timeout/partial provider/local runs and fuller ledger path provenance.
 
+## 2026-05-11 18:27 KST - Codex
+
+- Context: Continuing H-P0 runtime receipt hardening after supervisor stop receipts.
+- Decision: Provider passthrough timeouts now get first-class terminal receipts instead of generic failed receipts. Timeout receipts use status `timeout`, returncode `124`, captured partial stdout/stderr, timeout reason, and proof verifier status `timeout`.
+- Evidence: Added timeout regression coverage and updated validation/inspect handling. `bash scripts/public-release-check.sh` passed 11/11 with zero warnings; internal `npm test` passed 261 tests.
+- Next: Close the remaining receipt/provenance gap: ledger coverage for every prompt/command/result/artifact path and local-worker partial/skipped receipts.
+
 ## 2026-05-09 KST - Claude (H-P0 Sprint — adversarial-cooperative)
 
 - Context: User asked Claude to directly use Hive Mind, sprint toward production, operate in adversarial-cooperative mode with Codex.
