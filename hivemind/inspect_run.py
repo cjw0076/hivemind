@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +27,9 @@ def build_inspect_report(
     local_worker_results = collect_local_worker_results(root, paths.run_dir, show_paths=show_paths)
     proofs = summarize_proofs(paths.run_dir, show_paths=show_paths)
     memoryos = summarize_memoryos_context(paths.run_dir, show_paths=show_paths)
-    recommendations = inspect_recommendations(live, ledger, audit, provider_results, local_worker_results, proofs, memoryos)
+    disagreements = summarize_disagreements(paths.run_dir, show_paths=show_paths)
+    recommendations = inspect_recommendations(live, ledger, audit, provider_results, local_worker_results, proofs, memoryos, disagreements)
+    verdict = compute_verdict(ledger, proofs, provider_results, local_worker_results, disagreements)
     return {
         "schema_version": 1,
         "kind": "hive_run_inspection",
@@ -43,6 +46,7 @@ def build_inspect_report(
             "hash_chain_ok": ledger.get("hash_chain_ok"),
             "seq_ok": ledger.get("seq_ok"),
             "issue_count": len(ledger.get("issues") or []),
+            "artifact_hash_drift_count": sum(1 for issue in ledger.get("issues") or [] if issue.get("type") == "artifact_hash_drift"),
             "issues": ledger.get("issues") or [],
         },
         "authority": summarize_authority(ledger.get("authority") or {}),
@@ -57,6 +61,8 @@ def build_inspect_report(
             "provider_failure_count": len(audit.get("provider_failures") or []),
             "policy_status": (audit.get("policy") or {}).get("status"),
         },
+        "disagreements": disagreements,
+        "verdict": verdict,
         "recommendations": recommendations,
     }
 
@@ -101,6 +107,7 @@ def summarize_proofs(run_dir: Path, *, show_paths: bool) -> dict[str, Any]:
                 "status": data.get("status"),
                 "verifier_status": data.get("verifier_status"),
                 "artifact_count": len(data.get("artifacts") or []),
+                "artifact_hash_count": len(data.get("artifact_hashes") or {}),
             }
             if show_paths:
                 item["path"] = proof_path.as_posix()
@@ -130,6 +137,65 @@ def summarize_memoryos_context(run_dir: Path, *, show_paths: bool) -> dict[str, 
     return report
 
 
+def summarize_disagreements(run_dir: Path, *, show_paths: bool) -> dict[str, Any]:
+    dis_path = run_dir / "disagreements.json"
+    if not dis_path.exists():
+        return {"count": 0, "high_severity_count": 0, "records": []}
+    try:
+        records = json.loads(dis_path.read_text(encoding="utf-8"))
+        if not isinstance(records, list):
+            records = []
+    except Exception:
+        records = []
+    high = sum(1 for r in records if r.get("severity") in {"high", "medium"})
+    summary_records = [
+        {
+            "step_id": r.get("step_id"),
+            "topology_type": r.get("topology_type"),
+            "severity": r.get("severity"),
+            "axes": r.get("axes"),
+            "dominant_axis": r.get("dominant_axis"),
+            "recommended_action": r.get("topology_recommended_action"),
+            "ts": r.get("ts"),
+        }
+        for r in records
+    ]
+    result: dict[str, Any] = {
+        "count": len(records),
+        "high_severity_count": high,
+        "records": summary_records,
+    }
+    if show_paths:
+        result["path"] = dis_path.as_posix()
+    return result
+
+
+# Verdict priority: chain_tampered > failures > escalated > clean
+_VERDICT_ORDER = {"clean": 0, "escalated": 1, "failures": 2, "chain_tampered": 3}
+
+
+def compute_verdict(
+    ledger: dict[str, Any],
+    proofs: dict[str, Any],
+    provider_results: list[dict[str, Any]],
+    local_worker_results: list[dict[str, Any]],
+    disagreements: dict[str, Any],
+) -> str:
+    # Only flag tampered if there are actual records with a broken chain
+    if ledger.get("hash_chain_ok") is False and (ledger.get("record_count") or 0) > 0:
+        return "chain_tampered"
+    has_failures = (
+        any(r.get("status") in {"failed", "timeout"} for r in provider_results)
+        or any(r.get("status") in {"failed", "timeout"} for r in local_worker_results)
+        or (proofs.get("failed_count") or 0) > 0
+    )
+    if has_failures:
+        return "failures"
+    if (disagreements.get("high_severity_count") or 0) > 0:
+        return "escalated"
+    return "clean"
+
+
 def inspect_recommendations(
     live: dict[str, Any],
     ledger: dict[str, Any],
@@ -138,9 +204,12 @@ def inspect_recommendations(
     local_worker_results: list[dict[str, Any]],
     proofs: dict[str, Any],
     memoryos: dict[str, Any],
+    disagreements: dict[str, Any] | None = None,
 ) -> list[str]:
     recommendations: list[str] = []
-    if not ledger.get("ok"):
+    if ledger.get("hash_chain_ok") is False and (ledger.get("record_count") or 0) > 0:
+        recommendations.append("CRITICAL: ledger hash chain tampered — do not trust run artifacts")
+    elif not ledger.get("ok"):
         recommendations.append("ledger replay needs review")
     if any(item.get("status") in {"failed", "timeout", "partial"} for item in provider_results):
         recommendations.append("inspect failed/timeout/partial provider result receipts")
@@ -148,6 +217,12 @@ def inspect_recommendations(
         recommendations.append("inspect failed/skipped/escalating local worker receipts")
     if proofs.get("failed_count"):
         recommendations.append("review failed or flagged execution proofs")
+    if disagreements and (disagreements.get("high_severity_count") or 0) > 0:
+        high = disagreements["high_severity_count"]
+        axes = {axis for r in (disagreements.get("records") or []) for axis in (r.get("axes") or [])}
+        recommendations.append(
+            f"topology escalation: {high} high/medium disagreement(s) detected — axes: {', '.join(sorted(axes)) or 'unknown'}"
+        )
     if (audit.get("validation") or {}).get("verdict") not in {None, "pass"}:
         recommendations.append("run hive check run before publishing")
     if memoryos.get("status") in {"missing", "invalid"}:
@@ -161,13 +236,17 @@ def inspect_recommendations(
 
 
 def format_inspect_report(report: dict[str, Any], *, show_paths: bool = False) -> str:
+    verdict = report.get("verdict", "unknown")
+    verdict_marker = {"clean": "✓", "escalated": "⚠", "failures": "✗", "chain_tampered": "✗✗"}.get(verdict, "?")
     lines = [
         f"Hive Inspect  Run {report.get('run_id')}",
+        f"Verdict: {verdict_marker} {verdict.upper()}",
         f"Task: {report.get('task')}",
         f"Status: {report.get('status')}  Phase: {report.get('phase')}  Health: {report.get('health')}",
         "",
         "Ledger",
         f"  ok={report.get('ledger', {}).get('ok')} records={report.get('ledger', {}).get('record_count')} hash_chain={report.get('ledger', {}).get('hash_chain_ok')} seq={report.get('ledger', {}).get('seq_ok')} issues={report.get('ledger', {}).get('issue_count')}",
+        f"  artifact_hash_drift={report.get('ledger', {}).get('artifact_hash_drift_count')}",
         "",
         "Authority",
         f"  intents={report.get('authority', {}).get('intent_count')} votes={report.get('authority', {}).get('vote_count')} decisions={report.get('authority', {}).get('decision_count')} proofs={report.get('authority', {}).get('proof_count')}",
@@ -205,6 +284,13 @@ def format_inspect_report(report: dict[str, Any], *, show_paths: bool = False) -
         for index, item in enumerate(next_items, start=1):
             lines.append(f"  {index}. {item.get('command')}  reason={item.get('reason')}")
     else:
+        lines.append("  none")
+    dis = report.get("disagreements") or {}
+    lines.extend(["", "Disagreements"])
+    lines.append(f"  count={dis.get('count', 0)} high/medium={dis.get('high_severity_count', 0)}")
+    for rec in (dis.get("records") or []):
+        lines.append(f"  step={rec.get('step_id')} type={rec.get('topology_type')} severity={rec.get('severity')} axes={rec.get('axes')} action={rec.get('recommended_action')}")
+    if not (dis.get("records")):
         lines.append("  none")
     lines.extend(["", "Recommendations"])
     for item in report.get("recommendations") or []:

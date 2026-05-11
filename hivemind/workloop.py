@@ -30,6 +30,25 @@ def _json_hash(record: dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def artifact_sha256(root: Path, artifact: str | Path | None) -> str | None:
+    """Return sha256:<hex> for an existing artifact path."""
+    if artifact is None:
+        return None
+    path = Path(str(artifact))
+    if not path.is_absolute():
+        path = root / path
+    if not path.exists() or not path.is_file():
+        return None
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                digest.update(chunk)
+    except OSError:
+        return None
+    return f"sha256:{digest.hexdigest()}"
+
+
 def _read_last_record(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
@@ -82,6 +101,7 @@ def append_execution_ledger(
         "files_touched": files_touched or [],
         "command": command,
         "artifact": artifact,
+        "artifact_sha256": artifact_sha256(root, artifact),
         "message": message,
         "extra": extra or {},
         "previous_hash": last.get("hash") if last else None,
@@ -365,6 +385,19 @@ def validate_record_artifact(root: Path, record: dict[str, Any], issues: list[di
             }
         )
         return None
+    expected_hash = record.get("artifact_sha256")
+    current_hash = artifact_sha256(root, artifact)
+    if expected_hash and current_hash and expected_hash != current_hash:
+        issues.append(
+            {
+                "type": "artifact_hash_drift",
+                "seq": record.get("seq"),
+                "event": record.get("event"),
+                "artifact": artifact,
+                "artifact_sha256": current_hash,
+                "expected_artifact_sha256": expected_hash,
+            }
+        )
     if path.suffix != ".json":
         return None
     try:

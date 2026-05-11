@@ -10,7 +10,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from hivemind.harness import create_run, invoke_local, provider_passthrough
-from hivemind.inspect_run import build_inspect_report, format_inspect_report
+from hivemind.inspect_run import (
+    build_inspect_report,
+    compute_verdict,
+    format_inspect_report,
+    summarize_disagreements,
+)
 
 
 class InspectRunTest(unittest.TestCase):
@@ -93,6 +98,99 @@ class InspectRunTest(unittest.TestCase):
             self.assertIn("Provider Results", text)
             self.assertIn("MemoryOS Context", text)
             self.assertIn("Recommendations", text)
+
+    def test_verdict_clean_on_empty_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "verdict clean smoke")
+            report = build_inspect_report(root, paths.run_id)
+            self.assertEqual(report["verdict"], "clean")
+            self.assertIn("verdict", report)
+
+    def test_verdict_escalated_when_high_severity_disagreement(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "verdict escalated smoke")
+            dis_path = paths.run_dir / "disagreements.json"
+            dis_path.write_text(
+                json.dumps([
+                    {
+                        "ts": "2026-05-11T00:00:00Z",
+                        "run_id": paths.run_id,
+                        "step_id": "step_a",
+                        "topology_type": "split",
+                        "severity": "high",
+                        "axes": ["conclusion", "risk_assessment"],
+                        "dominant_axis": "conclusion",
+                        "disagreement_count": 2,
+                        "disagreement_targets": ["step_b"],
+                        "topology_recommended_action": "escalate",
+                    }
+                ]),
+                encoding="utf-8",
+            )
+            report = build_inspect_report(root, paths.run_id)
+            self.assertEqual(report["verdict"], "escalated")
+            self.assertEqual(report["disagreements"]["count"], 1)
+            self.assertEqual(report["disagreements"]["high_severity_count"], 1)
+            self.assertEqual(report["disagreements"]["records"][0]["step_id"], "step_a")
+
+    def test_verdict_clean_when_low_severity_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "verdict low severity")
+            dis_path = paths.run_dir / "disagreements.json"
+            dis_path.write_text(
+                json.dumps([
+                    {
+                        "ts": "2026-05-11T00:00:00Z",
+                        "run_id": paths.run_id,
+                        "step_id": "step_x",
+                        "topology_type": "isolated",
+                        "severity": "low",
+                        "axes": ["approach"],
+                        "dominant_axis": "approach",
+                        "disagreement_count": 1,
+                        "disagreement_targets": [],
+                        "topology_recommended_action": "accept",
+                    }
+                ]),
+                encoding="utf-8",
+            )
+            report = build_inspect_report(root, paths.run_id)
+            self.assertEqual(report["verdict"], "clean")
+            self.assertEqual(report["disagreements"]["count"], 1)
+            self.assertEqual(report["disagreements"]["high_severity_count"], 0)
+
+    def test_compute_verdict_chain_tampered_priority(self) -> None:
+        ledger = {"ok": False, "hash_chain_ok": False, "record_count": 5}
+        verdict = compute_verdict(ledger, {"failed_count": 0}, [], [], {"count": 1, "high_severity_count": 1})
+        self.assertEqual(verdict, "chain_tampered")
+
+    def test_compute_verdict_failures_beats_escalated(self) -> None:
+        ledger = {"ok": True, "hash_chain_ok": True}
+        provider_results = [{"status": "failed"}]
+        verdict = compute_verdict(ledger, {"failed_count": 0}, provider_results, [], {"count": 1, "high_severity_count": 1})
+        self.assertEqual(verdict, "failures")
+
+    def test_summarize_disagreements_no_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run_test"
+            run_dir.mkdir()
+            result = summarize_disagreements(run_dir, show_paths=False)
+            self.assertEqual(result["count"], 0)
+            self.assertEqual(result["high_severity_count"], 0)
+            self.assertEqual(result["records"], [])
+
+    def test_format_inspect_shows_verdict(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "format verdict smoke")
+            report = build_inspect_report(root, paths.run_id)
+            text = format_inspect_report(report)
+            self.assertIn("Verdict:", text)
+            self.assertIn("CLEAN", text)
+            self.assertIn("Disagreements", text)
 
     def test_cli_inspect_json_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -2,13 +2,13 @@
   "protocol_version": 1,
   "turn": "codex",
   "locked": false,
-  "updated_at": "2026-05-11T18:35:00+09:00",
+  "updated_at": "2026-05-11T18:43:00+09:00",
   "phase": "H-P0-production-runtime-close",
   "north_star": "Hive Mind production v0 is a local, auditable provider-CLI runtime harness. MemoryOS and CapabilityOS are optional substrates, not blockers.",
   "task": {
-    "id": "H-P0.8",
-    "title": "Local worker terminal receipt inspection",
-    "description": "Make local worker results visible in inspect and validation as first-class terminal runtime artifacts.",
+    "id": "H-P0.9",
+    "title": "Ledger artifact hash drift and inspect verdict",
+    "description": "Record artifact content hashes in ledger/proof paths, detect artifact drift during replay, and surface inspect verdict escalation.",
     "owner": "codex",
     "turn_type": "implementation",
     "files_to_touch": [
@@ -16,21 +16,24 @@
       "docs/AGENT_WORKLOG.md",
       "docs/TODO.md",
       ".ai-runs/shared/comms_log.md",
-      "hivemind/run_receipts.py",
-      "hivemind/run_validation.py",
+      "hivemind/workloop.py",
+      "hivemind/protocol.py",
       "hivemind/inspect_run.py",
-      "hivemind/harness.py",
+      "tests/test_workloop_ledger.py",
+      "tests/test_protocol.py",
       "tests/test_inspect.py",
-      "tests/test_run_validation.py"
+      "docs/TODO.md",
+      "docs/PUBLISHING_GATE.md"
     ],
     "acceptance_criteria": [
-      "hive inspect shows local_worker_results",
-      "Local worker JSON artifacts are schema-validated",
-      "invoke_local records timing and created artifact refs"
+      "Ledger record stores artifact_sha256 when artifact exists",
+      "Ledger replay detects artifact_hash_drift after artifact content changes",
+      "ExecutionProof records artifact_hashes for stdout/stderr/output/artifacts_created",
+      "hive inspect escalates high/medium disagreement topology in verdict and recommendations"
     ],
     "status": "done",
-    "tests": "bash scripts/public-release-check.sh PASS 11/11 WARN 0; npm test OK 263/263",
-    "notes": "Local worker result artifacts now show in hive inspect and are validated as local runtime receipts."
+    "tests": "bash scripts/public-release-check.sh PASS 11/11 WARN 0; npm test OK 265/265",
+    "notes": "Ledger replay now detects artifact content drift independently of the ledger hash chain; inspect verdict now summarizes clean/escalated/failures/chain_tampered states."
   },
   "task_queue": [
     {
@@ -201,6 +204,31 @@
       ],
       "status": "done",
       "tests": "bash scripts/public-release-check.sh PASS 11/11 WARN 0; npm test OK 263/263"
+    },
+    {
+      "id": "H-P0.9",
+      "owner": "codex",
+      "title": "Ledger artifact hash drift and inspect verdict",
+      "description": "Record artifact content hashes in ledger/proof paths, detect artifact drift during replay, and surface inspect verdict escalation.",
+      "files_to_touch": [
+        "hivemind/workloop.py",
+        "hivemind/protocol.py",
+        "hivemind/inspect_run.py",
+        "tests/test_workloop_ledger.py",
+        "tests/test_protocol.py",
+        "tests/test_inspect.py",
+        "docs/TODO.md",
+        "docs/PUBLISHING_GATE.md",
+        "docs/AGENT_WORKLOG.md"
+      ],
+      "acceptance_criteria": [
+        "Ledger record stores artifact_sha256 when artifact exists",
+        "Ledger replay detects artifact_hash_drift after artifact content changes",
+        "ExecutionProof records artifact_hashes for stdout/stderr/output/artifacts_created",
+        "hive inspect escalates high/medium disagreement topology in verdict and recommendations"
+      ],
+      "status": "done",
+      "tests": "bash scripts/public-release-check.sh PASS 11/11 WARN 0; npm test OK 265/265"
     }
   ],
   "history": [
@@ -253,10 +281,15 @@
       "at": "2026-05-11T18:35:00+09:00",
       "agent": "codex",
       "summary": "Added local worker receipt inspection and validation for agents/local/*.json artifacts."
+    },
+    {
+      "at": "2026-05-11T18:43:00+09:00",
+      "agent": "codex",
+      "summary": "Added ledger artifact_sha256 tracking, artifact_hash_drift replay detection, proof artifact hashes, and inspect verdict escalation."
     }
   ],
   "quality_gate": {
-    "last_hive_tests": "bash scripts/public-release-check.sh PASS 11/11 WARN 0; npm test OK: 263/263",
+    "last_hive_tests": "bash scripts/public-release-check.sh PASS 11/11 WARN 0; npm test OK: 265/265",
     "required_before_commit": [
       "python -m py_compile hivemind/*.py",
       "python -m unittest discover -s tests -p 'test_*.py'",

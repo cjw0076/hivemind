@@ -94,6 +94,7 @@ Sources: `VG-03`, `VG-04`, `VG-06`, `VG-13`.
 - [x] Bridge prompt routing into lifecycle setup: `hive "task"` / `hive orchestrate` now creates `plan_dag.json` and `workflow_state.json` instead of stopping at `society_plan.json`.
 - [x] Promote safe local workers into bounded task processors for simple local tasks through DAG/ledger execution with explicit `--execute-local`.
 - [ ] Add disagreement extraction from executed provider outputs into a structured `disagreements.json`.
+- [x] Surface `disagreements.json` in `hive inspect` and upgrade inspect verdict to `escalated` for high/medium disagreement topology.
 - [ ] Upgrade task decomposition beyond keyword heuristics with a schema-validated router, provider fallback, and route-quality scoring.
 - [ ] Add convergence scoring: evidence strength, reversibility, risk, and user-preference fit.
 - [ ] Add TUI view for active debate rounds and participant readiness.
@@ -132,6 +133,7 @@ Source: `docs/HIVE_MIND_GAPS.md` section "Header Role Decomposition and Per-Laye
 - [x] Gate provider `hive step run --execute` through an approved `ExecutionDecision` while preserving prepare-only flow.
 - [x] Add `hive ledger replay` to reconstruct step authority state and detect hash/artifact drift.
 - [ ] Extend ledger replay with artifact content hashes and command/prompt hash drift.
+- [x] Add ledger `artifact_sha256` tracking and replay-time `artifact_hash_drift` detection for recorded artifacts.
 - [x] Extend TUI ledger view with current authority, waiting votes, active intent, replay issues, and verifier/proof state.
 - [ ] Extend TUI protocol drilldown with per-intent conditions, artifact paths, and active lease details.
 - [x] Design `ProbeStep` criterion schema before implementation: typed criterion, evaluator, expected artifact field, timeout, and failure disposition.

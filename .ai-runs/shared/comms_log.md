@@ -1011,6 +1011,13 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Evidence: `invoke_local` records timing and created artifacts; `run_receipts.py` collects local worker results; `run_validation.py` validates local worker result envelopes. Focused gate passed, then `bash scripts/public-release-check.sh` passed 11/11 with zero warnings; internal `npm test` passed 263 tests.
 - Next: Run the full release gate. The next runtime slice should add artifact/content hash provenance for prompt, command, result, stdout, and stderr paths.
 
+## 2026-05-11 18:43 KST - Codex
+
+- Context: Continuing H-P0 provenance hardening after local worker receipts.
+- Decision: Ledger records now include `artifact_sha256` for referenced artifacts, and replay emits `artifact_hash_drift` if the file content changes after the ledger event. Execution proofs now store `artifact_hashes` for stdout/stderr/output and created artifacts. The same inspect surface now emits `clean/escalated/failures/chain_tampered` verdicts and escalates high/medium disagreement topology.
+- Evidence: Added workloop/protocol tests for artifact hash drift and proof hash recording. Focused gate passed, then `bash scripts/public-release-check.sh` passed 11/11 with zero warnings; internal `npm test` passed 265 tests.
+- Next: Run the full release gate and then commit this provenance slice if clean.
+
 ## 2026-05-09 KST - Claude (H-P0 Sprint — adversarial-cooperative)
 
 - Context: User asked Claude to directly use Hive Mind, sprint toward production, operate in adversarial-cooperative mode with Codex.

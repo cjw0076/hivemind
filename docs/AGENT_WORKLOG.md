@@ -360,3 +360,10 @@
 - Decision: Added local worker result collection to `hivemind/run_receipts.py`, surfaced `local_worker_results` in `hive inspect`, and validated local worker result artifacts in `run_validation.py`. `invoke_local` now records timing and created artifacts in its local result envelope.
 - Evidence: Added inspection and invalid-local-result regression tests. Focused gate passed, then `bash scripts/public-release-check.sh` passed 11/11 with zero warnings; internal `npm test` passed 263 tests.
 - Next: Run the full public release gate, then continue with ledger provenance for prompt/command/result artifact hashes.
+
+## 2026-05-11 18:43 KST - Codex - Ledger Artifact Hash Drift And Inspect Verdict
+
+- Context: Ledger replay checked the ledger hash chain and missing artifacts, but a referenced artifact could be modified later without a dedicated drift issue.
+- Decision: Added `artifact_sha256` to ledger records when an artifact path is provided, replay-time `artifact_hash_drift` detection, proof `artifact_hashes` for stdout/stderr/output/artifacts_created, inspect summary count for artifact hash drift, and inspect verdict escalation for high/medium disagreement topology.
+- Evidence: Added regression tests for artifact hash drift and proof artifact hash recording. Focused gate passed, then `bash scripts/public-release-check.sh` passed 11/11 with zero warnings; internal `npm test` passed 265 tests.
+- Next: Run the full release gate, then decide whether command/prompt hash drift validation should be pulled into H-P0 or left as post-v0 provenance hardening.

@@ -11,6 +11,7 @@ from hivemind.plan_dag import build_dag, execute_step
 from hivemind.protocol import build_execution_intent, check_intent, decide_intent, save_intent
 from hivemind.workloop import (
     append_execution_ledger,
+    artifact_sha256,
     capture_worktree_snapshot,
     execution_ledger_path,
     format_ledger_entry,
@@ -135,6 +136,30 @@ class WorkloopLedgerTest(unittest.TestCase):
 
             self.assertFalse(report["ok"])
             self.assertIn("missing_artifact", issue_types)
+
+    def test_replay_detects_artifact_hash_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "ledger artifact hash drift")
+            artifact = paths.run_dir / "artifact.json"
+            artifact.write_text('{"ok": true}\n', encoding="utf-8")
+            record = append_execution_ledger(
+                root,
+                paths.run_id,
+                "step_completed",
+                actor="harness",
+                step_id="verify",
+                status="completed",
+                artifact=artifact.relative_to(root).as_posix(),
+            )
+            self.assertEqual(record["artifact_sha256"], artifact_sha256(root, artifact))
+
+            artifact.write_text('{"ok": false}\n', encoding="utf-8")
+            report = replay_execution_ledger(root, paths.run_id)
+            issue_types = {issue["type"] for issue in report["issues"]}
+
+            self.assertFalse(report["ok"])
+            self.assertIn("artifact_hash_drift", issue_types)
 
     def test_replay_reconstructs_protocol_authority(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

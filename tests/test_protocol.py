@@ -15,6 +15,7 @@ from hivemind.protocol import (
     build_execution_intent,
     cast_vote,
     check_intent,
+    create_proof,
     decide_intent,
     load_votes,
     save_intent,
@@ -123,6 +124,29 @@ class LedgerProtocolTest(unittest.TestCase):
 
         self.assertTrue(result["ok"], result)
         self.assertNotEqual(result["status"], "protocol_gate")
+
+    def test_create_proof_records_artifact_hashes(self) -> None:
+        tmp, root, paths, dag = self._root_run_dag()
+        self.addCleanup(tmp.cleanup)
+
+        intent = build_execution_intent(root, dag, "planner", execute=False)
+        save_intent(root, intent)
+        stdout_path = paths.run_dir / "agents" / "claude" / "stdout.txt"
+        stdout_path.parent.mkdir(parents=True, exist_ok=True)
+        stdout_path.write_text("hello\n", encoding="utf-8")
+        stdout_rel = stdout_path.relative_to(root).as_posix()
+
+        proof = create_proof(
+            root,
+            paths.run_id,
+            intent.intent_id,
+            status="completed",
+            stdout_path=stdout_rel,
+            artifacts_created=[stdout_rel],
+        )
+
+        self.assertIn(stdout_rel, proof.artifact_hashes)
+        self.assertTrue(proof.artifact_hashes[stdout_rel].startswith("sha256:"))
 
     def test_cli_protocol_intent_check_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

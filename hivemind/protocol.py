@@ -15,7 +15,7 @@ from typing import Any
 
 from .dag_state import atomic_write
 from .utils import now_iso
-from .workloop import append_execution_ledger, relative_artifact
+from .workloop import append_execution_ledger, artifact_sha256, relative_artifact
 
 SCHEMA_VERSION = 1
 
@@ -103,6 +103,7 @@ class ExecutionProof:
     commands_run: list[str] = field(default_factory=list)
     tests_run: list[str] = field(default_factory=list)
     artifacts_created: list[str] = field(default_factory=list)
+    artifact_hashes: dict[str, str] = field(default_factory=dict)
     policy_violations: list[str] = field(default_factory=list)
     verifier_status: str = "not_run"
 
@@ -556,6 +557,10 @@ def create_proof(
     verifier_status: str = "not_run",
 ) -> ExecutionProof:
     intent = load_intent(root, run_id, intent_id)
+    artifact_hashes = proof_artifact_hashes(
+        root,
+        [stdout_path, stderr_path, output_path, *(artifacts_created or [])],
+    )
     proof = ExecutionProof(
         schema_version=SCHEMA_VERSION,
         intent_id=intent_id,
@@ -572,6 +577,7 @@ def create_proof(
         commands_run=commands_run or [],
         tests_run=tests_run or [],
         artifacts_created=artifacts_created or [],
+        artifact_hashes=artifact_hashes,
         policy_violations=policy_violations or [],
         verifier_status=verifier_status,
     )
@@ -588,9 +594,25 @@ def create_proof(
         bypass_mode=intent.bypass_mode,
         files_touched=proof.files_touched,
         artifact=relative_artifact(root, path),
-        extra={"intent_id": intent_id, "returncode": returncode, "verifier_status": verifier_status},
+        extra={
+            "intent_id": intent_id,
+            "returncode": returncode,
+            "verifier_status": verifier_status,
+            "artifact_hash_count": len(artifact_hashes),
+        },
     )
     return proof
+
+
+def proof_artifact_hashes(root: Path, artifacts: list[str | None]) -> dict[str, str]:
+    hashes: dict[str, str] = {}
+    for artifact in artifacts:
+        if not artifact:
+            continue
+        digest = artifact_sha256(root, artifact)
+        if digest:
+            hashes[str(artifact)] = digest
+    return hashes
 
 
 def format_protocol_record(record: Any) -> str:
