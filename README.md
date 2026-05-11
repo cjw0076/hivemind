@@ -1,7 +1,6 @@
 # Hive Mind
 
-Status: production v0 candidate for the local provider-CLI harness only. Public
-alpha is still gated on onboarding and reviewer clarity.
+Status: public alpha candidate for the local provider-CLI harness.
 
 Hive Mind is a local swarm harness for existing provider CLIs and local LLM workers.
 
@@ -46,19 +45,7 @@ agents, or MemoryOS feedback.
 
 This release is limited to bounded local runtime orchestration. It is not a
 general agent operating system, not an end-to-end memory substrate, and not a
-long-running autonomous planner. Alpha testing is expected outside the runtime
-harness boundary.
-
-Purpose: implement the user's broader agent / ontology system separately from the `universe/quantum` paper workspace.
-
-Current boundary:
-
-- `universe/` remains the active quantum research and Paper4 workspace.
-- `myworld/` is for the agent system: memory, ontology graph, multi-agent coordination, reflection, and reconstruction workflows.
-
-Initial principle:
-
-> Build the smallest working agent system that can preserve decisions, represent uncertainty, compare multiple interpretations, and update a shared ontology without contaminating paper experiments.
+long-running autonomous planner.
 
 ## Current Modules
 
@@ -70,40 +57,6 @@ Initial principle:
 Memory graph importers, schemas, graph store, and audit code live in the sibling
 `../memoryOS` repo. Capability graph work belongs in the sibling
 `../CapabilityOS` repo.
-
-## Agent Entry
-
-New Claude/Codex sessions should start from:
-
-- `AGENTS.md` — shared operating rules and current boundary.
-- `docs/ROUTE.md` — docs route and source-vault map.
-- `.ai-runs/shared/COMPACT_HANDOFF.md` — latest compact-safe implementation state.
-- `CLAUDE.md` — Claude-specific critique role.
-- `CODEX.md` — Codex-specific implementation role.
-- `docs/MYWORLD_IDEA_EXCERPTS.md` — extracted MyWorld ideas from the original `my_world.md`.
-- `.ai-runs/shared/comms_log.md` — local shared communication log.
-
-## Relation To Universe
-
-The quantum project provides the first rigorous testbed:
-
-```text
-partial observation
-→ hidden structure reconstruction
-→ identifiability audit
-→ branch / ontology management
-```
-
-MyWorld generalizes that pattern to broader agentic cognition.
-
-## Model Access
-
-See:
-
-- `docs/LOCAL_LLM_INVENTORY.md` — local hardware/runtime/model state.
-- `docs/PROVIDER_MODELS.md` — OpenRouter, DeepSeek, xAI/Grok, OpenAI, gpt-oss, Llama access plan.
-- `docs/OPEN_MODEL_PROVIDER_SURVEY.md` — broader open-model provider survey.
-- `config/providers.example.yaml` — provider registry template.
 
 ## Operator Workbench
 
@@ -134,3 +87,8 @@ python -m memoryos.cli import-run --root ../hivemind current --dry-run
 ```
 
 Onboarding persists detected provider/runtime settings to `.hivemind/settings_profile.json` and `~/.hivemind/settings_profile.json`. Use `eval "$(python -m hivemind.hive settings shell)"` when launching provider CLIs from custom scripts.
+
+## Contributing
+
+Contributor and internal workspace notes live in `CONTRIBUTING.md` and
+`AGENTS.md`. Public users can start with the demos above.

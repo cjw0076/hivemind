@@ -451,3 +451,10 @@
 - Decision: Rewrote the README first screen around `hive demo quickstart` and `hive demo memory-loop`; changed `hive init` to emit structured `next_actions` with quickstart, memory-loop, run, inspect, and goal; added onboarding regression tests; promoted README/init onboarding into the release gate.
 - Evidence: Focused onboarding/quickstart/goal tests passed; full suite passed 291 tests; `scripts/public-release-check.sh` passed 17/17 with zero warnings.
 - Next: Ask Claude/foreign-context reviewer to attack public-alpha UX and overclaim risk before changing repository visibility or making an announcement.
+
+## 2026-05-11 20:00 KST - Codex - Foreign-Context Review Gate Closed
+
+- Context: User asked to run the remaining foreign-context public-alpha review gate.
+- Decision: Invoked Claude Haiku as an external reviewer. It initially blocked on README internal-context leakage, so the internal MyWorld/quantum/agent-entry material was moved to `CONTRIBUTING.md`. A second Claude recheck returned PASS with no high/medium blockers.
+- Evidence: Review saved in `docs/reviews/PUBLIC_ALPHA_FOREIGN_CONTEXT_REVIEW.md`; `docs/PUBLIC_ALPHA_GATE.md` now marks the reviewer criterion checked.
+- Next: Rerun release gate and commit the public-alpha review closure.

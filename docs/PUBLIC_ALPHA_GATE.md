@@ -1,6 +1,6 @@
 # Hive Mind Public Alpha Gate
 
-Status: not ready.
+Status: ready for public-alpha publication.
 
 Production-v0 is technically closed, but public alpha has a higher bar. A user
 must understand why Hive exists within five minutes without reading `.runs/`
@@ -18,10 +18,10 @@ files or already believing in multi-agent harnesses.
 - [x] Public release gate verifies the feedback loop with `hive demo memory-loop`.
 - [x] CLI command surface has a recommended path: `hive demo quickstart`,
   `hive run`, `hive inspect`, `hive goal`; advanced commands are secondary.
-- [ ] Claude/foreign-context reviewer finds no high/medium public-alpha blockers.
+- [x] Claude/foreign-context reviewer finds no high/medium public-alpha blockers.
 
 ## Current Decision
 
-Do not make the repository public only because production-v0 passed. Public
-alpha starts after the quickstart and MemoryOS feedback loop can produce a
-30-second demo with a clear before/after value signal.
+Production-v0, onboarding, demo loop, MemoryOS feedback, release gate, and
+foreign-context review are now green. Public alpha can proceed if the owner
+chooses to publish or announce it.

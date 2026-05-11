@@ -234,6 +234,8 @@ def init_onboarding(root: Path) -> dict[str, Any]:
         },
     ]
     return {
+        "schema_version": 1,
+        "kind": "hive_onboarding",
         "generated_at": now_iso(),
         "global_dir": global_dir.as_posix(),
         "project_dir": project_dir.as_posix(),

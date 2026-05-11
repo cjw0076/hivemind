@@ -1166,3 +1166,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Make the public path explicit and testable: README starts with `hive demo quickstart`, `hive init` emits structured `next_actions`, and release gate verifies README/init alignment before MemoryOS loop checks.
 - Evidence: `python -m unittest tests.test_onboarding tests.test_quickstart tests.test_goal` passed 10 tests. Full suite passed 291 tests. `bash scripts/public-release-check.sh` passed 17/17 with zero warnings.
 - Next: Foreign-context public-alpha review remains the only unchecked gate item.
+
+## 2026-05-11 20:00 KST - Codex
+
+- Context: Ran the final Claude/foreign-context public-alpha review.
+- Decision: Accept Claude's medium blocker: public README still included internal MyWorld/quantum/agent-entry context. Moved that material into `CONTRIBUTING.md`, saved the review, reran Claude recheck, and marked the public-alpha reviewer gate checked.
+- Evidence: First Claude review returned BLOCK on README internal-context pollution. Second Claude recheck returned PASS with no high/medium blockers. Review is recorded at `docs/reviews/PUBLIC_ALPHA_FOREIGN_CONTEXT_REVIEW.md`.
+- Next: Run release gate, then commit and push the public-alpha closure.

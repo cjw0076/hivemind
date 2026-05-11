@@ -423,6 +423,7 @@ Sources: `VG-00`, `VG-03`, `VG-06`, `VG-12`, `VG-14`.
 
 - [x] Preserve Claude public-alpha security review evidence in `docs/security/PUBLIC_ALPHA_SECURITY_REVIEW.md`.
 - [x] Define publish as release/tag/package/announcement, separate from current public-alpha GitHub visibility.
+- [x] Run foreign-context public-alpha review and resolve high/medium onboarding blockers.
 - [ ] Add structured disagreement extraction to `hive debate`.
 - [ ] Connect `hive gaps` to canonical MemoryOS context builder.
 - [ ] Add semantic verifier review for high-risk runs.
