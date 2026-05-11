@@ -1230,3 +1230,19 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Implemented a Hive-owned bridge that calls `capabilityos.cli recommend` through `HIVE_CAPABILITYOS_SOURCE_ROOT`, stores recommendation metadata in run state/artifacts, and keeps CapabilityOS recommendation-only with no execution authority.
 - Evidence: `python -m pytest tests/test_capability_bridge.py -v` passed 4 tests; `python -m pytest tests/test_quickstart.py -v` passed 4 tests.
 - Next: Return ASC-0005 result packet to MyWorld outbox for operator collection/review.
+
+## 2026-05-12 00:09 KST - Codex
+
+- Context: MyWorld ASC-0020 dispatched a Hive-owned radar gap triage after loop
+  policy selected `docs/AGENT_WORKLOG.md` as the top executable source.
+- Decision: Added `docs/RADAR_GAP_TRIAGE.md` to separate completed worklog
+  evidence from current unchecked TODO candidates. Selected ASC-0021 Hive
+  arrival pack as the next implementation packet because it directly addresses
+  the "arriving blind" and "user as context relay" gaps without requiring
+  CapabilityOS first.
+- Evidence: Triage source inventory covers `docs/AGENT_WORKLOG.md`,
+  `docs/HIVE_MIND_GAPS.md`, and `docs/TODO.md`; selected packet includes
+  owner, likely files, forbidden files, verification gate, expected result,
+  and stop conditions.
+- Next: MyWorld should collect ASC-0020 and issue ASC-0021 for the arrival pack
+  implementation.
