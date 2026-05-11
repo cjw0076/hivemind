@@ -513,3 +513,16 @@
   passed 9/9; CLI smoke under `/tmp/hive-source-read-smoke` recorded a source
   read and summarized `schema_version=hive.source_reads.v1`.
 - Next: Return ASC-0023 result packet to MyWorld for collect/release.
+
+## 2026-05-12 02:39 KST - Codex - ASC-0027 Memory Feedback Directives
+
+- Context: MyWorld ASC-0027 dispatched `codex@hivemind` to render MemoryOS
+  feedback directives into Hive context packs.
+- Decision: Keep MemoryOS as the source of directive semantics. Hive only
+  renders `feedback_directives[]` into `context_pack.md` and records
+  `feedback_directives_count` in the run-local memory context artifact.
+- Evidence: `python -m pytest
+  tests/test_production_hardening.py::ProductionHardeningTest::test_memoryos_context_bridge_records_trace_and_selected_ids
+  -v` passed; `python -m py_compile hivemind/memory_bridge.py` passed.
+- Next: MyWorld should collect/release ASC-0027 after MemoryOS and Hive result
+  packets are written.

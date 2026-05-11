@@ -88,6 +88,13 @@ class ProductionHardeningTest(unittest.TestCase):
                 "open_questions": [],
                 "recent_actions": [],
                 "other": [],
+                "feedback_directives": [
+                    {
+                        "memory_id": "mem_decision_1",
+                        "type": "decision",
+                        "directive": "Apply accepted decision: Hive owns execution authority.",
+                    }
+                ],
                 "total_accepted": 2,
                 "total_available": 2,
                 "context_items": 2,
@@ -101,12 +108,16 @@ class ProductionHardeningTest(unittest.TestCase):
             self.assertEqual(report["status"], "available")
             self.assertEqual(report["trace_id"], "trace_123")
             self.assertEqual(report["accepted_memory_ids"], ["mem_decision_1", "mem_constraint_1"])
+            self.assertEqual(report["feedback_directives_count"], 1)
             state = json.loads(paths.state.read_text(encoding="utf-8"))
             self.assertEqual(state["accepted_memories_used"], ["mem_decision_1", "mem_constraint_1"])
             self.assertEqual(state["memoryos_context"]["trace_id"], "trace_123")
+            self.assertEqual(state["memoryos_context"]["feedback_directives_count"], 1)
             self.assertTrue((root / report["artifact"]).exists())
             context_text = paths.context_pack.read_text(encoding="utf-8")
             self.assertIn("MemoryOS Accepted Context", context_text)
+            self.assertIn("Feedback Directives", context_text)
+            self.assertIn("Apply accepted decision", context_text)
             self.assertIn("trace_123", context_text)
             self.assertIn("Hive owns execution authority.", context_text)
             command = run.call_args.args[0]

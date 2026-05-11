@@ -1277,3 +1277,13 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
   passed 9/9; CLI smoke returned `schema_version=hive.source_reads.v1`.
 - Next: MyWorld should collect/release ASC-0023 and use source-read data in
   future agent wake packets.
+
+## 2026-05-12 02:39 KST - Codex
+
+- Context: ASC-0027 memory feedback directives.
+- Decision: Hive renders MemoryOS-owned `feedback_directives[]` in
+  `context_pack.md` and records `feedback_directives_count`; it does not write
+  MemoryOS ledgers or reinterpret review state.
+- Evidence: focused production-hardening MemoryOS bridge test passed; py_compile
+  for `hivemind/memory_bridge.py` passed.
+- Next: MyWorld collects/releases ASC-0027 and advances the goal loop.

@@ -90,6 +90,7 @@ def build_memoryos_context_report(root: Path, paths: Any, state: dict[str, Any])
             "accepted_memory_ids": selected_ids,
             "accepted_memories_used": selected_ids,
             "context_items": context_items,
+            "feedback_directives_count": len(pack.get("feedback_directives") or []),
             "total_accepted": pack.get("total_accepted", 0),
             "total_available": pack.get("total_available", 0),
             "excluded_count": len(pack.get("excluded_items") or []),
@@ -157,12 +158,24 @@ def write_memoryos_context_pack(paths: Any, pack: dict[str, Any]) -> None:
             if refs:
                 lines.append(f"  refs: {', '.join(str(ref) for ref in refs[:5])}")
         lines.append("")
+    feedback_directives = pack.get("feedback_directives") or []
+    if feedback_directives:
+        lines.append("## Feedback Directives")
+        for item in feedback_directives:
+            if not isinstance(item, dict):
+                continue
+            memory_id = item.get("memory_id") or item.get("id") or ""
+            directive = str(item.get("directive") or "").replace("\n", " ")
+            item_type = item.get("type") or "memory"
+            lines.append(f"- [{item_type}] {directive} (`{memory_id}`)")
+        lines.append("")
     lines.extend(
         [
             "## Retrieval Stats",
             f"- total_accepted: {pack.get('total_accepted', 0)}",
             f"- total_available: {pack.get('total_available', 0)}",
             f"- context_items: {pack.get('context_items', 0)}",
+            f"- feedback_directives: {len(feedback_directives)}",
             f"- token_estimate: {pack.get('token_estimate', 0)}",
             "",
         ]
