@@ -169,17 +169,15 @@ fi
 
 # ── 12. MemoryOS bridge graceful degrade ─────────────────────────────────────
 echo "[ 12/$TOTAL ] MemoryOS bridge graceful degrade"
-# If MemoryOS not present, hive orchestrate should not fail
-MEMORYOS_ROOT="$ROOT_DIR/../memoryOS"
-if [ -d "$MEMORYOS_ROOT" ]; then
-    ok "MemoryOS sibling present at $MEMORYOS_ROOT"
-else
-    # Test that hive orchestrate still works without MemoryOS
-    if python -m hivemind.hive orchestrate "smoke degrade test" > "$OUT_DIR/degrade-test.log" 2>&1; then
-        ok "hive orchestrate succeeds without MemoryOS (graceful degrade)"
+if HIVE_DISABLE_MEMORYOS=1 python -m hivemind.hive orchestrate "smoke degrade test without MemoryOS" --json > "$OUT_DIR/degrade-test.json" 2>&1; then
+    DEGRADED_RUN=$(python3 -c "import json; d=json.load(open('$OUT_DIR/degrade-test.json')); print(d.get('run_id',''))" 2>/dev/null || true)
+    if [ -n "$DEGRADED_RUN" ] && python3 -c "import json, pathlib, sys; p=pathlib.Path('.runs')/'$DEGRADED_RUN'/'artifacts'/'memory_context.json'; d=json.load(open(p)); sys.exit(0 if d.get('status') == 'unavailable' and 'disabled' in str(d.get('reason','')).lower() else 1)" 2>/dev/null; then
+        ok "hive orchestrate degrades cleanly with HIVE_DISABLE_MEMORYOS=1 run=$DEGRADED_RUN"
     else
-        warn "hive orchestrate may require MemoryOS — check bridge logic"
+        fail "MemoryOS disabled run did not write an unavailable memory_context artifact"
     fi
+else
+    fail "hive orchestrate failed when MemoryOS bridge was disabled"
 fi
 
 # ── 13. Secret / private path scan ───────────────────────────────────────────

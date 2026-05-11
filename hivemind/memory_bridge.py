@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -49,6 +50,9 @@ def build_memoryos_context_report(root: Path, paths: Any, state: dict[str, Any])
     }
     if not memoryos_cli.exists():
         artifact["reason"] = "MemoryOS CLI not found next to Hive Mind workspace."
+        return artifact
+    if os.environ.get("HIVE_DISABLE_MEMORYOS") in {"1", "true", "yes"}:
+        artifact["reason"] = "MemoryOS bridge disabled by HIVE_DISABLE_MEMORYOS."
         return artifact
     try:
         result = subprocess.run(command, cwd=memoryos_root, text=True, capture_output=True, timeout=30)

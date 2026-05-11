@@ -97,6 +97,7 @@ def main() -> int:
 
         long_prompt = "긴 Unicode 입력 " + ("가나다라마바사 " * 120)
         add_check(report, "hive_long_unicode_prompt", run(hive + ["run", long_prompt, "--json"], repo, parse_json=True))
+        add_check(report, "memoryos_disabled_degrade", run_memoryos_disabled_degrade(hive, repo, workspace))
 
         supervised_id = create_supervised_run(hive, repo, report)
         if supervised_id:
@@ -148,16 +149,46 @@ def create_supervised_run(hive: list[str], repo: Path, report: dict[str, Any]) -
     return run_id
 
 
+def run_memoryos_disabled_degrade(hive: list[str], repo: Path, workspace: Path) -> dict[str, Any]:
+    result = run(
+        hive + ["orchestrate", "MemoryOS disabled benchmark", "--json"],
+        repo,
+        parse_json=True,
+        extra_env={"HIVE_DISABLE_MEMORYOS": "1"},
+    )
+    run_id = ""
+    if isinstance(result.get("json"), dict):
+        run_id = str(result["json"].get("run_id") or "")
+    artifact_path = workspace / ".runs" / run_id / "artifacts" / "memory_context.json"
+    result["memory_context_path"] = artifact_path.as_posix()
+    try:
+        artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        result["ok"] = False
+        result["error"] = f"memory_context artifact missing or invalid: {exc}"
+        return result
+    result["memory_context_status"] = artifact.get("status")
+    result["memory_context_reason"] = artifact.get("reason")
+    reason = str(artifact.get("reason", "")).lower()
+    if artifact.get("status") != "unavailable" or ("disabled" not in reason and "not found" not in reason):
+        result["ok"] = False
+        result["error"] = "MemoryOS disabled path did not degrade to unavailable"
+    return result
+
+
 def run(
     cmd: list[str],
     cwd: Path,
     timeout: int = 60,
     parse_json: bool = False,
     expect_nonzero: bool = False,
+    extra_env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     start = time.perf_counter()
     env = os.environ.copy()
     env.setdefault("HIVE_ROUTER_MODE", "heuristic")
+    if extra_env:
+        env.update(extra_env)
     try:
         completed = subprocess.run(cmd, cwd=cwd, env=env, text=True, capture_output=True, timeout=timeout)
     except subprocess.TimeoutExpired as exc:
@@ -224,6 +255,7 @@ def add_value_summary(report: dict[str, Any]) -> None:
         "danger_blocked": by_name.get("hive_provider_danger_block", {}).get("expected_block") is True,
         "stop_receipt": by_name.get("hive_stop_receipt", {}).get("ok") is True,
         "supervised_run": by_name.get("supervised_start_pingpong", {}).get("ok") is True,
+        "memoryos_degrade": by_name.get("memoryos_disabled_degrade", {}).get("ok") is True,
     }
     hive_for_audited_multi_agent = all(audit_signals.values())
 
@@ -243,4 +275,3 @@ def add_value_summary(report: dict[str, Any]) -> None:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -213,7 +213,7 @@ def _latest_release_gate(root: Path) -> dict[str, Any]:
         return {"status": "missing", "path": None}
     path = candidates[0]
     benchmark = _read_json(path / "user-value-benchmark.json")
-    benchmark_summary = benchmark.get("summary") if isinstance(benchmark, dict) else {}
+    benchmark_summary = (benchmark.get("summary") if isinstance(benchmark, dict) else None) or {}
     return {
         "status": "present",
         "path": _rel(root, path),

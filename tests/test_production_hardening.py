@@ -1,8 +1,9 @@
-from pathlib import Path
 import json
+import os
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 
 import yaml
 
@@ -125,6 +126,22 @@ class ProductionHardeningTest(unittest.TestCase):
             self.assertEqual(report["accepted_memory_ids"], [])
             self.assertTrue((root / report["artifact"]).exists())
             self.assertIn("no memoryos sibling", paths.context_pack.read_text(encoding="utf-8"))
+
+    def test_memoryos_context_bridge_can_be_disabled_for_release_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "hivemind"
+            root.mkdir()
+            memoryos_root = base / "memoryOS"
+            (memoryos_root / "memoryos").mkdir(parents=True)
+            (memoryos_root / "memoryos" / "cli.py").write_text("# stub\n", encoding="utf-8")
+            paths = create_run(root, "disabled memoryos bridge", project="Hive Mind")
+
+            with patch.dict(os.environ, {"HIVE_DISABLE_MEMORYOS": "1"}):
+                report = ensure_memoryos_context(root, paths.run_id)
+
+            self.assertEqual(report["status"], "unavailable")
+            self.assertIn("disabled", report["reason"].lower())
 
     def test_local_model_profile_writes_role_assignments(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

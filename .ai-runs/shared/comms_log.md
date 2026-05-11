@@ -1093,3 +1093,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Add a generated attack pack so review starts from the same evidence packet every time instead of ad hoc prompt copying.
 - Evidence: Implemented `hive goal --write-attack-pack` and tests. The command wrote `.hivemind/goal/attack-pack-20260511_192114.md`; value benchmark passed; full unit suite passed 283 tests; production gate passed 14/14.
 - Next: Claude should attack the generated pack and report high/medium blockers before tagging v0.
+
+## 2026-05-11 19:28 KST - Codex
+
+- Context: User asked if production-v0 sprint was already complete; Codex continued the active goal loop and attacked the gate directly.
+- Decision: Close a real release-gate hole: MemoryOS graceful degrade must be simulated even when the sibling MemoryOS repo exists locally.
+- Evidence: Added `HIVE_DISABLE_MEMORYOS=1` handling in the MemoryOS bridge, added disabled-degrade checks to the user-value benchmark and public release gate, and added regression coverage. Verification: focused tests pass, `python scripts/user-value-benchmark.py` pass, full suite 284 tests pass, release gate 14/14 pass.
+- Next: Production-v0 remains complete under the narrow definition; Claude adversarial review should now attack the generated pack rather than this already-fixed gate hole.

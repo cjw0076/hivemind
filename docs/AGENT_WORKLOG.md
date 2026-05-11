@@ -21,6 +21,13 @@
 - Evidence: Added attack-pack writer and tests. Verified attack pack output, focused tests, value benchmark pass, full unit suite 283/283, and release gate 14/14.
 - Next: Hand `.hivemind/goal/attack-pack-*.md` to Claude and use any high/medium findings as the next sprint queue.
 
+## 2026-05-11 19:28 KST - Codex - MemoryOS Degrade Gate Hole
+
+- Context: User asked whether production-v0 was already complete. While answering, Codex directly ran the goal attack checklist and found one real gate weakness: the release gate only checked MemoryOS sibling presence when it existed, rather than proving Hive degrades cleanly without MemoryOS.
+- Decision: Add `HIVE_DISABLE_MEMORYOS=1` as an explicit release-gate simulation path and require both value benchmark and public release gate to exercise MemoryOS disabled degradation.
+- Evidence: `memory_bridge.py` now respects `HIVE_DISABLE_MEMORYOS`; `scripts/public-release-check.sh` forces disabled MemoryOS and checks `artifacts/memory_context.json` status; `scripts/user-value-benchmark.py` includes `memoryos_disabled_degrade`; focused tests passed, full unit suite passed 284/284, and release gate passed 14/14.
+- Next: Treat production-v0 as stronger after this follow-up; any remaining blockers should come from Claude's adversarial review, not the current local gate.
+
 ## 2026-05-03 00:00 KST - Codex - Product Evaluation Start
 
 - Context: User asked to act as a tester, create varied tasks/situations, verify CLI packaging/production readiness, and compare Hive Mind against the user's manual shared-folder collaboration method and direct single-agent usage.
