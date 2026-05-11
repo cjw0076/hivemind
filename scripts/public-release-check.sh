@@ -14,7 +14,7 @@ mkdir -p "$OUT_DIR"
 PASS=0
 FAIL=0
 WARNINGS=()
-TOTAL=13
+TOTAL=14
 
 ok()   { echo "  PASS  $*"; ((PASS++)) || true; }
 fail() { echo "  FAIL  $*"; ((FAIL++)) || true; }
@@ -152,8 +152,23 @@ else
     fail "hive next failed for smoke run"
 fi
 
-# ── 11. MemoryOS bridge graceful degrade ─────────────────────────────────────
-echo "[ 11/$TOTAL ] MemoryOS bridge graceful degrade"
+# ── 11. User-value benchmark ─────────────────────────────────────────────────
+echo "[ 11/$TOTAL ] user-value benchmark"
+if python scripts/user-value-benchmark.py --json > "$OUT_DIR/user-value-benchmark.json" 2> "$OUT_DIR/user-value-benchmark.err"; then
+    VERDICT=$(python3 -c "import json; d=json.load(open('$OUT_DIR/user-value-benchmark.json')); print((d.get('summary') or {}).get('verdict','?'))" 2>/dev/null || echo "?")
+    DIRECT=$(python3 -c "import json; d=json.load(open('$OUT_DIR/user-value-benchmark.json')); print((d.get('summary') or {}).get('direct_cli_for_trivial','?'))" 2>/dev/null || echo "?")
+    HIVE_VALUE=$(python3 -c "import json; d=json.load(open('$OUT_DIR/user-value-benchmark.json')); print((d.get('summary') or {}).get('hive_for_audited_multi_agent','?'))" 2>/dev/null || echo "?")
+    if [ "$VERDICT" = "pass" ]; then
+        ok "user-value verdict=$VERDICT direct_cli_for_trivial=$DIRECT hive_for_audited_multi_agent=$HIVE_VALUE"
+    else
+        fail "user-value benchmark verdict=$VERDICT — see $OUT_DIR/user-value-benchmark.json"
+    fi
+else
+    fail "user-value benchmark failed — see $OUT_DIR/user-value-benchmark.err"
+fi
+
+# ── 12. MemoryOS bridge graceful degrade ─────────────────────────────────────
+echo "[ 12/$TOTAL ] MemoryOS bridge graceful degrade"
 # If MemoryOS not present, hive orchestrate should not fail
 MEMORYOS_ROOT="$ROOT_DIR/../memoryOS"
 if [ -d "$MEMORYOS_ROOT" ]; then
@@ -167,8 +182,8 @@ else
     fi
 fi
 
-# ── 12. Secret / private path scan ───────────────────────────────────────────
-echo "[ 12/$TOTAL ] Secret and private path scan"
+# ── 13. Secret / private path scan ───────────────────────────────────────────
+echo "[ 13/$TOTAL ] Secret and private path scan"
 SECRET_FILES=$(git ls-files \
     | grep -v 'public-release-check.sh' \
     | xargs grep -rlI \
@@ -195,8 +210,8 @@ if [ "$SECRET_HITS" -eq 0 ] && [ "$PRIVATE_HITS" -eq 0 ]; then
     ok "no secret or private path patterns in tracked files"
 fi
 
-# ── 13. README production claim audit ────────────────────────────────────────
-echo "[ 13/$TOTAL ] README production claim audit"
+# ── 14. README production claim audit ────────────────────────────────────────
+echo "[ 14/$TOTAL ] README production claim audit"
 OVERCLAIMS=$(grep -ciE \
     '(self.improving|autonomous.*long.horizon|AIOS|complete.*memory.*swarm|capabilityos.*routed)' \
     README.md 2>/dev/null || true)

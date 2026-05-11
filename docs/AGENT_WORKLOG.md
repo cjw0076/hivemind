@@ -1,5 +1,12 @@
 # Agent Worklog
 
+## 2026-05-11 19:05 KST - Codex - Goal Sprint Contract
+
+- Context: User asked to set Codex goal mode from the official follow-goals workflow, set the final Hive Mind target, and keep sprinting while Claude attacks/debugs from a separate context.
+- Decision: Keep the goal narrow and verifiable: Hive Mind production-v0 is a local provider-CLI operating harness, not full AIOS. Direct provider CLI remains preferred for trivial one-shot commands; Hive must prove value through auditability, receipts, policy, ledger/proof, supervisor control, and multi-agent coordination.
+- Evidence: Added `docs/GOAL.md` as the repo-local goal contract and `scripts/user-value-benchmark.py` as the repeatable user-value gate. The benchmark passed with `direct_cli_for_trivial=True` and `hive_for_audited_multi_agent=True`; release gate now includes this benchmark and passed 14/14.
+- Next: Hand `docs/GOAL.md` and the latest `.hivemind/release/*/user-value-benchmark.json` report to Claude for attack review.
+
 ## 2026-05-03 00:00 KST - Codex - Product Evaluation Start
 
 - Context: User asked to act as a tester, create varied tasks/situations, verify CLI packaging/production readiness, and compare Hive Mind against the user's manual shared-folder collaboration method and direct single-agent usage.

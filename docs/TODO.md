@@ -8,6 +8,7 @@ Use `docs/VISION_GRAPH.md` for source provenance. Major sections below include `
 
 Sources: `VG-03`, `VG-04`, `VG-05`, `VG-13`.
 
+- [x] Add repo-local Codex goal sprint contract and user-value benchmark so production-v0 is measured against direct CLI, manual shared-folder coordination, and adversarial review pressure.
 - [x] Fix `docs/MEMORYOS_MVP.md` examples that still mention `docs/1.md` and `docs/2.md`.
 - [x] Add source archive hash and import run ID to every imported node/edge.
 - [x] Add deduplication for re-imported files.
