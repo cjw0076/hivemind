@@ -179,7 +179,7 @@ Source mirror: `docs/HIVE_MIND_GAPS.md` from `../memoryOS/docs/shared/HIVE_MIND_
 - [ ] Add semantic verifier LLM review for high-risk runs.
 - [ ] Add document supersession edges so stale handoffs are explicitly replaced, not inferred from mtimes.
 - [ ] Add claim/evidence ledger with supported, blocked, falsified, superseded, required evidence, allowed wording, and forbidden wording fields.
-- [ ] Add arrival packs generated from live run state: objective, owners, blocked tasks, accepted claims, contested claims, scope, logs, and latest artifacts.
+- [x] Add arrival packs generated from live run state: objective, owners, blocked tasks, accepted claims, contested claims, scope, logs, and latest artifacts.
 - [ ] Add first-class `hive evaluate` or `hive subagents review` command that runs verifier, product evaluator, and actual-user persona checks into durable artifacts.
 
 ## Harness Runtime

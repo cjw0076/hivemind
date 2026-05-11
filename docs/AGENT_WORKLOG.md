@@ -472,3 +472,30 @@
 - Decision: Added `docs/CAPABILITYOS_FROM_HIVE_SPRINT.md` as an implementation checklist, not another vision doc. It specifies CapabilityCard, WorkflowRecipe, CapabilityRecommendation, CapabilityObservation, gates, first sprint order, and boundaries with Hive/MemoryOS.
 - Evidence: Routed the document through `docs/ROUTE.md` and checked the TODO item. The doc explicitly captures negative recommendations, foreign-context review as a capability, recommendation receipts, quality observations from outcomes, and the first `capabilityos recommend --for hive` bridge.
 - Next: When work moves to `../CapabilityOS`, use this document as the bootstrap spec before building registry or recommendation code.
+
+## 2026-05-12 00:16 KST - Codex - ASC-0021 Arrival Pack Start
+
+- Context: MyWorld ASC-0021 dispatched `codex@hivemind` to add an incoming-agent
+  arrival brief generated from current run state.
+- Ownership: Codex owns `hivemind/arrival_pack.py`, CLI wiring in
+  `hivemind/hive.py`, focused tests, and TODO/worklog closeout.
+- Decision: Reuse the existing `hive inspect` and `hive live` summaries as the
+  state source so the pack does not become a duplicate run model.
+- Evidence: Start entry only.
+- Next: Implement `hive arrival-pack --run <run_id> --json` and verify it hides
+  paths and raw provider bodies by default.
+
+## 2026-05-12 00:20 KST - Codex - ASC-0021 Arrival Pack Complete
+
+- Context: Completed the Hive-owned arrival pack implementation under MyWorld
+  ASC-0021.
+- Decision: `hive arrival-pack` now emits a compact incoming-agent brief over
+  the existing inspect/live state: objective, owners, agents, blocked items,
+  accepted claims, contested claims, scope hints, latest artifacts, suggested
+  commands, and privacy posture.
+- Evidence: `python -m pytest tests/test_arrival_pack.py -v` passed 5/5;
+  `python -m pytest tests/test_arrival_pack.py tests/test_inspect.py -v`
+  passed 16/16; CLI smoke created `/tmp/hive-arrival-pack-smoke` and emitted
+  `kind=hive_arrival_pack` with paths hidden and no raw provider body fields;
+  `git diff --check` passed.
+- Next: Return ASC-0021 result packet to MyWorld for collect/release.

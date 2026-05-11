@@ -1246,3 +1246,23 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
   and stop conditions.
 - Next: MyWorld should collect ASC-0020 and issue ASC-0021 for the arrival pack
   implementation.
+
+## 2026-05-12 00:16 KST - Codex
+
+- Context: MyWorld ASC-0021 opened for a Hive-owned arrival pack surface.
+- Decision: Implement the first slice as a read-only pack over existing inspect
+  and live run summaries, not a new scheduler or sibling-OS dependency.
+- Evidence: Contract `docs/contracts/ASC-0021-hive-arrival-pack.md` and inbox
+  packet `.aios/inbox/hivemind/asc-0021.hivemind.json`.
+- Next: Add `hive arrival-pack`, focused tests, and return a result packet to
+  MyWorld.
+
+## 2026-05-12 00:20 KST - Codex
+
+- Context: ASC-0021 implementation completed in Hive.
+- Decision: Arrival packs are generated from existing inspect/live run state
+  and remain read-only plus privacy-safe by default.
+- Evidence: `tests/test_arrival_pack.py` passed 5/5; focused arrival+inspect
+  suite passed 16/16; operational CLI smoke returned `kind=hive_arrival_pack`.
+- Next: MyWorld should collect/release ASC-0021, then use this surface as the
+  next child-agent wake packet context.
