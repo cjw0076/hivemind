@@ -1140,3 +1140,29 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Separate MemoryOS source and data roots, then make `hive demo memory-loop` a public release gate check.
 - Evidence: `hive demo memory-loop --json` closed the loop with one approved memory returning in the second run context. `python -m unittest discover -s tests -p 'test_*.py'` passed 289 tests. `bash scripts/public-release-check.sh` passed 16/16, including MemoryOS feedback loop demo and graceful degrade.
 - Next: Public-alpha blockers now move to onboarding and UX clarity: README first path, `hive init` next-action copy, and foreign-context public-alpha review.
+
+---
+
+## 2026-05-11 — Claude attacker/debugger second pass
+
+- Gate: **16/16 PASS** (Codex expanded from 14 → 16, added quickstart demo smoke + MemoryOS feedback loop checks).
+- Tests: **289 passed** (vs 285 in last check; Codex added 4 new quickstart tests).
+- Bug found: Two quickstart tests were failing (`needs_review` instead of `closed_loop`) at monitor wakeup. Root cause: `_run_memoryos` used wrong CWD; `ensure_memoryos_context` couldn't find memoryOS source at `root.parent/memoryOS` (used tmp dir parent, not workspace parent). Codex fixed mid-sprint in commit `1783a6e` by adding `_memoryos_source_root()` + `HIVE_MEMORYOS_SOURCE_ROOT` env passthrough. Tests pass now.
+- Bug found (pre-empted): `RuntimeError` from `memory_loop_demo` would produce raw tracebacks. Codex already caught it in `main()` in same commit.
+- Attacks probed: unicode/emoji task (handled), empty task (handled), shell injection in task (subprocess list args — not injectable), memory-loop with memoryos import failure (now raises RuntimeError → clean `hive: ...` message).
+- Decision: Pingpong sprint is solid; no new blockers. Gate is now gated on memoryOS availability (intentional — it's a sibling installed in the same workspace).
+- Next: Continue monitoring.
+
+## 2026-05-11 19:52 KST - Codex
+
+- Context: User asked to clean up after the memory-loop sprint. Public-alpha gate still had onboarding clarity blockers.
+- Decision: Start a focused cleanup: README first path, `hive init` recommended next actions, and CLI surface guidance. Keep foreign-context public-alpha review as the next reviewer step.
+- Evidence: README still opened with broad project/module context and `hive init` suggested `hive doctor`, `hive run`, and `hive tui` before the new quickstart/memory-loop demos.
+- Next: Patch docs/output, add regression tests, then run focused tests and release gate.
+
+## 2026-05-11 19:54 KST - Codex
+
+- Context: Public-alpha onboarding cleanup finished.
+- Decision: Make the public path explicit and testable: README starts with `hive demo quickstart`, `hive init` emits structured `next_actions`, and release gate verifies README/init alignment before MemoryOS loop checks.
+- Evidence: `python -m unittest tests.test_onboarding tests.test_quickstart tests.test_goal` passed 10 tests. Full suite passed 291 tests. `bash scripts/public-release-check.sh` passed 17/17 with zero warnings.
+- Next: Foreign-context public-alpha review remains the only unchecked gate item.

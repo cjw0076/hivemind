@@ -59,7 +59,7 @@ work without it. MemoryOS bridge is optional and gracefully degraded.
 - [ ] `hive live --memoryos` stable event taxonomy → v1
 
 ### 6. Release hygiene
-- [x] `scripts/public-release-check.sh` passes (16/16 checks green as of 2026-05-11)
+- [x] `scripts/public-release-check.sh` passes (17/17 checks green as of 2026-05-11)
 - [x] `hive demo quickstart` shows the first public-alpha value path without provider keys
 - [x] `hive demo memory-loop` proves a run can become accepted MemoryOS context for the next Hive run
 - [x] README states "provider-CLI harness, production v0" clearly

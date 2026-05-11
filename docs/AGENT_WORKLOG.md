@@ -437,3 +437,17 @@
 - Decision: Added `hive demo memory-loop`, split MemoryOS bridge source root from data root with `HIVE_MEMORYOS_SOURCE_ROOT` and `HIVE_MEMORYOS_ROOT`, and promoted the loop into `scripts/public-release-check.sh`.
 - Evidence: `hive demo memory-loop --json` returned `status=closed_loop`; focused quickstart/goal/demo tests passed; full suite passed 289 tests; `scripts/public-release-check.sh` passed 16/16 with zero warnings.
 - Next: Simplify README/onboarding around `hive demo quickstart` and `hive demo memory-loop`, then ask Claude/foreign-context review to attack public-alpha UX blockers.
+
+## 2026-05-11 19:52 KST - Codex - Public Alpha Onboarding Cleanup Start
+
+- Context: Public-alpha gate still had README first path, `hive init` next-action copy, and recommended CLI path unchecked.
+- Decision: Own the onboarding cleanup slice: README first screen, init next actions, and focused regression tests. Defer foreign-context review to Claude after this surface is stable.
+- Evidence: Current `hive init` still recommends `hive doctor`, `hive run`, `hive tui` before the new demos; README still starts with broad module/workbench text.
+- Next: Patch copy, test CLI output, then rerun the release gate.
+
+## 2026-05-11 19:54 KST - Codex - Public Alpha Onboarding Cleanup Complete
+
+- Context: The repo needed one clear first path after the memory-loop demo landed.
+- Decision: Rewrote the README first screen around `hive demo quickstart` and `hive demo memory-loop`; changed `hive init` to emit structured `next_actions` with quickstart, memory-loop, run, inspect, and goal; added onboarding regression tests; promoted README/init onboarding into the release gate.
+- Evidence: Focused onboarding/quickstart/goal tests passed; full suite passed 291 tests; `scripts/public-release-check.sh` passed 17/17 with zero warnings.
+- Next: Ask Claude/foreign-context reviewer to attack public-alpha UX and overclaim risk before changing repository visibility or making an announcement.

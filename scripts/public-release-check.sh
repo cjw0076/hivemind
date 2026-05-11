@@ -14,7 +14,7 @@ mkdir -p "$OUT_DIR"
 PASS=0
 FAIL=0
 WARNINGS=()
-TOTAL=16
+TOTAL=17
 
 ok()   { echo "  PASS  $*"; ((PASS++)) || true; }
 fail() { echo "  FAIL  $*"; ((FAIL++)) || true; }
@@ -182,8 +182,22 @@ else
     fail "hive demo quickstart failed — see $OUT_DIR/quickstart-demo.json"
 fi
 
-# ── 13. MemoryOS feedback loop demo ──────────────────────────────────────────
-echo "[ 13/$TOTAL ] MemoryOS feedback loop demo"
+# ── 13. README / init onboarding path ────────────────────────────────────────
+echo "[ 13/$TOTAL ] README / init onboarding path"
+if python -m hivemind.hive init --json > "$OUT_DIR/init-onboarding.json" 2>&1; then
+    INIT_FIRST=$(python3 -c "import json; d=json.load(open('$OUT_DIR/init-onboarding.json')); print(((d.get('next_actions') or [{}])[0]).get('command','?'))" 2>/dev/null || echo "?")
+    INIT_SECOND=$(python3 -c "import json; d=json.load(open('$OUT_DIR/init-onboarding.json')); print(((d.get('next_actions') or [{},{}])[1]).get('command','?'))" 2>/dev/null || echo "?")
+    if grep -q "hive demo quickstart" README.md && grep -q "hive demo memory-loop" README.md && [ "$INIT_FIRST" = "hive demo quickstart" ] && [ "$INIT_SECOND" = "hive demo memory-loop" ]; then
+        ok "README and hive init start with quickstart/memory-loop path"
+    else
+        fail "README or hive init does not foreground the public-alpha demo path"
+    fi
+else
+    fail "hive init --json failed — see $OUT_DIR/init-onboarding.json"
+fi
+
+# ── 14. MemoryOS feedback loop demo ──────────────────────────────────────────
+echo "[ 14/$TOTAL ] MemoryOS feedback loop demo"
 if python -m hivemind.hive demo memory-loop "public alpha memory loop smoke" --json > "$OUT_DIR/memory-loop-demo.json" 2>&1; then
     MEMORY_LOOP_STATUS=$(python3 -c "import json; d=json.load(open('$OUT_DIR/memory-loop-demo.json')); print(d.get('status','?'))" 2>/dev/null || echo "?")
     MEMORY_LOOP_APPROVED=$(python3 -c "import json; d=json.load(open('$OUT_DIR/memory-loop-demo.json')); print(len(d.get('approved_memory_ids') or []))" 2>/dev/null || echo "0")
@@ -197,8 +211,8 @@ else
     fail "hive demo memory-loop failed — see $OUT_DIR/memory-loop-demo.json"
 fi
 
-# ── 14. MemoryOS bridge graceful degrade ─────────────────────────────────────
-echo "[ 14/$TOTAL ] MemoryOS bridge graceful degrade"
+# ── 15. MemoryOS bridge graceful degrade ─────────────────────────────────────
+echo "[ 15/$TOTAL ] MemoryOS bridge graceful degrade"
 if HIVE_DISABLE_MEMORYOS=1 python -m hivemind.hive orchestrate "smoke degrade test without MemoryOS" --json > "$OUT_DIR/degrade-test.json" 2>&1; then
     DEGRADED_RUN=$(python3 -c "import json; d=json.load(open('$OUT_DIR/degrade-test.json')); print(d.get('run_id',''))" 2>/dev/null || true)
     if [ -n "$DEGRADED_RUN" ] && python3 -c "import json, pathlib, sys; p=pathlib.Path('.runs')/'$DEGRADED_RUN'/'artifacts'/'memory_context.json'; d=json.load(open(p)); sys.exit(0 if d.get('status') == 'unavailable' and 'disabled' in str(d.get('reason','')).lower() else 1)" 2>/dev/null; then
@@ -210,8 +224,8 @@ else
     fail "hive orchestrate failed when MemoryOS bridge was disabled"
 fi
 
-# ── 15. Secret / private path scan ───────────────────────────────────────────
-echo "[ 15/$TOTAL ] Secret and private path scan"
+# ── 16. Secret / private path scan ───────────────────────────────────────────
+echo "[ 16/$TOTAL ] Secret and private path scan"
 SECRET_FILES=$(git ls-files \
     | grep -v 'public-release-check.sh' \
     | xargs grep -rlI \
@@ -238,8 +252,8 @@ if [ "$SECRET_HITS" -eq 0 ] && [ "$PRIVATE_HITS" -eq 0 ]; then
     ok "no secret or private path patterns in tracked files"
 fi
 
-# ── 16. README production claim audit ────────────────────────────────────────
-echo "[ 16/$TOTAL ] README production claim audit"
+# ── 17. README production claim audit ────────────────────────────────────────
+echo "[ 17/$TOTAL ] README production claim audit"
 OVERCLAIMS=$(grep -ciE \
     '(self.improving|autonomous.*long.horizon|AIOS|complete.*memory.*swarm|capabilityos.*routed)' \
     README.md 2>/dev/null || true)

@@ -1,14 +1,53 @@
 # Hive Mind
 
-Status: production v0 candidate for the local provider-CLI harness only.
-This release is limited to bounded local runtime orchestration. It is not a
-general agent operating system, not an end-to-end memory substrate, and not a
-long-running autonomous planner. Alpha testing is expected outside the runtime
-harness boundary.
+Status: production v0 candidate for the local provider-CLI harness only. Public
+alpha is still gated on onboarding and reviewer clarity.
 
 Hive Mind is a local swarm harness for existing provider CLIs and local LLM workers.
 
 It coordinates installed tools such as Claude, Codex, Gemini, and Ollama-backed local workers into one shared run state. It does not replace provider CLIs; it wraps them into a user-governed blackboard loop.
+
+## First Five Minutes
+
+Run the provider-free demo first. It shows the value path without API keys or
+local models:
+
+```bash
+python -m hivemind.hive demo quickstart
+```
+
+That creates a Hive run with role routing, agent artifacts, verification,
+memory draft, inspect summary, and a MemoryOS-compatible observability graph.
+
+Then run the feedback-loop demo if the sibling `../memoryOS` repo is present:
+
+```bash
+python -m hivemind.hive demo memory-loop
+```
+
+That proves the closed loop:
+
+```text
+Hive run -> memory draft -> MemoryOS import/approval -> next Hive run context
+```
+
+After the demos, the normal operator path is:
+
+```bash
+python -m hivemind.hive init
+python -m hivemind.hive run "your task"
+python -m hivemind.hive inspect <run_id>
+python -m hivemind.hive goal
+```
+
+Use direct Claude/Codex/Gemini CLIs for trivial one-shot commands. Use Hive
+when the task needs receipts, policy gates, stop/replay/inspect, multiple
+agents, or MemoryOS feedback.
+
+This release is limited to bounded local runtime orchestration. It is not a
+general agent operating system, not an end-to-end memory substrate, and not a
+long-running autonomous planner. Alpha testing is expected outside the runtime
+harness boundary.
 
 Purpose: implement the user's broader agent / ontology system separately from the `universe/quantum` paper workspace.
 
@@ -66,17 +105,17 @@ See:
 - `docs/OPEN_MODEL_PROVIDER_SURVEY.md` — broader open-model provider survey.
 - `config/providers.example.yaml` — provider registry template.
 
-## Fast Workbench
+## Operator Workbench
 
 ```bash
 scripts/install-hive-cli.sh
 hive init
-hive                       # opens the Hive Console/TUI on an interactive terminal
-hive "your task"
-hive hive activity
-hive plan
-hive check run
-hive tui                   # explicit TUI entrypoint for scripts, tests, and view flags
+hive demo quickstart       # first value demo, no provider keys required
+hive demo memory-loop      # optional Hive -> MemoryOS -> Hive feedback demo
+hive run "your task"
+hive inspect <run_id>
+hive goal
+hive tui                   # optional interactive console
 ```
 
 Or without installing:

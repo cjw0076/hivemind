@@ -211,6 +211,28 @@ def init_onboarding(root: Path) -> dict[str, Any]:
     local_runtime = local_runtime_report(root, write=True)
     settings_profile = write_settings_profile(root, providers=providers, local_runtime=local_runtime)
     report = doctor_report(root)
+    next_actions = [
+        {
+            "command": "hive demo quickstart",
+            "reason": "see the audited run, receipts, memory draft, and MemoryOS read model without provider keys",
+        },
+        {
+            "command": "hive demo memory-loop",
+            "reason": "optional: prove Hive can feed MemoryOS and use accepted memory in the next run",
+        },
+        {
+            "command": 'hive run "your task"',
+            "reason": "start a real bounded run after the demos",
+        },
+        {
+            "command": "hive inspect <run_id>",
+            "reason": "inspect receipts, ledger replay, provider/local results, and next action",
+        },
+        {
+            "command": "hive goal",
+            "reason": "show the active production-v0 goal, validation loop, and reviewer attack prompt",
+        },
+    ]
     return {
         "generated_at": now_iso(),
         "global_dir": global_dir.as_posix(),
@@ -222,6 +244,7 @@ def init_onboarding(root: Path) -> dict[str, Any]:
         "local_runtime": local_runtime,
         "settings_profile": settings_profile,
         "doctor": report,
+        "next_actions": next_actions,
     }
 
 
@@ -266,16 +289,17 @@ def format_onboarding(report: dict[str, Any]) -> str:
         lines.append("Warnings:")
         for warning in settings_profile["warnings"]:
             lines.append(f"! {warning}")
+    lines.extend(["", "Recommended Path:"])
+    for index, item in enumerate(report.get("next_actions") or [], start=1):
+        lines.append(f"{index}. {item.get('command')} — {item.get('reason')}")
     lines.extend(
         [
             "",
-            "Next:",
-            "1. hive doctor",
-            '2. hive run "your task"',
-            "3. hive tui",
-            "4. optional: eval \"$(hive settings shell)\"",
-            "5. optional: hive local setup",
-            "6. optional: hive mcp install --for all",
+            "Optional setup:",
+            "• hive doctor",
+            "• eval \"$(hive settings shell)\"",
+            "• hive local setup",
+            "• hive mcp install --for all",
         ]
     )
     return "\n".join(lines)
