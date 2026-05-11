@@ -1195,3 +1195,38 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - `docs/reviews/PUBLIC_ALPHA_FOREIGN_CONTEXT_REVIEW.md` reviewed: MEDIUM blocker (README internal context pollution) was resolved by CONTRIBUTING.md split. Reviewer verdict: PASS.
 - Working tree clean. Pingpong sprint is stable.
 - Decision: Sprint is converging to public-alpha release. No remaining blockers.
+
+---
+
+## 2026-05-11 20:22 KST — Claude attacker/debugger fourth pass
+
+- Gate: **17/17 PASS** (re-ran after new commit `d996c62`). Tests: **291 passed**.
+- New commit `d996c62`: docs-only — `docs/CAPABILITYOS_FROM_HIVE_SPRINT.md`, ROUTE.md pointer, TODO.md check. No code changes.
+- Attack results:
+  1. **Shell injection (PASS)**: all 5 metacharacter variants safely passed to subprocess list, no injection.
+  2. **Path traversal (PASS)**: `../`, `run_../../`, 200-char run_id all rejected with rc=1.
+  3. **Home dir leak (PASS)**: `hive inspect --json` with `paths_hidden=True` exposes no absolute home paths.
+  4. **Concurrent stop receipts**: 3 rapid stop calls create 3 receipts — idempotent, intended behavior.
+  5. **10k-char debate topic**: rc=0, no crash. Acceptable.
+  6. **BUG FIXED (LOW)**: `hive inspect ''` (empty string) silently fell back to current run. Fixed in `hive.py:1479` with `or None` normalization. Now returns rc=1 with clean error.
+- CapabilityOS doc review: no secrets, no internal-context leaks, no broken local refs. Clean for public repo.
+- Working tree: 1 file changed (hive.py fix). Pingpong sprint remains stable.
+
+## 2026-05-11 20:55 KST — Codex
+
+- repo: hivemind / myworld
+- role: operator
+- goal: adopt `/home/user/workspaces/jaewon/myworld/docs` as the shared AIOS coordination surface.
+- changed: appended a cross-OS usage record to `/home/user/workspaces/jaewon/myworld/docs/AIOS_AGENT_LEDGER.md`.
+- evidence: read root docs `README.md`, `AIOS_NORTHSTAR.md`, `AIOS_AGENT_PROTOCOL.md`, `AIOS_SMART_CONTRACT.md`, `AIOS_AGENT_LEDGER.md`, and `docs/agents/{HIVEMIND,MEMORYOS,CAPABILITYOS}_AGENT.md`.
+- decision: future cross-OS tasks should use root docs for role boundaries and contracts, repo-local docs for implementation details, AIOS_AGENT_LEDGER for cross-repo decisions, and repo worklogs for local changes.
+- risk: existing uncommitted Hive changes from Claude remain; did not overwrite or commit them.
+- next: for any task spanning Hive/MemoryOS/CapabilityOS, draft or reference an AIOS smart contract and stop at operator checkpoint when scope/permission/artifact obligations are unclear.
+- status: done
+
+## 2026-05-11 22:09 KST - Codex
+
+- Context: ASC-0005 dispatched `codex@hivemind` to add a non-blocking CapabilityOS recommendation bridge.
+- Decision: Implemented a Hive-owned bridge that calls `capabilityos.cli recommend` through `HIVE_CAPABILITYOS_SOURCE_ROOT`, stores recommendation metadata in run state/artifacts, and keeps CapabilityOS recommendation-only with no execution authority.
+- Evidence: `python -m pytest tests/test_capability_bridge.py -v` passed 4 tests; `python -m pytest tests/test_quickstart.py -v` passed 4 tests.
+- Next: Return ASC-0005 result packet to MyWorld outbox for operator collection/review.

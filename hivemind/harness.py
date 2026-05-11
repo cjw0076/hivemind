@@ -21,6 +21,7 @@ from typing import Any
 import yaml
 
 from .local_workers import choose_model, read_input, run_worker, validate_worker_result, worker_route_table
+from .capability_bridge import build_capabilityos_recommendation_report
 from .memory_bridge import (
     build_memoryos_context_report,
     extract_memoryos_context_ids,
@@ -1732,6 +1733,8 @@ def demo_live_run(root: Path, task: str = "Watch Hive Mind agents coordinate in 
     write_json(routing_path, routing_plan)
     add_state_artifact(paths, "routing_plan", routing_path)
     append_event(paths, "routing_plan_created", {"artifact": routing_path.relative_to(root).as_posix(), "source": "demo"})
+    ensure_capabilityos_recommendation(root, paths.run_id)
+    paths, state = load_run(root, paths.run_id)
     append_hive_activity(paths, "hive-mind", "route", "Demo route assigned local, Claude, Codex, Gemini, and verifier roles")
     update_state(paths, phase="route", status="ready", latest_event="Demo route ready.")
     _demo_pause(delay)
@@ -2335,6 +2338,62 @@ def _persist_memoryos_context_report(root: Path, paths: RunPaths, artifact: dict
     path = paths.artifacts / "memory_context.json"
     write_json(path, artifact)
     add_state_artifact(paths, "memory_context", path)
+    artifact["artifact"] = path.relative_to(root).as_posix()
+    write_json(path, artifact)
+    return artifact
+
+
+def ensure_capabilityos_recommendation(root: Path, run_id: str | None = None, force: bool = False) -> dict[str, Any]:
+    paths, state = load_run(root, run_id)
+    existing = state.get("capability_bridge")
+    if (
+        not force
+        and isinstance(existing, dict)
+        and existing.get("bridge_status") in {"ok", "unavailable", "failed"}
+        and (root / str(existing.get("artifact", ""))).exists()
+    ):
+        return dict(existing)
+    report = run_capabilityos_recommendation(root, paths, state)
+    recommendation = report.get("recommendation") if report.get("bridge_status") == "ok" else None
+    update_state(
+        paths,
+        capability_bridge=report,
+        capability_recommendation=recommendation,
+    )
+    append_event(
+        paths,
+        "capability_recommendation_retrieved",
+        {
+            "artifact": report.get("artifact"),
+            "bridge_status": report.get("bridge_status"),
+            "status": report.get("status"),
+            "recommended_capability": (recommendation or {}).get("recommended_capability") if isinstance(recommendation, dict) else None,
+            "score": (recommendation or {}).get("score") if isinstance(recommendation, dict) else None,
+        },
+    )
+    append_hive_activity(
+        paths,
+        "capabilityos",
+        "recommendation_retrieved",
+        f"CapabilityOS bridge {report.get('bridge_status')}; recommendation={(recommendation or {}).get('recommended_capability') if isinstance(recommendation, dict) else 'none'}",
+        {
+            "artifact": report.get("artifact"),
+            "bridge_status": report.get("bridge_status"),
+            "status": report.get("status"),
+            "recommended_capability": (recommendation or {}).get("recommended_capability") if isinstance(recommendation, dict) else None,
+        },
+    )
+    return report
+
+
+def run_capabilityos_recommendation(root: Path, paths: RunPaths, state: dict[str, Any]) -> dict[str, Any]:
+    return _persist_capabilityos_recommendation_report(root, paths, build_capabilityos_recommendation_report(root, paths, state))
+
+
+def _persist_capabilityos_recommendation_report(root: Path, paths: RunPaths, artifact: dict[str, Any]) -> dict[str, Any]:
+    path = paths.artifacts / "capability_recommendation.json"
+    write_json(path, artifact)
+    add_state_artifact(paths, "capability_recommendation", path)
     artifact["artifact"] = path.relative_to(root).as_posix()
     write_json(path, artifact)
     return artifact
@@ -3960,6 +4019,7 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
         f"Intent `{parsed.get('intent', 'unknown')}` via {route_source}; {len(actions)} member actions proposed.",
         {"intent": parsed.get("intent", "unknown"), "route_source": route_source, "actions": actions},
     )
+    ensure_capabilityos_recommendation(root, paths.run_id)
 
     prepared: list[str] = []
     for action in actions:
@@ -4772,6 +4832,7 @@ def invoke_external_agent(
 ) -> Path:
     paths, state = load_run(root, run_id)
     ensure_memoryos_context(root, paths.run_id)
+    ensure_capabilityos_recommendation(root, paths.run_id)
     paths, state = load_run(root, paths.run_id)
     if agent not in EXTERNAL_AGENT_ROLES:
         raise ValueError(f"external agent must be one of: {', '.join(sorted(EXTERNAL_AGENT_ROLES))}")
@@ -5058,6 +5119,15 @@ def build_external_prompt(paths: RunPaths, state: dict[str, Any], agent: str, ro
     local_context_path = paths.local_dir / "context.json"
     if local_context_path.exists():
         local_context = local_context_path.read_text(encoding="utf-8", errors="replace")[-8000:]
+    capability_recommendation = state.get("capability_recommendation")
+    capability_bridge = state.get("capability_bridge") if isinstance(state.get("capability_bridge"), dict) else {}
+    capability_context = {
+        "bridge_status": capability_bridge.get("bridge_status"),
+        "status": capability_bridge.get("status"),
+        "reason": capability_bridge.get("reason"),
+        "recommendation": capability_recommendation if isinstance(capability_recommendation, dict) else None,
+        "authority": "recommendation_only; Hive Mind keeps execution authority",
+    }
     role_contract = {
         "planner": "Create a concise implementation handoff with risks, files, acceptance criteria, and unresolved questions.",
         "reviewer": "Review the current run artifacts for risk, missing tests, overclaims, and next actions.",
@@ -5082,6 +5152,7 @@ def build_external_prompt(paths: RunPaths, state: dict[str, Any], agent: str, ro
         "- Artifact updates needed\n\n"
         f"## Context Pack\n{context}\n\n"
         f"## Local Context Worker Output\n```json\n{local_context}\n```\n\n"
+        f"## CapabilityOS Recommendation\n```json\n{json.dumps(capability_context, ensure_ascii=False, indent=2, sort_keys=True)}\n```\n\n"
         f"## Current Handoff\n```yaml\n{handoff}\n```\n\n"
         f"## Recent Events\n```jsonl\n{events[-8000:]}\n```\n"
     )
