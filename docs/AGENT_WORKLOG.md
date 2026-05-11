@@ -7,6 +7,13 @@
 - Evidence: Added `docs/GOAL.md` as the repo-local goal contract and `scripts/user-value-benchmark.py` as the repeatable user-value gate. The benchmark passed with `direct_cli_for_trivial=True` and `hive_for_audited_multi_agent=True`; release gate now includes this benchmark and passed 14/14.
 - Next: Hand `docs/GOAL.md` and the latest `.hivemind/release/*/user-value-benchmark.json` report to Claude for attack review.
 
+## 2026-05-11 19:18 KST - Codex - Hive Goal Surface
+
+- Context: User asked to set the v0 target as the active goal and sprint using `/goal` mode.
+- Decision: Mirror the `/goal` contract into Hive itself with `hive goal`, so the v0 objective, stopping condition, validation commands, latest benchmark/gate, and Claude attack prompt are visible from the product surface.
+- Evidence: Added `hivemind/goal.py`, `hive goal --json`, `hive goal --attack-prompt`, and tests. Verified command output, focused tests, value benchmark pass, full unit suite 282/282, and release gate 14/14.
+- Next: Give Claude `hive goal --attack-prompt` plus `.hivemind/release/20260511_191725/user-value-benchmark.json` as the attack target.
+
 ## 2026-05-03 00:00 KST - Codex - Product Evaluation Start
 
 - Context: User asked to act as a tester, create varied tasks/situations, verify CLI packaging/production readiness, and compare Hive Mind against the user's manual shared-folder collaboration method and direct single-agent usage.

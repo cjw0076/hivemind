@@ -124,6 +124,7 @@ from .supervisor import (
     supervisor_status_report,
     tail_supervisor_log,
 )
+from .goal import build_goal_report, format_goal_report
 
 
 COMMANDS = {
@@ -175,6 +176,7 @@ COMMANDS = {
     "log",
     "prompt",
     "next",
+    "goal",
     "hive",
 }
 
@@ -452,6 +454,10 @@ def _main(argv: list[str] | None = None) -> None:
     next_cmd = sub.add_parser("next", help="show next recommended command")
     next_cmd.add_argument("--run-id")
     next_cmd.add_argument("--json", action="store_true")
+
+    goal_cmd = sub.add_parser("goal", help="show the active production-v0 goal sprint")
+    goal_cmd.add_argument("--json", action="store_true")
+    goal_cmd.add_argument("--attack-prompt", action="store_true", help="print only the Claude attack prompt")
 
     gaps_cmd = sub.add_parser("gaps", help="build gap-closure artifacts from docs/HIVE_MIND_GAPS.md")
     gaps_cmd.add_argument("--run-id")
@@ -1042,6 +1048,17 @@ def _main(argv: list[str] | None = None) -> None:
             print(f"  # {action.get('reason')}  [{source}]")
             if run_ref:
                 print(f"  # run: {run_ref}")
+        return
+    if args.cmd == "goal":
+        import json as _json
+
+        report = build_goal_report(root)
+        if args.attack_prompt:
+            print(report["claude_attack_prompt"])
+        elif args.json:
+            print(_json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_goal_report(report))
         return
     if args.cmd == "gaps":
         report = close_gap_loop(root, args.run_id)

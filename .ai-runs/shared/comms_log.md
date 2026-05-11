@@ -1079,3 +1079,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Treat `docs/GOAL.md` as the repo-local goal artifact. The goal is production-v0 provider-CLI harness quality: native CLI preservation, auditability, receipts, ledger/proof, supervisor controls, and adversarial review hooks. Trivial direct CLI latency is explicitly not the success metric.
 - Evidence: Added `scripts/user-value-benchmark.py` to compare direct CLI trivial use against Hive's audited multi-agent value signals. The standalone benchmark passed, then `scripts/public-release-check.sh` passed 14/14 after adding the benchmark as a release-gate check.
 - Next: Claude should attack the goal/report: find cases where Hive adds ceremony without enough audit, policy, recovery, or multi-agent value.
+
+## 2026-05-11 19:18 KST - Codex
+
+- Context: User asked to set the v0 goal and use `/goal` mode for the sprint.
+- Decision: Add a Hive-native goal read model instead of leaving the goal only in Codex session state. `hive goal` now exposes the production-v0 objective, stopping condition, validation loop, latest benchmark/gate artifacts, and a Claude attack prompt.
+- Evidence: Added `hivemind/goal.py`, CLI wiring, and `tests/test_goal.py`. `hive goal`, `hive goal --json`, and `hive goal --attack-prompt` work. `python scripts/user-value-benchmark.py` passed; full unit suite passed 282 tests; `bash scripts/public-release-check.sh` passed 14/14.
+- Next: Claude should attack the v0 goal using the generated prompt and latest gate artifact.
