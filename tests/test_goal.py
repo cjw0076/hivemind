@@ -34,10 +34,14 @@ class GoalReportTest(unittest.TestCase):
                 encoding="utf-8",
             )
             (release / "test.log").write_text("Ran 281 tests\nOK\n", encoding="utf-8")
+            incomplete = root / ".hivemind" / "release" / "20260511_030000"
+            incomplete.mkdir(parents=True)
+            (incomplete / "test.log").write_text("Ran 1 test\n", encoding="utf-8")
 
             report = build_goal_report(root)
 
             self.assertEqual(report["latest_value_benchmark"]["verdict"], "pass")
+            self.assertEqual(report["latest_release_gate"]["path"], ".hivemind/release/20260511_020000")
             self.assertEqual(report["latest_release_gate"]["user_value_verdict"], "pass")
             self.assertIn("docs/GOAL.md", report["claude_attack_prompt"])
 

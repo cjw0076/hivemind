@@ -208,7 +208,14 @@ def _format_attack_pack(report: dict[str, Any]) -> str:
 
 def _latest_release_gate(root: Path) -> dict[str, Any]:
     release_root = root / ".hivemind" / "release"
-    candidates = sorted([path for path in release_root.glob("*") if path.is_dir()], reverse=True)
+    candidates = sorted(
+        [
+            path
+            for path in release_root.glob("*")
+            if path.is_dir() and (path / "test.log").exists() and (path / "user-value-benchmark.json").exists()
+        ],
+        reverse=True,
+    )
     if not candidates:
         return {"status": "missing", "path": None}
     path = candidates[0]
