@@ -40,7 +40,7 @@ work without it. MemoryOS bridge is optional and gracefully degraded.
 - [x] L0 pingpong (`--scheduler pingpong`) — one serialized turn per round
 - [ ] L1 blackboard/claim — step lease, single controller
 - [ ] fanout isolated as experimental / not default in production commands
-- [ ] `hive run stop` terminates cleanly and writes a stop receipt
+- [x] `hive run stop` terminates cleanly and writes a stop receipt
 
 ### 4. Operator UX (must not require file navigation)
 - [ ] `hive run` — start/status/tail/stop
@@ -56,7 +56,7 @@ work without it. MemoryOS bridge is optional and gracefully degraded.
 - [ ] `hive live --memoryos` emits stable event taxonomy, not Hive action names
 
 ### 6. Release hygiene
-- [x] `scripts/public-release-check.sh` passes (10/10 checks green as of 2026-05-09)
+- [x] `scripts/public-release-check.sh` passes (11/11 checks green as of 2026-05-11)
 - [x] README states "provider-CLI harness, production v0" clearly
 - [x] security review record under `docs/security/`
 - [x] no production-grade AIOS claims in README or CLI output

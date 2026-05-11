@@ -339,3 +339,10 @@
 - Decision: Reworded README scope into release-safe language: bounded local runtime orchestration, not a general agent operating system, not an end-to-end memory substrate, not a long-running autonomous planner.
 - Evidence: `bash scripts/public-release-check.sh` passed 10/10 with zero warnings. Internal `npm test` passed 258 tests. Latest artifacts: `.hivemind/release/20260509_194432`.
 - Next: Commit the H-P0 production runtime boundary and keep post-v0 items separate from the tag.
+
+## 2026-05-11 18:22 KST - Codex - Supervisor Stop Receipt Hardening
+
+- Context: User said to keep pushing after H-P0 boundary. The next production gap was supervisor heartbeat/timeout recovery plus stop receipt coverage.
+- Decision: Hardened `hivemind/supervisor.py` so supervisor state records heartbeat fields, running states with dead PIDs become `stale`, and `hive run stop` always writes a `supervisor_receipts/stop_*.json` receipt plus a `supervisor_stop_requested` ledger event.
+- Evidence: Added supervisor tests for stale dead PID detection and stop receipt/ledger event. Updated `scripts/public-release-check.sh` to run `hive run stop` and verify the receipt. Release gate passed 11/11 with zero warnings; internal `npm test` passed 260 tests.
+- Next: Continue remaining runtime hardening: timeout/partial terminal receipts for provider/local execution and fuller ledger coverage for every prompt/command/result path.

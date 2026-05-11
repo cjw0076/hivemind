@@ -28,6 +28,8 @@ from .workloop import append_execution_ledger, format_probe_confidence, replay_e
 SUPERVISOR_STATE_FILE = "supervisor_state.json"
 SUPERVISOR_LOG_FILE = "supervisor.log"
 SUPERVISOR_STOP_FILE = "supervisor.stop"
+SUPERVISOR_RECEIPTS_DIR = "supervisor_receipts"
+HEARTBEAT_STALE_SECONDS = 120.0
 
 
 def supervisor_paths(root: Path, run_id: str) -> dict[str, Path]:
@@ -37,6 +39,7 @@ def supervisor_paths(root: Path, run_id: str) -> dict[str, Path]:
         "state": run_dir / SUPERVISOR_STATE_FILE,
         "log": run_dir / SUPERVISOR_LOG_FILE,
         "stop": run_dir / SUPERVISOR_STOP_FILE,
+        "receipts": run_dir / SUPERVISOR_RECEIPTS_DIR,
     }
 
 
@@ -78,7 +81,10 @@ def active_step_leases(root: Path, run_id: str) -> list[dict[str, Any]]:
 def write_supervisor_state(root: Path, run_id: str, state: dict[str, Any]) -> Path:
     paths = supervisor_paths(root, run_id)
     state = dict(state)
+    now_epoch = time.time()
     state["updated_at"] = now_iso()
+    state["last_heartbeat_at"] = state["updated_at"]
+    state["last_heartbeat_epoch"] = now_epoch
     state["active_leases"] = active_step_leases(root, run_id)
     paths["state"].parent.mkdir(parents=True, exist_ok=True)
     atomic_write(paths["state"], json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True))
@@ -101,8 +107,25 @@ def read_supervisor_state(root: Path, run_id: str | None = None) -> dict[str, An
     except (OSError, json.JSONDecodeError):
         state = {"schema_version": 1, "run_id": paths_obj.run_id, "status": "invalid_state"}
     state["active_leases"] = active_step_leases(root, paths_obj.run_id)
-    if state.get("status") == "running" and not pid_is_alive(state.get("pid")):
+    state = mark_stale_supervisor_state(state)
+    return state
+
+
+def mark_stale_supervisor_state(state: dict[str, Any], *, stale_after: float = HEARTBEAT_STALE_SECONDS) -> dict[str, Any]:
+    state = dict(state)
+    if state.get("status") != "running":
+        return state
+    if not pid_is_alive(state.get("pid")):
         state["status"] = "stale"
+        state["stale_reason"] = "dead_pid"
+        return state
+    heartbeat_epoch = state.get("last_heartbeat_epoch")
+    if isinstance(heartbeat_epoch, (int, float)):
+        age = max(0.0, time.time() - float(heartbeat_epoch))
+        state["heartbeat_age_seconds"] = round(age, 3)
+        if age > stale_after:
+            state["status"] = "stale"
+            state["stale_reason"] = "heartbeat_timeout"
     return state
 
 
@@ -121,6 +144,38 @@ def append_supervisor_log(root: Path, run_id: str, message: str) -> None:
     paths["log"].parent.mkdir(parents=True, exist_ok=True)
     with paths["log"].open("a", encoding="utf-8") as f:
         f.write(f"{now_iso()} {message}\n")
+
+
+def write_stop_receipt(
+    root: Path,
+    run_id: str,
+    *,
+    requested_by: str,
+    previous_status: str,
+    final_status: str,
+    pid: Any,
+    signal_sent: str | None,
+    reason: str,
+) -> dict[str, Any]:
+    paths = supervisor_paths(root, run_id)
+    paths["receipts"].mkdir(parents=True, exist_ok=True)
+    receipt_path = paths["receipts"] / f"stop_{int(time.time() * 1000)}.json"
+    receipt = {
+        "schema_version": 1,
+        "run_id": run_id,
+        "kind": "supervisor_stop_receipt",
+        "requested_by": requested_by,
+        "requested_at": now_iso(),
+        "previous_status": previous_status,
+        "final_status": final_status,
+        "pid": pid,
+        "signal_sent": signal_sent,
+        "reason": reason,
+    }
+    atomic_write(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True))
+    receipt["artifact"] = receipt_path.relative_to(root).as_posix()
+    atomic_write(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True))
+    return receipt
 
 
 def stop_requested(root: Path, run_id: str) -> bool:
@@ -177,6 +232,8 @@ def run_supervisor(
         "git_commit": current_git_commit(root),
         "last_result": None,
         "output_artifacts_validated": False,
+        "last_heartbeat_at": None,
+        "last_heartbeat_epoch": None,
     }
     write_supervisor_state(root, run_id, sup_state)
     append_supervisor_log(root, run_id, f"supervisor started pid={os.getpid()} execute={execute} max_rounds={max_rounds} scheduler={scheduler}")
@@ -460,6 +517,7 @@ def supervisor_status_report(root: Path, run_id: str | None = None) -> dict[str,
         "issue_count": len(replay.get("issues") or []),
     }
     state["active_leases"] = active_step_leases(root, paths_obj.run_id)
+    state = mark_stale_supervisor_state(state)
     state["last_probes"] = state.get("last_probes") or probe_summaries_from_result(state.get("last_result") or {})
     if not state["last_probes"]:
         state["last_probes"] = probe_summaries_from_replay(replay)
@@ -480,23 +538,42 @@ def stop_supervisor(root: Path, run_id: str | None = None) -> dict[str, Any]:
     paths = supervisor_paths(root, paths_obj.run_id)
     paths["stop"].write_text(now_iso(), encoding="utf-8")
     state = read_supervisor_state(root, paths_obj.run_id)
+    previous_status = str(state.get("status") or "unknown")
     pid = state.get("pid")
+    signal_sent = None
+    reason = "stop_requested"
     if pid_is_alive(pid):
         try:
             os.kill(int(pid), signal.SIGTERM)
+            signal_sent = "SIGTERM"
             state["status"] = "stop_requested"
         except OSError:
             state["status"] = "stale"
+            reason = "pid_signal_failed"
     else:
         state["status"] = "stop_requested"
+        reason = "no_live_process"
+    receipt = write_stop_receipt(
+        root,
+        paths_obj.run_id,
+        requested_by="operator",
+        previous_status=previous_status,
+        final_status=str(state.get("status")),
+        pid=pid,
+        signal_sent=signal_sent,
+        reason=reason,
+    )
+    state["last_stop_receipt"] = receipt.get("artifact")
     write_supervisor_state(root, paths_obj.run_id, state)
+    append_supervisor_log(root, paths_obj.run_id, f"stop requested status={state['status']} receipt={receipt.get('artifact')}")
     append_execution_ledger(
         root,
         paths_obj.run_id,
-        "supervisor_stopped",
+        "supervisor_stop_requested",
         actor="operator",
         status=state["status"],
-        artifact=paths["state"].relative_to(root).as_posix(),
+        artifact=str(receipt.get("artifact") or paths["state"].relative_to(root).as_posix()),
+        extra={"previous_status": previous_status, "pid": pid, "signal_sent": signal_sent, "reason": reason},
     )
     return supervisor_status_report(root, paths_obj.run_id)
 
@@ -509,6 +586,10 @@ def format_supervisor_status(report: dict[str, Any]) -> str:
         f"Scheduler: {report.get('scheduler') or 'fanout'}  Kernel: {report.get('kernel_level') or '-'}",
         f"Log: {report.get('log_path') or '-'}",
     ]
+    if report.get("last_heartbeat_at"):
+        lines.append(f"Heartbeat: {report.get('last_heartbeat_at')} age={report.get('heartbeat_age_seconds', 0)}s")
+    if report.get("last_stop_receipt"):
+        lines.append(f"Stop Receipt: {report.get('last_stop_receipt')}")
     replay = report.get("replay") or {}
     lines.append(
         "Replay: "

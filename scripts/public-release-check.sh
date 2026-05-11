@@ -14,7 +14,7 @@ mkdir -p "$OUT_DIR"
 PASS=0
 FAIL=0
 WARNINGS=()
-TOTAL=10
+TOTAL=11
 
 ok()   { echo "  PASS  $*"; ((PASS++)) || true; }
 fail() { echo "  FAIL  $*"; ((FAIL++)) || true; }
@@ -89,8 +89,21 @@ else
     fi
 fi
 
-# ── 6. ledger replay smoke ───────────────────────────────────────────────────
-echo "[ 6/$TOTAL ] ledger replay smoke"
+# ── 6. supervisor stop receipt smoke ─────────────────────────────────────────
+echo "[ 6/$TOTAL ] supervisor stop receipt smoke"
+if [ -n "$SMOKE_ID" ] && python -m hivemind.hive run stop --run-id "$SMOKE_ID" --json > "$OUT_DIR/stop-$SMOKE_ID.json" 2>&1; then
+    RECEIPT=$(python3 -c "import json; d=json.load(open('$OUT_DIR/stop-$SMOKE_ID.json')); print(d.get('last_stop_receipt',''))" 2>/dev/null || true)
+    if [ -n "$RECEIPT" ] && [ -f "$RECEIPT" ]; then
+        ok "hive run stop wrote receipt=$RECEIPT"
+    else
+        fail "hive run stop did not report a valid receipt"
+    fi
+else
+    fail "hive run stop failed for smoke run"
+fi
+
+# ── 7. ledger replay smoke ───────────────────────────────────────────────────
+echo "[ 7/$TOTAL ] ledger replay smoke"
 if [ -n "$SMOKE_ID" ] && python -m hivemind.hive ledger replay --run-id "$SMOKE_ID" --json > "$OUT_DIR/ledger-$SMOKE_ID.json" 2>&1; then
     LEDGER_OK=$(python3 -c "import json; d=json.load(open('$OUT_DIR/ledger-$SMOKE_ID.json')); print(d.get('ok'))" 2>/dev/null || echo "?")
     ok "hive ledger replay ok=$LEDGER_OK run=$SMOKE_ID"
@@ -98,8 +111,8 @@ else
     fail "hive ledger replay failed for smoke run"
 fi
 
-# ── 7. hive inspect smoke ────────────────────────────────────────────────────
-echo "[ 7/$TOTAL ] hive inspect smoke"
+# ── 8. hive inspect smoke ────────────────────────────────────────────────────
+echo "[ 8/$TOTAL ] hive inspect smoke"
 if [ -n "$SMOKE_ID" ] && python -m hivemind.hive inspect "$SMOKE_ID" --json > "$OUT_DIR/inspect-$SMOKE_ID.json" 2>&1; then
     KIND=$(python3 -c "import json; d=json.load(open('$OUT_DIR/inspect-$SMOKE_ID.json')); print(d.get('kind','?'))" 2>/dev/null || echo "?")
     RECORDS=$(python3 -c "import json; d=json.load(open('$OUT_DIR/inspect-$SMOKE_ID.json')); print((d.get('ledger') or {}).get('record_count','?'))" 2>/dev/null || echo "?")
@@ -112,8 +125,8 @@ else
     fail "hive inspect failed for smoke run"
 fi
 
-# ── 8. MemoryOS bridge graceful degrade ──────────────────────────────────────
-echo "[ 8/$TOTAL ] MemoryOS bridge graceful degrade"
+# ── 9. MemoryOS bridge graceful degrade ──────────────────────────────────────
+echo "[ 9/$TOTAL ] MemoryOS bridge graceful degrade"
 # If MemoryOS not present, hive orchestrate should not fail
 MEMORYOS_ROOT="$ROOT_DIR/../memoryOS"
 if [ -d "$MEMORYOS_ROOT" ]; then
@@ -127,8 +140,8 @@ else
     fi
 fi
 
-# ── 9. Secret / private path scan ────────────────────────────────────────────
-echo "[ 9/$TOTAL ] Secret and private path scan"
+# ── 10. Secret / private path scan ───────────────────────────────────────────
+echo "[ 10/$TOTAL ] Secret and private path scan"
 SECRET_FILES=$(git ls-files \
     | grep -v 'public-release-check.sh' \
     | xargs grep -rlI \
@@ -155,8 +168,8 @@ if [ "$SECRET_HITS" -eq 0 ] && [ "$PRIVATE_HITS" -eq 0 ]; then
     ok "no secret or private path patterns in tracked files"
 fi
 
-# ── 10. README production claim audit ────────────────────────────────────────
-echo "[ 10/$TOTAL ] README production claim audit"
+# ── 11. README production claim audit ────────────────────────────────────────
+echo "[ 11/$TOTAL ] README production claim audit"
 OVERCLAIMS=$(grep -ciE \
     '(self.improving|autonomous.*long.horizon|AIOS|complete.*memory.*swarm|capabilityos.*routed)' \
     README.md 2>/dev/null || true)

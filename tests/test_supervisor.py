@@ -15,10 +15,12 @@ from hivemind.supervisor import (
     format_supervisor_status,
     probe_summaries_from_result,
     run_supervisor,
+    stop_supervisor,
     supervisor_paths,
     supervisor_result_is_waiting,
     supervisor_status_report,
     tail_supervisor_log,
+    write_supervisor_state,
 )
 from hivemind.workloop import read_execution_ledger
 
@@ -86,6 +88,45 @@ class SupervisorTest(unittest.TestCase):
             self.assertEqual(report["run_id"], paths.run_id)
             self.assertLessEqual(len(report["lines"]), 2)
             self.assertTrue(any("supervisor" in line for line in report["lines"]))
+
+    def test_running_dead_pid_is_reported_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "supervisor stale pid")
+            write_supervisor_state(
+                root,
+                paths.run_id,
+                {
+                    "schema_version": 1,
+                    "run_id": paths.run_id,
+                    "status": "running",
+                    "pid": 999999999,
+                    "host": "test",
+                    "rounds": 0,
+                    "max_rounds": 1,
+                    "execute": False,
+                    "log_path": "supervisor.log",
+                },
+            )
+
+            report = supervisor_status_report(root, paths.run_id)
+
+            self.assertEqual(report["status"], "stale")
+            self.assertEqual(report["stale_reason"], "dead_pid")
+
+    def test_stop_supervisor_writes_receipt_and_ledger_event(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "supervisor stop receipt")
+
+            report = stop_supervisor(root, paths.run_id)
+            receipt = report.get("last_stop_receipt")
+            events = [record.get("event") for record in read_execution_ledger(root, paths.run_id)]
+
+            self.assertEqual(report["status"], "stop_requested")
+            self.assertTrue(receipt)
+            self.assertTrue((root / receipt).exists())
+            self.assertIn("supervisor_stop_requested", events)
 
     def test_cli_run_start_status_tail_json_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

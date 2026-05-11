@@ -990,6 +990,13 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Evidence: `bash scripts/public-release-check.sh` passed 10/10 with zero warnings; internal `npm test` passed 258 tests. Latest release artifacts are under `.hivemind/release/20260509_194432`.
 - Next: Commit the H-P0 boundary, then keep supervisor heartbeat/stop receipt hardening and post-v0 substrate work out of the production-v0 tag unless explicitly pulled in.
 
+## 2026-05-11 18:22 KST - Codex
+
+- Context: User asked to keep pushing with the pingpong sprint. The next H-P0 runtime hardening target was supervisor heartbeat/timeout recovery and stop receipt behavior.
+- Decision: Added supervisor heartbeat fields and stale dead-PID reporting, and made `hive run stop` produce a durable stop receipt under `supervisor_receipts/` plus a `supervisor_stop_requested` ledger event.
+- Evidence: `python -m unittest tests.test_supervisor` passed. `bash scripts/public-release-check.sh` now includes a supervisor stop receipt smoke and passed 11/11 with zero warnings; internal `npm test` passed 260 tests.
+- Next: Continue toward terminal receipt coverage for timeout/partial provider/local runs and fuller ledger path provenance.
+
 ## 2026-05-09 KST - Claude (H-P0 Sprint — adversarial-cooperative)
 
 - Context: User asked Claude to directly use Hive Mind, sprint toward production, operate in adversarial-cooperative mode with Codex.
