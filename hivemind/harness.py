@@ -596,6 +596,72 @@ def recommend_next_action(
     return {"command": "hive check run", "reason": "run artifacts are ready for policy checks"}
 
 
+def next_grounded_action(root: Path, run_id: str | None = None) -> dict[str, Any]:
+    """One-line operator decision grounded in run state, escalations, and DAG."""
+    from .plan_dag import load_dag
+
+    paths, state = load_run(root, run_id)
+    run_id = paths.run_id
+
+    # 1. Topology escalation overrides everything
+    dis_path = paths.run_dir / "disagreements.json"
+    if dis_path.exists():
+        try:
+            records = json.loads(dis_path.read_text(encoding="utf-8"))
+            high = [r for r in records if isinstance(r, dict) and r.get("severity") in {"high", "medium"}]
+            if high:
+                return {
+                    "source": "disagreement_topology",
+                    "run_id": run_id,
+                    "command": f"hive inspect {run_id}",
+                    "reason": f"{len(high)} topology escalation(s): {', '.join(r.get('dominant_axis','?') for r in high[:3])}",
+                }
+        except Exception:
+            pass
+
+    # 2. DAG next step (if plan_dag is active)
+    dag = load_dag(root, run_id)
+    if dag is not None and not dag.is_complete():
+        if dag.is_blocked():
+            return {
+                "source": "plan_dag",
+                "run_id": run_id,
+                "command": "hive step list",
+                "reason": "DAG is blocked — check failed steps",
+            }
+        next_step = dag.next_sequential()
+        if next_step:
+            provider = "/".join(next_step.provider_candidates) or "harness"
+            return {
+                "source": "plan_dag",
+                "run_id": run_id,
+                "command": f"hive step run {next_step.step_id}",
+                "reason": f"{next_step.owner_role} via {provider}",
+            }
+
+    # 3. Provider/local failures → inspect
+    agents_dir = paths.run_dir / "agents"
+    if agents_dir.exists():
+        for result_path in agents_dir.rglob("*.yaml"):
+            try:
+                data = yaml.safe_load(result_path.read_text(encoding="utf-8")) or {}
+                if isinstance(data, dict) and data.get("status") == "failed":
+                    return {
+                        "source": "provider_failure",
+                        "run_id": run_id,
+                        "command": f"hive inspect {run_id} --verbose",
+                        "reason": f"provider failure: {data.get('provider','?')}/{data.get('role','?')}",
+                    }
+            except Exception:
+                pass
+
+    # 4. Pipeline-based recommendation
+    pipeline = pipeline_status(paths)
+    artifacts = artifact_status(paths, state)
+    action = recommend_next_action(paths, state, pipeline, artifacts)
+    return {"source": "pipeline", "run_id": run_id, **action}
+
+
 def memory_draft_count(path: Path) -> int:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -3540,10 +3606,30 @@ def run_checks(root: Path, run_id: str | None = None) -> dict[str, Any]:
 
 def git_diff_report(root: Path, run_id: str | None = None) -> dict[str, Any]:
     paths, _ = load_run(root, run_id)
+    from .workloop import replay_execution_ledger
+
     status = run_git(root, ["status", "--short"])
     diff_stat = run_git(root, ["diff", "--stat"])
     diff_name = run_git(root, ["diff", "--name-only"])
     staged_name = run_git(root, ["diff", "--cached", "--name-only"])
+    ledger = replay_execution_ledger(root, paths.run_id)
+    ledger_touched = sorted(
+        {
+            str(item)
+            for step in (ledger.get("steps") or {}).values()
+            for item in (step.get("files_touched") or [])
+            if item
+        }
+    )
+    ledger_summary = {
+        "ok": ledger.get("ok"),
+        "record_count": ledger.get("record_count"),
+        "hash_chain_ok": ledger.get("hash_chain_ok"),
+        "seq_ok": ledger.get("seq_ok"),
+        "issue_count": len(ledger.get("issues") or []),
+        "artifact_hash_drift_count": sum(1 for issue in ledger.get("issues") or [] if issue.get("type") == "artifact_hash_drift"),
+        "touched_files": ledger_touched,
+    }
     report = {
         "schema_version": 1,
         "run_id": paths.run_id,
@@ -3551,6 +3637,7 @@ def git_diff_report(root: Path, run_id: str | None = None) -> dict[str, Any]:
         "changed_files": [line for line in diff_name["stdout"].splitlines() if line.strip()],
         "staged_files": [line for line in staged_name["stdout"].splitlines() if line.strip()],
         "diff_stat": diff_stat["stdout"].splitlines(),
+        "ledger": ledger_summary,
         "git_available": status["returncode"] == 0,
     }
     out_path = paths.run_dir / "git_diff_report.json"
@@ -3570,6 +3657,20 @@ def format_git_diff_report(report: dict[str, Any]) -> str:
     if report.get("diff_stat"):
         lines.extend(["", "Diff stat:"])
         lines.extend(str(line) for line in report["diff_stat"])
+    ledger = report.get("ledger") or {}
+    lines.extend(
+        [
+            "",
+            "Ledger:",
+            f"- ok={ledger.get('ok')} records={ledger.get('record_count')} hash_chain={ledger.get('hash_chain_ok')} seq={ledger.get('seq_ok')} issues={ledger.get('issue_count')}",
+            f"- artifact_hash_drift={ledger.get('artifact_hash_drift_count')}",
+            "- touched files:",
+        ]
+    )
+    for path in ledger.get("touched_files") or []:
+        lines.append(f"  - {path}")
+    if not ledger.get("touched_files"):
+        lines.append("  - none")
     return "\n".join(lines)
 
 

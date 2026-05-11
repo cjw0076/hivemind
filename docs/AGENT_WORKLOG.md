@@ -367,3 +367,10 @@
 - Decision: Added `artifact_sha256` to ledger records when an artifact path is provided, replay-time `artifact_hash_drift` detection, proof `artifact_hashes` for stdout/stderr/output/artifacts_created, inspect summary count for artifact hash drift, and inspect verdict escalation for high/medium disagreement topology.
 - Evidence: Added regression tests for artifact hash drift and proof artifact hash recording. Focused gate passed, then `bash scripts/public-release-check.sh` passed 11/11 with zero warnings; internal `npm test` passed 265 tests.
 - Next: Run the full release gate, then decide whether command/prompt hash drift validation should be pulled into H-P0 or left as post-v0 provenance hardening.
+
+## 2026-05-11 18:50 KST - Codex - Hive Next And Diff Operator Surfaces
+
+- Context: The H-P0 checklist still had `hive next` and `hive diff` operator-trust items open. Existing `hive next` could fall back to gap artifacts, and `hive diff` showed git state but not run ledger state.
+- Decision: `hive next` now returns a grounded command/reason/source using disagreement topology, DAG state, provider failures, and pipeline fallback. `git_diff_report()` now includes ledger replay health, record count, issue count, artifact hash drift count, and ledger-touched files. Text and JSON output share the same report.
+- Evidence: Added regression tests for grounded next actions and ledger-touched files in `hive diff`. `bash scripts/public-release-check.sh` now has 13 checks and passed 13/13 with zero warnings; internal `npm test` passed 278 tests.
+- Next: Run the full release gate and commit if green.

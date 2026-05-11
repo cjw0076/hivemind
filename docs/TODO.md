@@ -201,9 +201,11 @@ Sources: `VG-03`, `VG-04`, `VG-13`, `VG-18`.
 - [x] Use fast heuristic routing for normal TUI prompts so local LLM router latency does not make the console feel stuck.
 - [x] Add `.hivemind/checks/*.md` markdown-as-agent-check policy files inspired by Continue.
 - [x] Add git-first diff/check/commit summary loop inspired by Aider.
+- [x] Make `hive diff` include ledger health, record count, artifact hash drift count, and ledger-touched files.
 - [x] Add unified prompt input via `hive prompt` and slash shell `/prompt`.
 - [x] Add adapter registry stubs for opencode, goose, OpenClaude-compatible runtimes.
 - [x] Add `hive next`, `hive agents status`, and `hive memory list` for fast operator loops.
+- [x] Ground `hive next` in disagreement topology, DAG state, provider failures, and pipeline fallback.
 - [x] Add option-only `hive loop` self-judgment/autopilot surface: dry-run by default, `--execute` plus per-action `--allow`, no provider CLI auto-execution, no arbitrary shell, no memory commit.
 - [x] Make `hive loop` validation-safe and failure-aware: auto-loop events are accepted by run validation, failed local workers stop the loop, and failed agent state fails verification.
 - [x] Make `hive tui` interactive with prompt input, slash command input, and dashboard layout.

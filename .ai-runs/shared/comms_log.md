@@ -1018,6 +1018,13 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Evidence: Added workloop/protocol tests for artifact hash drift and proof hash recording. Focused gate passed, then `bash scripts/public-release-check.sh` passed 11/11 with zero warnings; internal `npm test` passed 265 tests.
 - Next: Run the full release gate and then commit this provenance slice if clean.
 
+## 2026-05-11 18:50 KST - Codex
+
+- Context: Continuing H-P0 operator-surface closure after ledger drift detection.
+- Decision: `hive next` now returns a grounded command/reason/source from topology escalation, DAG state, provider failure, or pipeline fallback. `hive diff` now reports run ledger health and ledger-touched files in addition to git diff status, so the operator can see code/file movement and run authority state together.
+- Evidence: Added regression tests for grounded next action and ledger summary in `git_diff_report()`. `bash scripts/public-release-check.sh` now has 13 checks and passed 13/13 with zero warnings; internal `npm test` passed 278 tests.
+- Next: Commit the operator-surface slice if clean.
+
 ## 2026-05-09 KST - Claude (H-P0 Sprint — adversarial-cooperative)
 
 - Context: User asked Claude to directly use Hive Mind, sprint toward production, operate in adversarial-cooperative mode with Codex.

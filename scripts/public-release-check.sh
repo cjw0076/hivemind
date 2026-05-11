@@ -14,7 +14,7 @@ mkdir -p "$OUT_DIR"
 PASS=0
 FAIL=0
 WARNINGS=()
-TOTAL=11
+TOTAL=13
 
 ok()   { echo "  PASS  $*"; ((PASS++)) || true; }
 fail() { echo "  FAIL  $*"; ((FAIL++)) || true; }
@@ -125,8 +125,35 @@ else
     fail "hive inspect failed for smoke run"
 fi
 
-# ── 9. MemoryOS bridge graceful degrade ──────────────────────────────────────
-echo "[ 9/$TOTAL ] MemoryOS bridge graceful degrade"
+# ── 9. hive inspect verdict smoke ────────────────────────────────────────────
+echo "[ 9/$TOTAL ] hive inspect verdict smoke"
+if [ -n "$SMOKE_ID" ]; then
+    VERDICT=$(python3 -c "import json; d=json.load(open('$OUT_DIR/inspect-$SMOKE_ID.json')); print(d.get('verdict','?'))" 2>/dev/null || echo "?")
+    if [ "$VERDICT" = "clean" ] || [ "$VERDICT" = "escalated" ] || [ "$VERDICT" = "failures" ] || [ "$VERDICT" = "chain_tampered" ]; then
+        ok "hive inspect verdict=$VERDICT run=$SMOKE_ID"
+    else
+        fail "hive inspect did not return a known verdict (got: $VERDICT)"
+    fi
+else
+    fail "smoke run not available for verdict check"
+fi
+
+# ── 10. hive next grounded smoke ─────────────────────────────────────────────
+echo "[ 10/$TOTAL ] hive next grounded smoke"
+if [ -n "$SMOKE_ID" ] && python -m hivemind.hive next --run-id "$SMOKE_ID" --json > "$OUT_DIR/next-$SMOKE_ID.json" 2>&1; then
+    NEXT_CMD=$(python3 -c "import json; d=json.load(open('$OUT_DIR/next-$SMOKE_ID.json')); print(d.get('command','?'))" 2>/dev/null || echo "?")
+    NEXT_SRC=$(python3 -c "import json; d=json.load(open('$OUT_DIR/next-$SMOKE_ID.json')); print(d.get('source','?'))" 2>/dev/null || echo "?")
+    if [ "$NEXT_CMD" != "?" ] && [ "$NEXT_SRC" != "?" ]; then
+        ok "hive next cmd='$NEXT_CMD' source=$NEXT_SRC run=$SMOKE_ID"
+    else
+        fail "hive next did not return a grounded action"
+    fi
+else
+    fail "hive next failed for smoke run"
+fi
+
+# ── 11. MemoryOS bridge graceful degrade ─────────────────────────────────────
+echo "[ 11/$TOTAL ] MemoryOS bridge graceful degrade"
 # If MemoryOS not present, hive orchestrate should not fail
 MEMORYOS_ROOT="$ROOT_DIR/../memoryOS"
 if [ -d "$MEMORYOS_ROOT" ]; then
@@ -140,8 +167,8 @@ else
     fi
 fi
 
-# ── 10. Secret / private path scan ───────────────────────────────────────────
-echo "[ 10/$TOTAL ] Secret and private path scan"
+# ── 12. Secret / private path scan ───────────────────────────────────────────
+echo "[ 12/$TOTAL ] Secret and private path scan"
 SECRET_FILES=$(git ls-files \
     | grep -v 'public-release-check.sh' \
     | xargs grep -rlI \
@@ -168,8 +195,8 @@ if [ "$SECRET_HITS" -eq 0 ] && [ "$PRIVATE_HITS" -eq 0 ]; then
     ok "no secret or private path patterns in tracked files"
 fi
 
-# ── 11. README production claim audit ────────────────────────────────────────
-echo "[ 11/$TOTAL ] README production claim audit"
+# ── 13. README production claim audit ────────────────────────────────────────
+echo "[ 13/$TOTAL ] README production claim audit"
 OVERCLAIMS=$(grep -ciE \
     '(self.improving|autonomous.*long.horizon|AIOS|complete.*memory.*swarm|capabilityos.*routed)' \
     README.md 2>/dev/null || true)

@@ -85,6 +85,7 @@ from .harness import (
     run_audit_report,
     inspect_run,
     format_inspect_run,
+    next_grounded_action,
     policy_report,
     workspace_layout_report,
 )
@@ -1019,33 +1020,16 @@ def _main(argv: list[str] | None = None) -> None:
         return
     if args.cmd == "next":
         import json as _json
-        dag = load_dag(root, args.run_id)
-        if dag is not None:
-            next_step = dag.next_sequential()
-            if args.json:
-                result = {"source": "plan_dag", "next": {"step_id": next_step.step_id, "kind": next_step.kind, "owner_role": next_step.owner_role, "command": f"hive step run {next_step.step_id}"} if next_step else None}
-                print(_json.dumps(result, ensure_ascii=False, indent=2))
-            else:
-                if dag.is_complete():
-                    print("All DAG steps complete.")
-                elif dag.is_blocked():
-                    print("DAG is blocked — check failed steps with: hive step list")
-                elif next_step:
-                    provider_hint = "/".join(next_step.provider_candidates) or "harness"
-                    print(f"Next step: {next_step.step_id}  [{next_step.owner_role} via {provider_hint}]")
-                    print(f"  Run: hive step run {next_step.step_id}")
-            return
-        report = close_gap_loop(root, args.run_id)
+        action = next_grounded_action(root, args.run_id)
         if args.json:
-            print(_json.dumps(report.get("next_actions", []), ensure_ascii=False, indent=2, sort_keys=True))
+            print(_json.dumps(action, ensure_ascii=False, indent=2, sort_keys=True))
         else:
-            actions = report.get("next_actions", [])
-            next_action = actions[0] if actions else {}
-            print("Next recommended action:")
-            print(f"  {next_action.get('command')}")
-            print("")
-            print("Reason:")
-            print(f"  {next_action.get('reason')}")
+            source = action.get("source", "pipeline")
+            run_ref = action.get("run_id", "")
+            print(f"  {action.get('command')}")
+            print(f"  # {action.get('reason')}  [{source}]")
+            if run_ref:
+                print(f"  # run: {run_ref}")
         return
     if args.cmd == "gaps":
         report = close_gap_loop(root, args.run_id)

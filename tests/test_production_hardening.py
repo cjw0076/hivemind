@@ -16,6 +16,8 @@ from hivemind.harness import (
     debate_topic,
     ensure_memoryos_context,
     flow_advance,
+    format_git_diff_report,
+    git_diff_report,
     invoke_external_agent,
     llm_checker_report,
     local_benchmark_report,
@@ -26,6 +28,7 @@ from hivemind.harness import (
 )
 from hivemind.plan_dag import load_dag
 from hivemind.workloop import read_execution_ledger
+from hivemind.workloop import append_execution_ledger
 from hivemind.run_validation import validate_run_artifacts
 from unittest.mock import patch
 
@@ -342,6 +345,32 @@ class ProductionHardeningTest(unittest.TestCase):
             events = [record.get("event") for record in read_execution_ledger(root, report["run_id"])]
             self.assertIn("step_started", events)
             self.assertIn("step_completed", events)
+
+    def test_git_diff_report_includes_ledger_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "diff ledger summary", project="Hive Mind")
+            artifact = paths.run_dir / "artifact.json"
+            artifact.write_text('{"ok": true}\n', encoding="utf-8")
+            append_execution_ledger(
+                root,
+                paths.run_id,
+                "step_completed",
+                actor="harness",
+                step_id="verify",
+                status="completed",
+                files_touched=["README.md"],
+                artifact=artifact.relative_to(root).as_posix(),
+            )
+
+            report = git_diff_report(root, paths.run_id)
+            text = format_git_diff_report(report)
+
+            self.assertEqual(report["ledger"]["record_count"], 1)
+            self.assertTrue(report["ledger"]["hash_chain_ok"])
+            self.assertIn("README.md", report["ledger"]["touched_files"])
+            self.assertIn("Ledger:", text)
+            self.assertIn("README.md", text)
 
     def test_flow_advance_injects_completed_local_context_into_provider_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

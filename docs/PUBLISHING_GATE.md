@@ -37,7 +37,7 @@ work without it. MemoryOS bridge is optional and gracefully degraded.
 - [x] `hive inspect <run>` emits ledger replay with hash chain
 - [x] `hive inspect <run>` surfaces provider receipts and local worker terminal artifacts
 - [x] `hive inspect <run>` emits a verdict and escalates high/medium disagreement topology
-- [ ] `hive diff` reports touched files + ledger summary
+- [x] `hive diff` reports touched files + ledger summary
 
 ### 3. Scheduler stability
 - [x] L0 pingpong (`--scheduler pingpong`) — one serialized turn per round
@@ -50,7 +50,7 @@ work without it. MemoryOS bridge is optional and gracefully degraded.
 - [ ] `hive status` — current run health without opening run folder
 - [ ] `hive live` — real-time event stream
 - [x] `hive inspect <run>` — replay/debug artifact report
-- [ ] `hive next` — one-line operator decision grounded in run state
+- [x] `hive next` — one-line operator decision grounded in run state (topology escalation → DAG step → pipeline)
 
 ### 5. MemoryOS bridge (optional / graceful degrade)
 - [x] if MemoryOS is absent, context build silently skips
