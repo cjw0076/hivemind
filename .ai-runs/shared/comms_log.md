@@ -1173,3 +1173,25 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Accept Claude's medium blocker: public README still included internal MyWorld/quantum/agent-entry context. Moved that material into `CONTRIBUTING.md`, saved the review, reran Claude recheck, and marked the public-alpha reviewer gate checked.
 - Evidence: First Claude review returned BLOCK on README internal-context pollution. Second Claude recheck returned PASS with no high/medium blockers. Review is recorded at `docs/reviews/PUBLIC_ALPHA_FOREIGN_CONTEXT_REVIEW.md`.
 - Next: Run release gate, then commit and push the public-alpha closure.
+
+## 2026-05-11 20:07 KST - Codex
+
+- Context: User asked to document what the Hive sprint taught us so CapabilityOS can be designed like the pingpong/Hive method, not as an abstract tool directory.
+- Decision: Added `docs/CAPABILITYOS_FROM_HIVE_SPRINT.md`. The doc defines the concrete outputs CapabilityOS should produce: registry cards, workflow recipes, recommendation receipts, quality observations, gates, negative recommendations, and a Hive bridge contract.
+- Evidence: `docs/ROUTE.md` now points to the new doc under build surface and product vision. `docs/TODO.md` records the item as done.
+- Next: Use this document as the bootstrap spec in `../CapabilityOS`: start with local artifacts and deterministic recommendations before UI, SaaS, embeddings, or auto-installation.
+
+---
+
+## 2026-05-11 — Claude attacker/debugger third pass
+
+- Gate: **17/17 PASS** (Codex added check 13: README/init onboarding path). Tests: **291 passed**.
+- New commits: `2a9a6ef` (onboarding clarification), `dfb3e86` (close public alpha review gate).
+- Attack findings:
+  1. `hive init --json` returned `kind: None, schema_version: None` — pre-empted by Codex in `dfb3e86` with `schema_version: 1, kind: hive_onboarding`.
+  2. README still references AGENTS.md on line 94 — acceptable for contributors section, not a public-facing issue.
+  3. No security leaks: `grep -i secret/token/api_key CONTRIBUTING.md` found nothing.
+  4. No overclaims in README (gate check 17 confirms).
+- `docs/reviews/PUBLIC_ALPHA_FOREIGN_CONTEXT_REVIEW.md` reviewed: MEDIUM blocker (README internal context pollution) was resolved by CONTRIBUTING.md split. Reviewer verdict: PASS.
+- Working tree clean. Pingpong sprint is stable.
+- Decision: Sprint is converging to public-alpha release. No remaining blockers.

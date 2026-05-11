@@ -458,3 +458,10 @@
 - Decision: Invoked Claude Haiku as an external reviewer. It initially blocked on README internal-context leakage, so the internal MyWorld/quantum/agent-entry material was moved to `CONTRIBUTING.md`. A second Claude recheck returned PASS with no high/medium blockers.
 - Evidence: Review saved in `docs/reviews/PUBLIC_ALPHA_FOREIGN_CONTEXT_REVIEW.md`; `docs/PUBLIC_ALPHA_GATE.md` now marks the reviewer criterion checked.
 - Next: Rerun release gate and commit the public-alpha review closure.
+
+## 2026-05-11 20:07 KST - Codex - CapabilityOS Sprint Lessons
+
+- Context: User asked to capture what the Hive pingpong/public-alpha sprint revealed so CapabilityOS can be designed with those lessons from the start.
+- Decision: Added `docs/CAPABILITYOS_FROM_HIVE_SPRINT.md` as an implementation checklist, not another vision doc. It specifies CapabilityCard, WorkflowRecipe, CapabilityRecommendation, CapabilityObservation, gates, first sprint order, and boundaries with Hive/MemoryOS.
+- Evidence: Routed the document through `docs/ROUTE.md` and checked the TODO item. The doc explicitly captures negative recommendations, foreign-context review as a capability, recommendation receipts, quality observations from outcomes, and the first `capabilityos recommend --for hive` bridge.
+- Next: When work moves to `../CapabilityOS`, use this document as the bootstrap spec before building registry or recommendation code.

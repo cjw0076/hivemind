@@ -37,6 +37,7 @@ Use these when changing code:
 - `PUBLISHING_GATE.md` - release/tag/package/announcement gate tied to the Hive Mind North Star.
 - `security/PUBLIC_ALPHA_SECURITY_REVIEW.md` - preserved Claude security-review evidence.
 - `HIVE_WORKING_METHOD.md` - user/Claude/Codex/local-LLM working method as Hive Mind product protocol.
+- `CAPABILITYOS_FROM_HIVE_SPRINT.md` - concrete CapabilityOS artifacts, schemas, gates, and bridge lessons learned from the Hive production/public-alpha sprint.
 - `LEDGER_PROTOCOL.md` - intent, policy, vote/quorum, lease, execution proof, and verification protocol over `execution_ledger.jsonl`.
 - `THIRD_PARTY_INTEGRATIONS.md` - optional adapter and license boundary notes.
 
@@ -51,6 +52,7 @@ Use these for product planning and UX direction:
 - `ui_future.md` - future chatbot/agent harness and visual product framing.
 - `image.png` - visual board reference.
 - `capabilityOS.md` - CapabilityOS concept and capability graph.
+- `CAPABILITYOS_FROM_HIVE_SPRINT.md` - implementation checklist for CapabilityOS based on Hive's pingpong/release sprint.
 - `agent_society.md` - agent self-improvement and routing society.
 - `ecosystem.md` - broader field/ecosystem model.
 - `for_future_agent.md` - future capability/package protocol direction.
