@@ -235,6 +235,20 @@ def inspect_recommendations(
     return recommendations
 
 
+def _format_health(health: Any) -> str:
+    if isinstance(health, dict):
+        label = health.get("label", "unknown")
+        missing = health.get("missing_required") or []
+        blocked = health.get("blocked_count", 0)
+        parts = [label]
+        if missing:
+            parts.append(f"missing={','.join(missing[:3])}" + ("..." if len(missing) > 3 else ""))
+        if blocked:
+            parts.append(f"blocked={blocked}")
+        return " ".join(parts)
+    return str(health) if health is not None else "unknown"
+
+
 def format_inspect_report(report: dict[str, Any], *, show_paths: bool = False) -> str:
     verdict = report.get("verdict", "unknown")
     verdict_marker = {"clean": "✓", "escalated": "⚠", "failures": "✗", "chain_tampered": "✗✗"}.get(verdict, "?")
@@ -242,7 +256,7 @@ def format_inspect_report(report: dict[str, Any], *, show_paths: bool = False) -
         f"Hive Inspect  Run {report.get('run_id')}",
         f"Verdict: {verdict_marker} {verdict.upper()}",
         f"Task: {report.get('task')}",
-        f"Status: {report.get('status')}  Phase: {report.get('phase')}  Health: {report.get('health')}",
+        f"Status: {report.get('status')}  Phase: {report.get('phase')}  Health: {_format_health(report.get('health'))}",
         "",
         "Ledger",
         f"  ok={report.get('ledger', {}).get('ok')} records={report.get('ledger', {}).get('record_count')} hash_chain={report.get('ledger', {}).get('hash_chain_ok')} seq={report.get('ledger', {}).get('seq_ok')} issues={report.get('ledger', {}).get('issue_count')}",

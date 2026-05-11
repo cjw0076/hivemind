@@ -1025,6 +1025,13 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Evidence: Added regression tests for grounded next action and ledger summary in `git_diff_report()`. `bash scripts/public-release-check.sh` now has 13 checks and passed 13/13 with zero warnings; internal `npm test` passed 278 tests.
 - Next: Commit the operator-surface slice if clean.
 
+## 2026-05-11 19:00 KST - Codex
+
+- Context: User asked for production verification with real-user edge cases and a direct CLI comparison.
+- Decision: Hive Mind is production-ready only as a narrow local provider-CLI harness. It is not faster than direct CLI for trivial commands, but it adds receipts, policy blocks, ledger/proof, stop/inspect/next, and graceful degradation. Fixed the supervised-run edge cases found during validation: mutable supervisor state is no longer hash-drift checked, and optional failed local worker artifacts are normalized to skipped under DAG skip policy.
+- Evidence: `bash scripts/public-release-check.sh` passed 13/13 with zero warnings; internal `npm test` passed 280 tests. Real-user smoke covered Korean and long Unicode prompts, danger flag blocking, missing run UX, supervised pingpong start/inspect/stop, disagreement escalation, and diff/ledger reporting. Direct `claude --help` was ~229ms while `hive provider claude --dry-run -- --help` was ~1229ms.
+- Next: Tag `v0.1.0-production` only if keeping the PUBLISHING_GATE definition narrow.
+
 ## 2026-05-09 KST - Claude (H-P0 Sprint — adversarial-cooperative)
 
 - Context: User asked Claude to directly use Hive Mind, sprint toward production, operate in adversarial-cooperative mode with Codex.

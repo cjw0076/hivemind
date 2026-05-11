@@ -161,6 +161,30 @@ class WorkloopLedgerTest(unittest.TestCase):
             self.assertFalse(report["ok"])
             self.assertIn("artifact_hash_drift", issue_types)
 
+    def test_mutable_artifact_does_not_report_hash_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "ledger mutable artifact")
+            artifact = paths.run_dir / "supervisor_state.json"
+            artifact.write_text('{"status": "running"}\n', encoding="utf-8")
+            record = append_execution_ledger(
+                root,
+                paths.run_id,
+                "supervisor_started",
+                actor="supervisor",
+                status="running",
+                artifact=artifact.relative_to(root).as_posix(),
+                artifact_hash_mode="mutable",
+            )
+            self.assertIsNone(record["artifact_sha256"])
+
+            artifact.write_text('{"status": "stopped"}\n', encoding="utf-8")
+            report = replay_execution_ledger(root, paths.run_id)
+            issue_types = {issue["type"] for issue in report["issues"]}
+
+            self.assertTrue(report["ok"], report)
+            self.assertNotIn("artifact_hash_drift", issue_types)
+
     def test_replay_reconstructs_protocol_authority(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

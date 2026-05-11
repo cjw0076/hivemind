@@ -344,7 +344,13 @@ def load_run(root: Path, run_id: str | None = None) -> tuple[RunPaths, dict[str,
     paths = RunPaths(root=root, run_id=actual_run_id)
     if not paths.state.exists():
         raise FileNotFoundError(f"Run state not found: {paths.state}")
-    return paths, json.loads(paths.state.read_text(encoding="utf-8"))
+    try:
+        return paths, json.loads(paths.state.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"run state corrupted ({paths.run_id}): {exc}. "
+            "Recover with: hive audit --run-id " + paths.run_id
+        ) from exc
 
 
 def acquire_control_lock(root: Path, run_id: str | None = None, role: str = "controller", ttl_seconds: int = 120) -> dict[str, Any]:
@@ -777,7 +783,39 @@ def get_current(root: Path) -> str | None:
     return ensure_valid_run_id(value) if value else None
 
 
+_detect_agents_cache: tuple[str, float, dict[str, Any]] | None = None
+_DETECT_AGENTS_CACHE_TTL = 30.0  # seconds (in-process)
+_DETECT_AGENTS_FILE_TTL = 300.0  # seconds (on-disk)
+
+
 def detect_agents(root: Path, write: bool = True) -> dict[str, Any]:
+    global _detect_agents_cache
+    root_key = root.as_posix()
+    now = time.time()
+    # 1. In-process cache (30s TTL — fastest)
+    if (
+        _detect_agents_cache is not None
+        and _detect_agents_cache[0] == root_key
+        and now - _detect_agents_cache[1] < _DETECT_AGENTS_CACHE_TTL
+    ):
+        cached = _detect_agents_cache[2]
+        if write:
+            write_json(root / RUNS_DIR / PROVIDER_CAPABILITIES, cached)
+        return cached
+    # 2. On-disk cache (5min TTL — skip subprocess probes if recent)
+    caps_path = root / RUNS_DIR / PROVIDER_CAPABILITIES
+    if caps_path.exists():
+        try:
+            cached_file = json.loads(caps_path.read_text(encoding="utf-8"))
+            if isinstance(cached_file, dict) and "generated_at" in cached_file:
+                from datetime import datetime, timezone
+                gen_ts = datetime.fromisoformat(cached_file["generated_at"].replace("Z", "+00:00"))
+                age = (datetime.now(timezone.utc) - gen_ts).total_seconds()
+                if age < _DETECT_AGENTS_FILE_TTL:
+                    _detect_agents_cache = (root_key, now, cached_file)
+                    return cached_file
+        except Exception:
+            pass
     init_harness(root)
     providers = {
         "claude": probe_command("claude", ["--version"], roles=["planner", "reviewer", "claim-auditor"]),
@@ -796,6 +834,7 @@ def detect_agents(root: Path, write: bool = True) -> dict[str, Any]:
         "trusted_root": root.as_posix(),
         "providers": providers,
     }
+    _detect_agents_cache = (root_key, now, result)
     if write:
         write_json(root / RUNS_DIR / PROVIDER_CAPABILITIES, result)
     return result

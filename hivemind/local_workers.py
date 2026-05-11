@@ -357,7 +357,11 @@ def run_worker(
 ) -> dict[str, Any]:
     runtime = resolve_local_runtime(runtime)
     if runtime != "ollama":
-        raise ValueError(f"Unsupported local worker runtime adapter: {runtime}")
+        raise ValueError(
+            f"Unsupported local worker runtime adapter: {runtime}. "
+            "Install Ollama (https://ollama.ai) and run: ollama pull phi4-mini. "
+            "Or use hive with --fast to bypass local workers."
+        )
     spec = get_worker(worker_name)
     chosen_model = model or spec.default_model
     prompt = render_prompt(worker_name, input_text, source_ref=source_ref)

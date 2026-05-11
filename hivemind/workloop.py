@@ -79,6 +79,7 @@ def append_execution_ledger(
     files_touched: list[str] | None = None,
     command: str | None = None,
     artifact: str | None = None,
+    artifact_hash_mode: str = "immutable",
     message: str = "",
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -101,7 +102,8 @@ def append_execution_ledger(
         "files_touched": files_touched or [],
         "command": command,
         "artifact": artifact,
-        "artifact_sha256": artifact_sha256(root, artifact),
+        "artifact_hash_mode": artifact_hash_mode,
+        "artifact_sha256": artifact_sha256(root, artifact) if artifact_hash_mode != "mutable" else None,
         "message": message,
         "extra": extra or {},
         "previous_hash": last.get("hash") if last else None,
@@ -384,6 +386,8 @@ def validate_record_artifact(root: Path, record: dict[str, Any], issues: list[di
                 "artifact": artifact,
             }
         )
+        return None
+    if record.get("artifact_hash_mode") == "mutable":
         return None
     expected_hash = record.get("artifact_sha256")
     current_hash = artifact_sha256(root, artifact)

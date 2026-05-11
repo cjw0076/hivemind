@@ -374,3 +374,10 @@
 - Decision: `hive next` now returns a grounded command/reason/source using disagreement topology, DAG state, provider failures, and pipeline fallback. `git_diff_report()` now includes ledger replay health, record count, issue count, artifact hash drift count, and ledger-touched files. Text and JSON output share the same report.
 - Evidence: Added regression tests for grounded next actions and ledger-touched files in `hive diff`. `bash scripts/public-release-check.sh` now has 13 checks and passed 13/13 with zero warnings; internal `npm test` passed 278 tests.
 - Next: Run the full release gate and commit if green.
+
+## 2026-05-11 19:00 KST - Codex - Production Verification Edge Pass
+
+- Context: User asked whether Hive Mind can be called production and requested real-user edge case validation plus direct-CLI comparison.
+- Decision: Production is acceptable only as a narrow `production v0` local provider-CLI harness, not as faster-than-direct-CLI execution or AIOS. Fixed two edge-case blockers found during validation: mutable `supervisor_state.json` no longer causes artifact hash drift, and optional local worker failures are normalized to `skipped` when DAG `on_failure` allows skip.
+- Evidence: `bash scripts/public-release-check.sh` passed 13/13 with zero warnings; internal `npm test` passed 280 tests. Real-user smoke covered Korean prompt, long Unicode prompt, provider danger block, missing run error, supervised pingpong start/inspect/stop, disagreement escalation, and diff/ledger reporting. Direct `claude --help` was faster than Hive provider dry-run, so Hive's production value is auditability/receipts/policy/stop/inspect/next rather than raw latency.
+- Next: If publishing now, tag as `v0.1.0-production` with the narrow README/PUBLISHING_GATE definition.

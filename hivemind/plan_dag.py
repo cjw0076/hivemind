@@ -590,6 +590,22 @@ def _read_artifact_status(artifact_path: Path) -> str | None:
     return None
 
 
+def _rewrite_artifact_status(artifact_path: Path, status: str, reason: str) -> None:
+    """Normalize a JSON artifact's terminal status after DAG on_failure policy."""
+    if artifact_path.suffix != ".json" or not artifact_path.exists():
+        return
+    try:
+        data = json.loads(artifact_path.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    if not isinstance(data, dict):
+        return
+    data["status"] = status
+    data["dag_normalized_status"] = status
+    data["dag_normalized_reason"] = reason
+    artifact_path.write_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+
+
 def _read_artifact_confidence(artifact_path: Path) -> float | None:
     if not artifact_path or not artifact_path.exists():
         return None
@@ -2044,6 +2060,8 @@ def execute_step(
         artifact_status = _read_artifact_status(artifact_path)
         if artifact_status == "failed":
             new_status = "failed" if step.on_failure == "stop" else "skipped"
+            if new_status == "skipped":
+                _rewrite_artifact_status(artifact_path, "skipped", "step.on_failure allowed optional failure to skip")
             guard_transition(step_id, "running", new_status, force=force)
             step.status = new_status
             step.finished_at = now_iso()

@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from hivemind.harness import create_run
 from hivemind.plan_dag import (
@@ -201,6 +202,22 @@ class ExecuteStepTest(unittest.TestCase):
             result = execute_step(root, dag, "intake", execute=False)
             self.assertTrue(result.get("ok"))
             self.assertEqual(result["status"], "already_completed")
+
+    def test_optional_failed_local_artifact_is_normalized_to_skipped(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "optional local skip")
+            dag = build_dag(paths.run_id, "optional local skip", "planning")
+
+            with patch("hivemind.harness.run_worker", side_effect=RuntimeError("local backend unavailable")):
+                result = execute_step(root, dag, "context", execute=False)
+
+            artifact = root / result["artifact"]
+            data = json.loads(artifact.read_text(encoding="utf-8"))
+            self.assertEqual(result["status"], "skipped")
+            self.assertEqual(data["status"], "skipped")
+            self.assertEqual(data["dag_normalized_status"], "skipped")
+            self.assertIn("step.on_failure", data["dag_normalized_reason"])
 
 
 class FormatDagTest(unittest.TestCase):

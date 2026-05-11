@@ -223,6 +223,16 @@ def main(argv: list[str] | None = None) -> None:
         _main(argv)
     except ValueError as exc:
         raise SystemExit(f"hive: {exc}") from None
+    except FileNotFoundError as exc:
+        msg = str(exc)
+        if "run_state" in msg or "Run state not found" in msg:
+            run_hint = msg.split("/")[-2] if "/" in msg else "unknown"
+            raise SystemExit(f"hive: run not found: {run_hint}\n  Use 'hive runs list' to see available runs") from None
+        raise SystemExit(f"hive: file not found: {exc}") from None
+    except PermissionError as exc:
+        raise SystemExit(f"hive: permission denied: {exc}") from None
+    except KeyboardInterrupt:
+        raise SystemExit("hive: interrupted") from None
 
 
 def _main(argv: list[str] | None = None) -> None:
@@ -369,11 +379,13 @@ def _main(argv: list[str] | None = None) -> None:
     ask_cmd.add_argument("prompt", help="user prompt/task")
     ask_cmd.add_argument("--run-id")
     ask_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="default")
+    ask_cmd.add_argument("--fast", action="store_const", const="fast", dest="complexity", help="fast heuristic routing (no Ollama, ~0.1s)")
     ask_cmd.add_argument("--json", action="store_true")
     orchestrate_cmd = sub.add_parser("orchestrate", help="route a prompt into a multi-agent society plan")
     orchestrate_cmd.add_argument("prompt", help="user prompt/task")
     orchestrate_cmd.add_argument("--run-id")
     orchestrate_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="default")
+    orchestrate_cmd.add_argument("--fast", action="store_const", const="fast", dest="complexity", help="fast heuristic routing (no Ollama)")
     orchestrate_cmd.add_argument("--execute", action="store_true", help="execute supported non-Codex providers instead of only preparing artifacts")
     orchestrate_cmd.add_argument("--execute-local", action="store_true", help="allow safe local worker task execution during prompt lifecycle setup")
     orchestrate_cmd.add_argument("--json", action="store_true")
@@ -1275,15 +1287,29 @@ def _main(argv: list[str] | None = None) -> None:
             execute=bool(args.execute),
             timeout=args.timeout,
         )
+        import yaml as _yaml
+        result_data = _yaml.safe_load(result_path.read_text(encoding="utf-8")) or {}
+        is_blocked = result_data.get("provider_mode") == "policy_blocked"
+        is_failed = result_data.get("status") == "failed"
         if args.json:
             import json
-            import yaml
-
-            data = yaml.safe_load(result_path.read_text(encoding="utf-8")) or {}
-            data["result_path"] = result_path.relative_to(root).as_posix()
-            print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
+            result_data["result_path"] = result_path.relative_to(root).as_posix()
+            print(json.dumps(result_data, ensure_ascii=False, indent=2, sort_keys=True))
         else:
-            print(result_path)
+            if is_blocked:
+                block_reason = ""
+                stderr_path = result_data.get("stderr_path")
+                if stderr_path:
+                    try:
+                        block_reason = (root / stderr_path).read_text(encoding="utf-8").strip()
+                    except OSError:
+                        pass
+                print(f"hive provider: BLOCKED — {block_reason or 'policy gate rejected this command'}", file=sys.stderr)
+                print(f"  receipt: {result_path.relative_to(root)}", file=sys.stderr)
+            else:
+                print(result_path)
+        if is_blocked or (is_failed and not result_data.get("provider_mode") == "native_passthrough"):
+            raise SystemExit(1)
         return
     if args.cmd == "loop":
         report = auto_loop(root, run_id=args.run_id, max_steps=args.max_steps, execute=args.execute, allowed_actions=args.allow, goal=args.goal)
@@ -1682,7 +1708,4 @@ def read_multiline_prompt() -> str:
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except ValueError as exc:
-        raise SystemExit(f"hive: {exc}") from None
+    main()

@@ -245,6 +245,7 @@ def run_supervisor(
         status="running",
         bypass_mode="execute" if execute else "prepare",
         artifact=paths["state"].relative_to(root).as_posix(),
+        artifact_hash_mode="mutable",
         extra={
             "pid": os.getpid(),
             "host": sup_state["host"],
@@ -314,6 +315,7 @@ def run_supervisor(
         status=final_status,
         bypass_mode="execute" if execute else "prepare",
         artifact=paths["state"].relative_to(root).as_posix(),
+        artifact_hash_mode="mutable",
         extra={"rounds": sup_state.get("rounds"), "replay": sup_state.get("replay")},
     )
     return supervisor_status_report(root, run_id)
