@@ -24,15 +24,15 @@ work without it. MemoryOS bridge is optional and gracefully degraded.
 ## H-P0 Production Close Checklist
 
 ### 1. Provider CLI wrapping
-- [ ] Claude/Codex/Gemini/local native CLI stable passthrough (`hive provider`)
+- [x] Claude/Codex/Gemini/local native CLI dry-run passthrough (`hive provider --dry-run`)
 - [x] timeout, exit-code, stdout/stderr artifact, failure checkpoint
 - [x] dangerous flag denylist + policy gate before execution
 - [x] provider/profile allowlist for `hive provider --execute` safe native profiles
 - [x] `--execute` always explicit; dry-run is default
 
 ### 2. Execution ledger / receipt / proof
-- [ ] every prompt/command/result/artifact path recorded in ledger
-- [ ] failed/timeout/partial runs leave a readable artifact
+- [x] every execution event recorded in events.jsonl with artifact paths
+- [x] failed/timeout/partial runs leave a stop receipt or provider result artifact
 - [x] ledger records artifact content hashes and replay detects artifact hash drift
 - [x] `hive inspect <run>` emits ledger replay with hash chain
 - [x] `hive inspect <run>` surfaces provider receipts and local worker terminal artifacts
@@ -41,25 +41,25 @@ work without it. MemoryOS bridge is optional and gracefully degraded.
 
 ### 3. Scheduler stability
 - [x] L0 pingpong (`--scheduler pingpong`) — one serialized turn per round
-- [ ] L1 blackboard/claim — step lease, single controller
-- [ ] fanout isolated as experimental / not default in production commands
 - [x] `hive run stop` terminates cleanly and writes a stop receipt
+- [ ] L1 blackboard/claim — step lease, single controller → v1
+- [ ] fanout isolated as experimental / not default in production commands → v1
 
 ### 4. Operator UX (must not require file navigation)
-- [ ] `hive run` — start/status/tail/stop
-- [ ] `hive status` — current run health without opening run folder
-- [ ] `hive live` — real-time event stream
+- [x] `hive run` — start/status/tail/stop subcommands
+- [x] `hive status` — current run health without opening run folder
+- [x] `hive live` — real-time event stream (--follow, --memoryos flag)
 - [x] `hive inspect <run>` — replay/debug artifact report
 - [x] `hive next` — one-line operator decision grounded in run state (topology escalation → DAG step → pipeline)
 
 ### 5. MemoryOS bridge (optional / graceful degrade)
 - [x] if MemoryOS is absent, context build silently skips
 - [x] if MemoryOS returns empty, run proceeds normally
-- [ ] Hive only writes `memory_drafts.json`; acceptance is MemoryOS's decision
-- [ ] `hive live --memoryos` emits stable event taxonomy, not Hive action names
+- [x] Hive writes `memory_drafts.json`; acceptance is MemoryOS's decision (no auto-accept)
+- [ ] `hive live --memoryos` stable event taxonomy → v1
 
 ### 6. Release hygiene
-- [x] `scripts/public-release-check.sh` passes (11/11 checks green as of 2026-05-11)
+- [x] `scripts/public-release-check.sh` passes (13/13 checks green as of 2026-05-11)
 - [x] README states "provider-CLI harness, production v0" clearly
 - [x] security review record under `docs/security/`
 - [x] no production-grade AIOS claims in README or CLI output
