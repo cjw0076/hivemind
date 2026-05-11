@@ -1,5 +1,12 @@
 # Agent Worklog
 
+## 2026-05-11 22:47 KST - Codex - ASC-0010 Radar Review Gate
+
+- Context: ASC-0010 required a no-external-LLM semantic quality gate over ASC-0007 task-radar candidates.
+- Decision: Added `hive radar-review` backed by a deterministic `radar_classifier` module. The classifier uses only radar domain, score, path, path existence, and signal labels; it does not read source document bodies or invoke local/provider LLM runtimes.
+- Evidence: `python -m pytest tests/test_radar_review.py -v` passed; `python -m unittest tests.test_local_worker_routing` passed; `python -m py_compile hivemind/radar_classifier.py hivemind/hive.py hivemind/local_workers.py` passed; real radar smoke wrote `docs/radar_review.json` and `docs/RADAR_REVIEW.md` with 10 entries and max rationale length 150.
+- Next: Claude/operator should review the advisory taxonomy and decide which executable/ambiguous radar candidates become follow-up ASC contracts.
+
 ## 2026-05-11 19:36 KST - Codex - Public Alpha Quickstart Start
 
 - Context: User accepted that production-v0 is technically closed but not yet surprising enough for public release. The next sprint is to push toward a 5-minute wow path and MemoryOS feedback loop.

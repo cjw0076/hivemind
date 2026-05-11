@@ -87,6 +87,24 @@ WORKERS: dict[str, WorkerSpec] = {
             "escalation_reason": "",
         },
     ),
+    "radar_classifier": WorkerSpec(
+        name="radar_classifier",
+        purpose="Classify ASC-0007 task-radar rows into advisory execution-quality verdicts.",
+        default_model="deterministic",
+        fast_model="deterministic",
+        strong_model="deterministic",
+        system=(
+            "Deterministic local worker. Uses only radar path, domain, score, and signal labels. "
+            "Does not read source document bodies and does not call external LLM providers."
+        ),
+        output_schema={
+            "verdict": "executable|needs_context|needs_capability|ambiguous|out_of_scope",
+            "rationale": "path/signal-only rationale, <=300 characters",
+            "path_exists": True,
+            "confidence": 0.75,
+        },
+        timeout_seconds=0,
+    ),
     "json_normalizer": WorkerSpec(
         name="json_normalizer",
         purpose="Normalize rough local output into strict JSON for downstream schemas.",

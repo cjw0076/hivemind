@@ -132,6 +132,7 @@ from .quickstart import (
     memory_loop_demo,
     quickstart_demo,
 )
+from .radar_classifier import review_radar, write_review_artifacts
 
 
 COMMANDS = {
@@ -184,6 +185,7 @@ COMMANDS = {
     "prompt",
     "next",
     "goal",
+    "radar-review",
     "hive",
 }
 
@@ -475,6 +477,11 @@ def _main(argv: list[str] | None = None) -> None:
     goal_cmd.add_argument("--json", action="store_true")
     goal_cmd.add_argument("--attack-prompt", action="store_true", help="print only the Claude attack prompt")
     goal_cmd.add_argument("--write-attack-pack", action="store_true", help="write a Markdown adversarial review pack")
+
+    radar_review_cmd = sub.add_parser("radar-review", help="classify ASC-0007 task-radar candidates")
+    radar_review_cmd.add_argument("--radar", required=True, help="ASC-0007 radar markdown or JSON path")
+    radar_review_cmd.add_argument("--top", type=int, default=10, help="number of candidates to review")
+    radar_review_cmd.add_argument("--json", action="store_true")
 
     gaps_cmd = sub.add_parser("gaps", help="build gap-closure artifacts from docs/HIVE_MIND_GAPS.md")
     gaps_cmd.add_argument("--run-id")
@@ -1107,6 +1114,24 @@ def _main(argv: list[str] | None = None) -> None:
         else:
             print(format_goal_report(report))
         return
+    if args.cmd == "radar-review":
+        if args.top < 1:
+            parser.error("hive radar-review --top must be >= 1")
+        report = review_radar(Path(args.radar), top=args.top)
+        json_path, md_path = write_review_artifacts(report, root / "docs")
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            verdict_counts: dict[str, int] = {}
+            for entry in report["entries"]:
+                verdict_counts[entry["verdict"]] = verdict_counts.get(entry["verdict"], 0) + 1
+            counts = ", ".join(f"{name}={count}" for name, count in sorted(verdict_counts.items()))
+            print(f"Reviewed {len(report['entries'])} radar candidates ({counts})")
+            print(f"Wrote {json_path.relative_to(root).as_posix()}")
+            print(f"Wrote {md_path.relative_to(root).as_posix()}")
+        return
     if args.cmd == "gaps":
         report = close_gap_loop(root, args.run_id)
         if args.json:
@@ -1476,7 +1501,7 @@ def _main(argv: list[str] | None = None) -> None:
         return
     if args.cmd == "inspect":
         import json as _json
-        run_id_arg = getattr(args, "run_id", None)
+        run_id_arg = getattr(args, "run_id", None) or None
         show_paths = bool(getattr(args, "paths", False) or getattr(args, "verbose", False))
         report = build_inspect_report(root, run_id_arg, show_paths=show_paths)
         if args.json:

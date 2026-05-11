@@ -40,6 +40,7 @@ ALLOWED_EVENT_TYPES = {
     "debate_convergence_created",
     "memory_context_built",
     "memoryos_context_retrieved",
+    "capability_recommendation_retrieved",
     "semantic_verification_created",
     "handoff_quality_created",
     "routing_evidence_created",

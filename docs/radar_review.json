@@ -1,0 +1,214 @@
+{
+  "entries": [
+    {
+      "domain": "hivemind",
+      "path": "myworld/hivemind/docs/AGENT_WORKLOG.md",
+      "path_exists": true,
+      "rank": 1,
+      "rationale": "myworld/hivemind/docs/AGENT_WORKLOG.md: Hive-owned path exists with action and quality signals; ready for bounded packet review.",
+      "score": 364,
+      "signal_labels": {
+        "aios": 4,
+        "blocker": 4,
+        "capabilityos": 1,
+        "contract": 6,
+        "gap": 5,
+        "hivemind": 12,
+        "memoryos": 12,
+        "next": 12,
+        "p0": 3,
+        "todo": 12,
+        "verify": 10
+      },
+      "verdict": "executable"
+    },
+    {
+      "domain": "hivemind",
+      "path": "myworld/hivemind/docs/HIVE_MIND_GAPS.md",
+      "path_exists": true,
+      "rank": 2,
+      "rationale": "myworld/hivemind/docs/HIVE_MIND_GAPS.md: Hive-owned path exists with action and quality signals; ready for bounded packet review.",
+      "score": 337,
+      "signal_labels": {
+        "blocker": 9,
+        "capabilityos": 9,
+        "contract": 3,
+        "gap": 11,
+        "hivemind": 12,
+        "memoryos": 12,
+        "next": 12,
+        "verify": 12
+      },
+      "verdict": "executable"
+    },
+    {
+      "domain": "hivemind",
+      "path": "myworld/hivemind/docs/TODO.md",
+      "path_exists": true,
+      "rank": 3,
+      "rationale": "myworld/hivemind/docs/TODO.md: Hive-owned path exists with action and quality signals; ready for bounded packet review.",
+      "score": 332,
+      "signal_labels": {
+        "aios": 1,
+        "blocker": 8,
+        "capabilityos": 12,
+        "contract": 4,
+        "gap": 4,
+        "hivemind": 12,
+        "memoryos": 12,
+        "next": 12,
+        "p0": 1,
+        "todo": 3,
+        "verify": 10
+      },
+      "verdict": "executable"
+    },
+    {
+      "domain": "memoryOS",
+      "path": "myworld/memoryOS/docs/TODO.md",
+      "path_exists": true,
+      "rank": 4,
+      "rationale": "myworld/memoryOS/docs/TODO.md: memoryOS signal; needs MemoryOS context/provenance owner before Hive execution.",
+      "score": 315,
+      "signal_labels": {
+        "capabilityos": 12,
+        "contract": 12,
+        "gap": 8,
+        "hivemind": 12,
+        "memoryos": 12,
+        "next": 4,
+        "todo": 12,
+        "verify": 8
+      },
+      "verdict": "needs_context"
+    },
+    {
+      "domain": "memoryOS",
+      "path": "myworld/memoryOS/docs/AGENT_WORKLOG.md",
+      "path_exists": true,
+      "rank": 5,
+      "rationale": "myworld/memoryOS/docs/AGENT_WORKLOG.md: memoryOS signal; needs MemoryOS context/provenance owner before Hive execution.",
+      "score": 304,
+      "signal_labels": {
+        "aios": 6,
+        "blocker": 1,
+        "capabilityos": 8,
+        "contract": 12,
+        "gap": 8,
+        "hivemind": 12,
+        "memoryos": 12,
+        "next": 5,
+        "todo": 4,
+        "verify": 12
+      },
+      "verdict": "needs_context"
+    },
+    {
+      "domain": "_from_desktop",
+      "path": "_from_desktop/dipeen_v2/openclaw/CHANGELOG.md",
+      "path_exists": true,
+      "rank": 6,
+      "rationale": "_from_desktop/dipeen_v2/openclaw/CHANGELOG.md: external domain _from_desktop; keep as path-only context before AIOS dispatch.",
+      "score": 303,
+      "signal_labels": {
+        "blocker": 12,
+        "capabilityos": 5,
+        "gap": 12,
+        "memoryos": 12,
+        "next": 12,
+        "verify": 12
+      },
+      "verdict": "out_of_scope"
+    },
+    {
+      "domain": "myworld",
+      "path": "myworld/docs/contracts/ASC-0002-capabilityos-executable-surface.md",
+      "path_exists": true,
+      "rank": 7,
+      "rationale": "myworld/docs/contracts/ASC-0002-capabilityos-executable-surface.md: control-plane signal; operator must decide contract/release before Hive execution.",
+      "score": 299,
+      "signal_labels": {
+        "aios": 10,
+        "blocker": 4,
+        "capabilityos": 12,
+        "contract": 12,
+        "hivemind": 12,
+        "memoryos": 12,
+        "stop_condition": 4,
+        "verify": 12
+      },
+      "verdict": "ambiguous"
+    },
+    {
+      "domain": "myworld",
+      "path": "myworld/docs/AIOS_AGENT_LEDGER.md",
+      "path_exists": true,
+      "rank": 8,
+      "rationale": "myworld/docs/AIOS_AGENT_LEDGER.md: control-plane signal; operator must decide contract/release before Hive execution.",
+      "score": 297,
+      "signal_labels": {
+        "aios": 12,
+        "blocker": 1,
+        "capabilityos": 11,
+        "contract": 12,
+        "gap": 1,
+        "hivemind": 12,
+        "memoryos": 12,
+        "next": 9,
+        "stop_condition": 1,
+        "verify": 9
+      },
+      "verdict": "ambiguous"
+    },
+    {
+      "domain": "memoryOS",
+      "path": "myworld/memoryOS/docs/ALPHA_CHECKLIST.md",
+      "path_exists": true,
+      "rank": 9,
+      "rationale": "myworld/memoryOS/docs/ALPHA_CHECKLIST.md: memoryOS signal; needs MemoryOS context/provenance owner before Hive execution.",
+      "score": 275,
+      "signal_labels": {
+        "blocker": 2,
+        "capabilityos": 12,
+        "contract": 12,
+        "gap": 2,
+        "hivemind": 12,
+        "memoryos": 12,
+        "todo": 12,
+        "verify": 6
+      },
+      "verdict": "needs_context"
+    },
+    {
+      "domain": "myworld",
+      "path": "myworld/docs/contracts/ASC-0003-dispatch-packet-enrichment.md",
+      "path_exists": true,
+      "rank": 10,
+      "rationale": "myworld/docs/contracts/ASC-0003-dispatch-packet-enrichment.md: control-plane signal; operator must decide contract/release before Hive execution.",
+      "score": 264,
+      "signal_labels": {
+        "aios": 12,
+        "capabilityos": 6,
+        "contract": 12,
+        "gap": 3,
+        "hivemind": 6,
+        "memoryos": 12,
+        "stop_condition": 5,
+        "verify": 12
+      },
+      "verdict": "ambiguous"
+    }
+  ],
+  "generated_at": "2026-05-11T13:53:13.449357+00:00",
+  "radar_path": "/home/user/workspaces/jaewon/myworld/docs/AIOS_TASK_RADAR.md",
+  "schema": "hivemind.radar_review.v1",
+  "top": 10,
+  "verdicts": [
+    "ambiguous",
+    "executable",
+    "needs_capability",
+    "needs_context",
+    "out_of_scope"
+  ],
+  "workspace_root": "/home/user/workspaces/jaewon"
+}
