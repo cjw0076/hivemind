@@ -353,3 +353,10 @@
 - Decision: Made provider passthrough timeout explicit: status `timeout`, returncode `124`, preserved partial stdout/stderr, timeout reason, verifier status `timeout`, validation support, and inspect recommendations for timeout/partial receipts.
 - Evidence: Added `test_execute_timeout_writes_timeout_receipt` in `tests/test_provider_passthrough.py`. Focused provider/inspect/validation gate passed, and `bash scripts/public-release-check.sh` passed 11/11 with zero warnings; internal `npm test` passed 261 tests.
 - Next: Continue with fuller ledger provenance for every prompt/command/result/artifact path and local-worker partial/skipped receipt coverage.
+
+## 2026-05-11 18:35 KST - Codex - Local Worker Receipt Inspection
+
+- Context: Provider receipts were visible through `hive inspect`, but local worker artifacts under `agents/local/*.json` were not surfaced or schema-validated as terminal runtime receipts.
+- Decision: Added local worker result collection to `hivemind/run_receipts.py`, surfaced `local_worker_results` in `hive inspect`, and validated local worker result artifacts in `run_validation.py`. `invoke_local` now records timing and created artifacts in its local result envelope.
+- Evidence: Added inspection and invalid-local-result regression tests. Focused gate passed, then `bash scripts/public-release-check.sh` passed 11/11 with zero warnings; internal `npm test` passed 263 tests.
+- Next: Run the full public release gate, then continue with ledger provenance for prompt/command/result artifact hashes.

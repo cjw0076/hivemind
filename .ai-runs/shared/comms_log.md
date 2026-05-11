@@ -1004,6 +1004,13 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Evidence: Added timeout regression coverage and updated validation/inspect handling. `bash scripts/public-release-check.sh` passed 11/11 with zero warnings; internal `npm test` passed 261 tests.
 - Next: Close the remaining receipt/provenance gap: ledger coverage for every prompt/command/result/artifact path and local-worker partial/skipped receipts.
 
+## 2026-05-11 18:35 KST - Codex
+
+- Context: H-P0 terminal receipt hardening continued after provider timeout receipts.
+- Decision: Treat local workers as first-class runtime participants in inspection and validation, not as invisible helper JSON. `hive inspect` now reports `local_worker_results`, and run validation checks `agents/local/*.json` for local worker receipt shape/status.
+- Evidence: `invoke_local` records timing and created artifacts; `run_receipts.py` collects local worker results; `run_validation.py` validates local worker result envelopes. Focused gate passed, then `bash scripts/public-release-check.sh` passed 11/11 with zero warnings; internal `npm test` passed 263 tests.
+- Next: Run the full release gate. The next runtime slice should add artifact/content hash provenance for prompt, command, result, stdout, and stderr paths.
+
 ## 2026-05-09 KST - Claude (H-P0 Sprint — adversarial-cooperative)
 
 - Context: User asked Claude to directly use Hive Mind, sprint toward production, operate in adversarial-cooperative mode with Codex.

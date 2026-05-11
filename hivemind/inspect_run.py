@@ -7,7 +7,7 @@ from typing import Any
 
 from .harness import load_run, run_audit_report, safe_load_yaml
 from .live import build_live_report
-from .run_receipts import collect_provider_results
+from .run_receipts import collect_local_worker_results, collect_provider_results
 from .workloop import replay_execution_ledger
 
 
@@ -23,9 +23,10 @@ def build_inspect_report(
     ledger = replay_execution_ledger(root, paths.run_id)
     audit = run_audit_report(root, paths.run_id)
     provider_results = collect_provider_results(root, paths.run_dir, show_paths=show_paths)
+    local_worker_results = collect_local_worker_results(root, paths.run_dir, show_paths=show_paths)
     proofs = summarize_proofs(paths.run_dir, show_paths=show_paths)
     memoryos = summarize_memoryos_context(paths.run_dir, show_paths=show_paths)
-    recommendations = inspect_recommendations(live, ledger, audit, provider_results, proofs, memoryos)
+    recommendations = inspect_recommendations(live, ledger, audit, provider_results, local_worker_results, proofs, memoryos)
     return {
         "schema_version": 1,
         "kind": "hive_run_inspection",
@@ -46,6 +47,7 @@ def build_inspect_report(
         },
         "authority": summarize_authority(ledger.get("authority") or {}),
         "provider_results": provider_results,
+        "local_worker_results": local_worker_results,
         "proofs": proofs,
         "memoryos_context": memoryos,
         "audit": {
@@ -133,6 +135,7 @@ def inspect_recommendations(
     ledger: dict[str, Any],
     audit: dict[str, Any],
     provider_results: list[dict[str, Any]],
+    local_worker_results: list[dict[str, Any]],
     proofs: dict[str, Any],
     memoryos: dict[str, Any],
 ) -> list[str]:
@@ -141,6 +144,8 @@ def inspect_recommendations(
         recommendations.append("ledger replay needs review")
     if any(item.get("status") in {"failed", "timeout", "partial"} for item in provider_results):
         recommendations.append("inspect failed/timeout/partial provider result receipts")
+    if any(item.get("status") in {"failed", "timeout", "partial", "skipped"} or item.get("should_escalate") for item in local_worker_results):
+        recommendations.append("inspect failed/skipped/escalating local worker receipts")
     if proofs.get("failed_count"):
         recommendations.append("review failed or flagged execution proofs")
     if (audit.get("validation") or {}).get("verdict") not in {None, "pass"}:
@@ -176,6 +181,14 @@ def format_inspect_report(report: dict[str, Any], *, show_paths: bool = False) -
             f"  {item.get('agent')}/{item.get('role')} status={item.get('status')} mode={item.get('provider_mode')} permission={item.get('permission_mode')} risk={item.get('risk_level')}{suffix}"
         )
     if not report.get("provider_results"):
+        lines.append("  none")
+    lines.extend(["", "Local Worker Results"])
+    for item in report.get("local_worker_results") or []:
+        suffix = f" path={item.get('path')}" if show_paths and item.get("path") else ""
+        lines.append(
+            f"  {item.get('role')} worker={item.get('worker')} status={item.get('status')} runtime={item.get('runtime')} valid={item.get('output_valid')} confidence={item.get('confidence')}{suffix}"
+        )
+    if not report.get("local_worker_results"):
         lines.append("  none")
     memoryos = report.get("memoryos_context") or {}
     lines.extend(

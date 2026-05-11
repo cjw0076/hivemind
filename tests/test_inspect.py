@@ -7,7 +7,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from hivemind.harness import create_run, provider_passthrough
+from unittest.mock import patch
+
+from hivemind.harness import create_run, invoke_local, provider_passthrough
 from hivemind.inspect_run import build_inspect_report, format_inspect_report
 
 
@@ -47,6 +49,36 @@ class InspectRunTest(unittest.TestCase):
             self.assertTrue(any(item["provider_mode"] == "native_passthrough" for item in report["provider_results"]))
             self.assertTrue(report["paths_hidden"])
             self.assertNotIn("path", report["provider_results"][0])
+
+    def test_inspect_collects_local_worker_results(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "inspect local worker")
+            worker_output = {
+                "runtime": "ollama",
+                "model": "deepseek-coder:6.7b",
+                "raw": '{"changed": [], "verification": [], "unresolved": [], "memory_update_candidates": [], "needs_followup": false}',
+                "parsed": {
+                    "changed": [],
+                    "verification": [],
+                    "unresolved": [],
+                    "memory_update_candidates": [],
+                    "needs_followup": False,
+                },
+            }
+
+            with patch("hivemind.harness.run_worker", return_value=worker_output):
+                invoke_local(root, "summarize", run_id=paths.run_id)
+
+            report = build_inspect_report(root, paths.run_id)
+
+            self.assertEqual(len(report["local_worker_results"]), 1)
+            local = report["local_worker_results"][0]
+            self.assertEqual(local["agent"], "local")
+            self.assertEqual(local["role"], "summarize")
+            self.assertEqual(local["status"], "completed")
+            self.assertEqual(local["worker"], "log_summarizer")
+            self.assertFalse(local["should_escalate"])
 
     def test_format_inspect_report_is_operator_readable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

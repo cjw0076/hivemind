@@ -75,5 +75,17 @@ class RunValidationTest(unittest.TestCase):
             self.assertEqual(report["verdict"], "needs_review")
             self.assertFalse(report["checks"]["agent_states_valid"])
 
+    def test_invalid_local_worker_result_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "bad local worker result", project="Hive Mind")
+            result_path = paths.run_dir / "agents" / "local" / "context.json"
+            result_path.write_text('{"agent":"local","role":"context","status":"weird"}', encoding="utf-8")
+
+            report = validate_run_artifacts(paths.run_dir, root)
+
+            self.assertEqual(report["verdict"], "needs_review")
+            self.assertFalse(report["checks"]["local_worker_results_schema_valid"])
+
 if __name__ == "__main__":
     unittest.main()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -138,5 +139,48 @@ def collect_provider_results(root: Path, run_dir: Path, *, show_paths: bool) -> 
             for key in ("command_path", "stdout_path", "stderr_path", "output_path", "prompt_path"):
                 if data.get(key):
                     item[key] = data.get(key)
+        results.append(item)
+    return results
+
+
+def local_worker_result_paths(run_dir: Path) -> list[Path]:
+    local_dir = run_dir / "agents" / "local"
+    if not local_dir.exists():
+        return []
+    return sorted(local_dir.glob("*.json"))
+
+
+def load_receipt_json(path: Path) -> dict[str, Any]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def collect_local_worker_results(root: Path, run_dir: Path, *, show_paths: bool) -> list[dict[str, Any]]:
+    """Collect local worker terminal artifacts for operator inspection."""
+    results: list[dict[str, Any]] = []
+    for result_path in local_worker_result_paths(run_dir):
+        data = load_receipt_json(result_path)
+        item = {
+            "agent": data.get("agent", "local"),
+            "role": data.get("role"),
+            "status": data.get("status"),
+            "provider_mode": data.get("provider_mode"),
+            "runtime": data.get("runtime"),
+            "worker": data.get("worker"),
+            "model": data.get("model"),
+            "output_valid": data.get("output_valid"),
+            "confidence": data.get("confidence"),
+            "should_escalate": data.get("should_escalate"),
+            "escalation_reason": data.get("escalation_reason") or data.get("error") or "",
+            "duration_ms": data.get("duration_ms"),
+            "artifacts_created": data.get("artifacts_created") or [],
+        }
+        if show_paths:
+            item["path"] = result_path.relative_to(root).as_posix()
+            if data.get("source_ref"):
+                item["source_ref"] = data.get("source_ref")
         results.append(item)
     return results

@@ -1673,6 +1673,7 @@ def _demo_local_context(root: Path, paths: RunPaths, delay: float) -> None:
         "worker": "context_compressor",
         "model": "demo",
         "source_ref": paths.context_pack.relative_to(root).as_posix(),
+        "artifacts_created": [out_path.relative_to(root).as_posix()],
         "output_valid": True,
         "output_issues": [],
         "confidence": 0.92,
@@ -1722,6 +1723,7 @@ def _demo_local_summary(root: Path, paths: RunPaths, delay: float) -> None:
         "worker": "log_summarizer",
         "model": "demo",
         "source_ref": paths.events.relative_to(root).as_posix(),
+        "artifacts_created": [out_path.relative_to(root).as_posix()],
         "output_valid": True,
         "output_issues": [],
         "confidence": 0.88,
@@ -3768,16 +3770,19 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
         "runtime": worker_output.get("runtime"),
         "worker": "intent_router",
         "model": model,
+        "source_ref": "user_prompt",
         "route_source": route_source,
         "output_valid": validation["valid"],
         "output_issues": validation["issues"],
         "confidence": validation["confidence"],
         "should_escalate": validation["should_escalate"],
         "escalation_reason": validation["escalation_reason"],
+        "artifacts_created": [],
         "output": worker_output,
         "normalized_actions": actions,
     }
     router_path = paths.local_dir / "intent_router.json"
+    result["artifacts_created"] = [router_path.relative_to(root).as_posix()]
     write_json(router_path, result)
     append_transcript(paths, "Ran", f"`hive ask` routed prompt via {route_source} -> `{router_path.relative_to(root).as_posix()}`")
     set_agent_status(paths, "local-intent-router", "completed" if router_status in {"completed", "fallback"} else "failed")
@@ -4509,9 +4514,13 @@ def invoke_local(root: Path, role: str, run_id: str | None = None, complexity: s
     append_agent_log(paths, "local", role, f"started worker={worker} model={model} source={source_ref}")
     append_event(paths, "agent_started", {"agent": "local", "role": role, "worker": worker})
     local_runtime = local_runtime_report(root, write=True).get("active_backend", "none")
+    started_at = now_iso()
+    started = time.monotonic()
     try:
         worker_output = run_worker(worker, input_text, model=model, runtime=local_runtime, source_ref=source_ref)
         validation = validate_worker_result(worker, worker_output)
+        finished_at = now_iso()
+        duration_ms = int((time.monotonic() - started) * 1000)
         result = {
             "schema_version": 1,
             "agent": "local",
@@ -4522,17 +4531,23 @@ def invoke_local(root: Path, role: str, run_id: str | None = None, complexity: s
             "worker": worker,
             "model": model,
             "source_ref": source_ref,
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "duration_ms": duration_ms,
             "output_valid": validation["valid"],
             "output_issues": validation["issues"],
             "confidence": validation["confidence"],
             "should_escalate": validation["should_escalate"],
             "escalation_reason": validation["escalation_reason"],
+            "artifacts_created": [],
             "output": worker_output,
         }
         event_type = "agent_completed"
         agent_status = "completed"
         run_status = "in_progress"
     except Exception as exc:
+        finished_at = now_iso()
+        duration_ms = int((time.monotonic() - started) * 1000)
         result = {
             "schema_version": 1,
             "agent": "local",
@@ -4543,6 +4558,9 @@ def invoke_local(root: Path, role: str, run_id: str | None = None, complexity: s
             "worker": worker,
             "model": model,
             "source_ref": source_ref,
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "duration_ms": duration_ms,
             "output_valid": False,
             "output_issues": [str(exc)],
             "confidence": 0.0,
@@ -4550,11 +4568,13 @@ def invoke_local(root: Path, role: str, run_id: str | None = None, complexity: s
             "escalation_reason": str(exc),
             "error": str(exc),
             "needs_followup": True,
+            "artifacts_created": [],
         }
         event_type = "agent_failed"
         agent_status = "failed"
         run_status = "needs_attention"
     out_path = paths.local_dir / f"{role.replace('-', '_')}.json"
+    result["artifacts_created"] = [out_path.relative_to(root).as_posix()]
     write_json(out_path, result)
     append_agent_log(paths, "local", role, f"{agent_status} artifact={out_path.relative_to(root).as_posix()}")
     append_transcript(paths, "Ran", f"`hive invoke local --role {role}` -> `{out_path.relative_to(root).as_posix()}` status={agent_status}")

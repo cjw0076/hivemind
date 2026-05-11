@@ -34,6 +34,7 @@ work without it. MemoryOS bridge is optional and gracefully degraded.
 - [ ] every prompt/command/result/artifact path recorded in ledger
 - [ ] failed/timeout/partial runs leave a readable artifact
 - [x] `hive inspect <run>` emits ledger replay with hash chain
+- [x] `hive inspect <run>` surfaces provider receipts and local worker terminal artifacts
 - [ ] `hive diff` reports touched files + ledger summary
 
 ### 3. Scheduler stability

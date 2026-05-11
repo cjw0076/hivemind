@@ -2,13 +2,13 @@
   "protocol_version": 1,
   "turn": "codex",
   "locked": false,
-  "updated_at": "2026-05-11T18:27:00+09:00",
+  "updated_at": "2026-05-11T18:35:00+09:00",
   "phase": "H-P0-production-runtime-close",
   "north_star": "Hive Mind production v0 is a local, auditable provider-CLI runtime harness. MemoryOS and CapabilityOS are optional substrates, not blockers.",
   "task": {
-    "id": "H-P0.7",
-    "title": "Provider timeout terminal receipt",
-    "description": "Make provider passthrough timeout outcomes explicit in receipts, validation, proofs, and inspection.",
+    "id": "H-P0.8",
+    "title": "Local worker terminal receipt inspection",
+    "description": "Make local worker results visible in inspect and validation as first-class terminal runtime artifacts.",
     "owner": "codex",
     "turn_type": "implementation",
     "files_to_touch": [
@@ -16,19 +16,21 @@
       "docs/AGENT_WORKLOG.md",
       "docs/TODO.md",
       ".ai-runs/shared/comms_log.md",
-      "hivemind/provider_passthrough.py",
+      "hivemind/run_receipts.py",
       "hivemind/run_validation.py",
       "hivemind/inspect_run.py",
-      "tests/test_provider_passthrough.py"
+      "hivemind/harness.py",
+      "tests/test_inspect.py",
+      "tests/test_run_validation.py"
     ],
     "acceptance_criteria": [
-      "Timeout writes status=timeout and returncode=124",
-      "Partial stdout/stderr from timeout is preserved",
-      "Validation and release gate remain green"
+      "hive inspect shows local_worker_results",
+      "Local worker JSON artifacts are schema-validated",
+      "invoke_local records timing and created artifact refs"
     ],
     "status": "done",
-    "tests": "bash scripts/public-release-check.sh PASS 11/11 WARN 0; npm test OK 261/261",
-    "notes": "Provider passthrough timeout now writes explicit timeout receipts, preserves partial stdout/stderr, validates status=timeout, and emits timeout proof status."
+    "tests": "bash scripts/public-release-check.sh PASS 11/11 WARN 0; npm test OK 263/263",
+    "notes": "Local worker result artifacts now show in hive inspect and are validated as local runtime receipts."
   },
   "task_queue": [
     {
@@ -176,6 +178,29 @@
       ],
       "status": "done",
       "tests": "python -m unittest tests.test_provider_passthrough tests.test_inspect tests.test_run_validation OK; bash scripts/public-release-check.sh PASS 11/11"
+    },
+    {
+      "id": "H-P0.8",
+      "owner": "codex",
+      "title": "Local worker terminal receipt inspection",
+      "description": "Make local worker results visible in inspect and validation as first-class terminal runtime artifacts.",
+      "files_to_touch": [
+        "hivemind/run_receipts.py",
+        "hivemind/run_validation.py",
+        "hivemind/inspect_run.py",
+        "hivemind/harness.py",
+        "tests/test_inspect.py",
+        "tests/test_run_validation.py",
+        "docs/TODO.md",
+        "docs/AGENT_WORKLOG.md"
+      ],
+      "acceptance_criteria": [
+        "hive inspect shows local_worker_results",
+        "Local worker JSON artifacts are schema-validated",
+        "invoke_local records timing and created artifact refs"
+      ],
+      "status": "done",
+      "tests": "bash scripts/public-release-check.sh PASS 11/11 WARN 0; npm test OK 263/263"
     }
   ],
   "history": [
@@ -223,10 +248,15 @@
       "at": "2026-05-11T18:27:00+09:00",
       "agent": "codex",
       "summary": "Added explicit provider passthrough timeout receipts and validation; public release gate still passes 11/11."
+    },
+    {
+      "at": "2026-05-11T18:35:00+09:00",
+      "agent": "codex",
+      "summary": "Added local worker receipt inspection and validation for agents/local/*.json artifacts."
     }
   ],
   "quality_gate": {
-    "last_hive_tests": "bash scripts/public-release-check.sh PASS 11/11 WARN 0; npm test OK: 261/261",
+    "last_hive_tests": "bash scripts/public-release-check.sh PASS 11/11 WARN 0; npm test OK: 263/263",
     "required_before_commit": [
       "python -m py_compile hivemind/*.py",
       "python -m unittest discover -s tests -p 'test_*.py'",

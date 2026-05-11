@@ -122,6 +122,25 @@ ALLOWED_PROVIDER_MODES = {
     "native_passthrough",
     "policy_blocked",
 }
+REQUIRED_LOCAL_WORKER_RESULT_KEYS = {
+    "schema_version",
+    "agent",
+    "role",
+    "status",
+    "provider_mode",
+    "runtime",
+    "worker",
+    "model",
+    "source_ref",
+    "output_valid",
+    "output_issues",
+    "confidence",
+    "should_escalate",
+    "escalation_reason",
+    "artifacts_created",
+}
+ALLOWED_LOCAL_WORKER_STATUSES = {"completed", "failed", "fallback", "timeout", "partial", "skipped"}
+ALLOWED_LOCAL_WORKER_PROVIDER_MODES = {"local_runtime", "demo_runtime"}
 
 
 def validate_run_artifacts(run_dir: Path, root: Path) -> dict[str, Any]:
@@ -155,6 +174,7 @@ def validate_run_artifacts(run_dir: Path, root: Path) -> dict[str, Any]:
     checks["final_report_schema_valid"] = validate_final_report(paths["final_report"], run_id, issues)
     checks["state_artifact_refs_valid"] = validate_state_artifact_refs(state, root, issues)
     checks["provider_results_schema_valid"] = validate_provider_results(run_dir, root, issues)
+    checks["local_worker_results_schema_valid"] = validate_local_worker_results(run_dir, root, issues)
     checks["agent_states_valid"] = validate_agent_states(state, issues)
 
     if isinstance(task, dict) and task.get("run_id") != run_id:
@@ -330,6 +350,41 @@ def validate_provider_results(run_dir: Path, root: Path, issues: list[str]) -> b
         if data.get("risk_level") not in {"low", "medium", "high", "unknown"}:
             issues.append(f"{path.relative_to(root).as_posix()} has invalid risk_level: {data.get('risk_level')}")
             ok = False
+    return ok
+
+
+def validate_local_worker_results(run_dir: Path, root: Path, issues: list[str]) -> bool:
+    ok = True
+    result_paths = sorted((run_dir / "agents" / "local").glob("*.json"))
+    for path in result_paths:
+        data = load_json(path, "local_worker_result", issues, required=False)
+        if not isinstance(data, dict):
+            issues.append(f"local worker result must be an object: {path.relative_to(root).as_posix()}")
+            ok = False
+            continue
+        missing = sorted(REQUIRED_LOCAL_WORKER_RESULT_KEYS - set(data))
+        if missing:
+            issues.append(f"{path.relative_to(root).as_posix()} missing required local worker keys: {', '.join(missing)}")
+            ok = False
+        if data.get("agent") != "local":
+            issues.append(f"{path.relative_to(root).as_posix()} local worker agent must be local: {data.get('agent')}")
+            ok = False
+        if data.get("status") not in ALLOWED_LOCAL_WORKER_STATUSES:
+            issues.append(f"{path.relative_to(root).as_posix()} has invalid local worker status: {data.get('status')}")
+            ok = False
+        if data.get("provider_mode") not in ALLOWED_LOCAL_WORKER_PROVIDER_MODES:
+            issues.append(f"{path.relative_to(root).as_posix()} has invalid local worker provider_mode: {data.get('provider_mode')}")
+            ok = False
+        for list_key in ["output_issues", "artifacts_created"]:
+            if list_key in data and not isinstance(data.get(list_key), list):
+                issues.append(f"{path.relative_to(root).as_posix()} {list_key} must be a list")
+                ok = False
+        artifacts = data.get("artifacts_created") or []
+        if isinstance(artifacts, list):
+            for ref in artifacts:
+                if isinstance(ref, str) and ref and not (root / ref).exists():
+                    issues.append(f"{path.relative_to(root).as_posix()} artifacts_created points to missing file: {ref}")
+                    ok = False
     return ok
 
 
