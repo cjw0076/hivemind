@@ -116,6 +116,7 @@ from .workloop import format_execution_ledger, format_ledger_replay, read_execut
 from .live import build_live_report, build_memoryos_observability_report, format_live_report, start_live_prompt
 from .inspect_run import build_inspect_report, format_inspect_report
 from .arrival_pack import build_arrival_pack, format_arrival_pack
+from .source_reads import format_source_read_summary, record_source_read, summarize_source_reads
 from .supervisor import (
     format_supervisor_status,
     format_supervisor_tail,
@@ -158,6 +159,7 @@ COMMANDS = {
     "live",
     "inspect",
     "arrival-pack",
+    "source-read",
     "transcript",
     "artifacts",
     "society",
@@ -468,6 +470,22 @@ def _main(argv: list[str] | None = None) -> None:
     arrival_pack_cmd.add_argument("--role", default="agent", help="incoming agent role label")
     arrival_pack_cmd.add_argument("--paths", action="store_true", help="show artifact/file paths for debugging")
     arrival_pack_cmd.add_argument("--json", action="store_true")
+
+    source_read_cmd = sub.add_parser("source-read", help="record and summarize source artifacts read by agents")
+    source_read_sub = source_read_cmd.add_subparsers(dest="source_read_cmd", required=True)
+    source_read_record_cmd = source_read_sub.add_parser("record", help="record that an agent read a source artifact")
+    source_read_record_cmd.add_argument("--run", "--run-id", dest="run_id", help="run ID (default: current)")
+    source_read_record_cmd.add_argument("--agent", required=True, help="agent name that read the source")
+    source_read_record_cmd.add_argument("--role", default="", help="agent role label")
+    source_read_record_cmd.add_argument("--source", required=True, help="source path/ref; raw source body is never stored")
+    source_read_record_cmd.add_argument("--source-kind", default="file", help="source kind label")
+    source_read_record_cmd.add_argument("--interpretation", default="", help="short interpretation label or summary")
+    source_read_record_cmd.add_argument("--verification-state", default="observed", help="observed|verified|unverified|contested")
+    source_read_record_cmd.add_argument("--json", action="store_true")
+    source_read_summary_cmd = source_read_sub.add_parser("summary", help="summarize source-read registry for a run")
+    source_read_summary_cmd.add_argument("--run", "--run-id", dest="run_id", help="run ID (default: current)")
+    source_read_summary_cmd.add_argument("--paths", action="store_true", help="show full source refs for debugging")
+    source_read_summary_cmd.add_argument("--json", action="store_true")
 
     transcript_cmd = sub.add_parser("transcript", help="show transcript or open transcript TUI view")
     transcript_cmd.add_argument("--run-id")
@@ -1531,6 +1549,32 @@ def _main(argv: list[str] | None = None) -> None:
         else:
             print(format_arrival_pack(report, show_paths=bool(getattr(args, "paths", False))))
         return
+    if args.cmd == "source-read":
+        import json as _json
+
+        if args.source_read_cmd == "record":
+            record = record_source_read(
+                root,
+                run_id=getattr(args, "run_id", None) or None,
+                agent=args.agent,
+                role=args.role,
+                source=args.source,
+                source_kind=args.source_kind,
+                interpretation=args.interpretation or None,
+                verification_state=args.verification_state,
+            )
+            if args.json:
+                print(_json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(f"recorded source read: {record['source_id']} agent={record['agent']}")
+            return
+        if args.source_read_cmd == "summary":
+            summary = summarize_source_reads(root, getattr(args, "run_id", None) or None, show_paths=bool(getattr(args, "paths", False)))
+            if args.json:
+                print(_json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(format_source_read_summary(summary))
+            return
     if args.cmd == "workspace":
         report = workspace_layout_report(args.layout)
         if args.json:

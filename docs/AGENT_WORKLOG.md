@@ -499,3 +499,17 @@
   `kind=hive_arrival_pack` with paths hidden and no raw provider body fields;
   `git diff --check` passed.
 - Next: Return ASC-0021 result packet to MyWorld for collect/release.
+
+## 2026-05-12 02:09 KST - Codex - ASC-0023 Source-Read Registry Complete
+
+- Context: MyWorld ASC-0023 dispatched `codex@hivemind` to add a per-run
+  source-read registry and expose it in arrival packs.
+- Decision: Added `hive source-read record|summary` backed by
+  `artifacts/source_reads.json`. Records store source refs, source IDs,
+  agent/role, interpretation hashes, verification state, and privacy flags;
+  they do not store raw source bodies.
+- Evidence: `python -m pytest tests/test_source_reads.py -v` passed 4/4;
+  `python -m pytest tests/test_source_reads.py tests/test_arrival_pack.py -v`
+  passed 9/9; CLI smoke under `/tmp/hive-source-read-smoke` recorded a source
+  read and summarized `schema_version=hive.source_reads.v1`.
+- Next: Return ASC-0023 result packet to MyWorld for collect/release.

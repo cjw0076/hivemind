@@ -6,6 +6,7 @@ from typing import Any
 
 from .harness import now_iso
 from .inspect_run import build_inspect_report
+from .source_reads import summarize_source_reads
 
 
 SCHEMA_VERSION = "hive.arrival_pack.v1"
@@ -22,6 +23,7 @@ def build_arrival_pack(
     report = build_inspect_report(root, run_id, show_paths=show_paths)
     actual_run_id = str(report.get("run_id") or "")
     live_agents = (report.get("health") or {}) if isinstance(report.get("health"), dict) else {}
+    source_reads = summarize_source_reads(root, actual_run_id, show_paths=show_paths)
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": "hive_arrival_pack",
@@ -35,11 +37,12 @@ def build_arrival_pack(
         "verdict": report.get("verdict"),
         "owners": build_owners(role),
         "agents": summarize_agents(report, live_agents),
-        "blocked_items": blocked_items(report),
+        "blocked_items": blocked_items(report, source_reads),
         "accepted_claims": accepted_claims(report),
         "contested_claims": contested_claims(report),
         "scope_hints": scope_hints(report, show_paths=show_paths),
-        "latest_artifacts": latest_artifacts(report, show_paths=show_paths),
+        "latest_artifacts": latest_artifacts(report, source_reads, show_paths=show_paths),
+        "source_reads": source_reads,
         "suggested_commands": suggested_commands(actual_run_id),
         "privacy": {
             "paths_hidden": not show_paths,
@@ -87,7 +90,7 @@ def summarize_agents(report: dict[str, Any], health: dict[str, Any]) -> list[dic
     return agent_summary
 
 
-def blocked_items(report: dict[str, Any]) -> list[dict[str, Any]]:
+def blocked_items(report: dict[str, Any], source_reads: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     ledger = report.get("ledger") or {}
     if ledger.get("hash_chain_ok") is False and (ledger.get("record_count") or 0) > 0:
@@ -121,6 +124,15 @@ def blocked_items(report: dict[str, Any]) -> list[dict[str, Any]]:
         items.append({"kind": "execution_proof", "severity": "high", "reason": "failed or flagged proof"})
     if (report.get("disagreements") or {}).get("high_severity_count"):
         items.append({"kind": "disagreement", "severity": "high", "reason": "high/medium disagreement topology"})
+    if source_reads and (source_reads.get("divergent_source_count") or 0) > 0:
+        items.append(
+            {
+                "kind": "source_read_reconciliation",
+                "severity": "medium",
+                "reason": "shared source has divergent interpretations",
+                "count": source_reads.get("divergent_source_count"),
+            }
+        )
     audit = report.get("audit") or {}
     if audit.get("validation_verdict") not in {None, "pass"}:
         items.append({"kind": "validation", "severity": "medium", "reason": "run validation is not passing"})
@@ -190,7 +202,7 @@ def scope_hints(report: dict[str, Any], *, show_paths: bool) -> dict[str, Any]:
     }
 
 
-def latest_artifacts(report: dict[str, Any], *, show_paths: bool) -> list[dict[str, Any]]:
+def latest_artifacts(report: dict[str, Any], source_reads: dict[str, Any] | None = None, *, show_paths: bool) -> list[dict[str, Any]]:
     ledger = report.get("ledger") or {}
     ledger_record_count = ledger.get("record_count") or 0
     ledger_status = "ok" if ledger.get("ok") or ledger_record_count == 0 else "needs_review"
@@ -218,6 +230,13 @@ def latest_artifacts(report: dict[str, Any], *, show_paths: bool) -> list[dict[s
             "status": "present" if (report.get("disagreements") or {}).get("count") else "none",
             "count": (report.get("disagreements") or {}).get("count", 0),
             "high_severity_count": (report.get("disagreements") or {}).get("high_severity_count", 0),
+        },
+        {
+            "kind": "source_reads",
+            "status": "present" if source_reads and source_reads.get("record_count") else "missing",
+            "record_count": (source_reads or {}).get("record_count", 0),
+            "shared_source_count": (source_reads or {}).get("shared_source_count", 0),
+            "divergent_source_count": (source_reads or {}).get("divergent_source_count", 0),
         },
     ]
     for receipt in report.get("provider_results") or []:
@@ -251,6 +270,7 @@ def suggested_commands(run_id: str) -> list[dict[str, str]]:
     return [
         {"command": f"hive inspect {run_id} --json", "reason": "full receipt and verdict inspection"},
         {"command": f"hive live --run-id {run_id} --json", "reason": "prompt/log state without raw artifacts"},
+        {"command": f"hive source-read summary --run {run_id} --json", "reason": "shared source and interpretation reconciliation"},
         {"command": f"hive next --run-id {run_id} --json", "reason": "grounded next operator action"},
     ]
 

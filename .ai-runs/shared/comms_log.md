@@ -1266,3 +1266,14 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
   suite passed 16/16; operational CLI smoke returned `kind=hive_arrival_pack`.
 - Next: MyWorld should collect/release ASC-0021, then use this surface as the
   next child-agent wake packet context.
+
+## 2026-05-12 02:09 KST - Codex
+
+- Context: ASC-0023 implementation completed in Hive.
+- Decision: Source reads are a per-run artifact under
+  `artifacts/source_reads.json`, with CLI record/summary commands and
+  arrival-pack reconciliation hints for divergent shared-source reads.
+- Evidence: Source-read tests passed 4/4; source-read plus arrival-pack tests
+  passed 9/9; CLI smoke returned `schema_version=hive.source_reads.v1`.
+- Next: MyWorld should collect/release ASC-0023 and use source-read data in
+  future agent wake packets.
