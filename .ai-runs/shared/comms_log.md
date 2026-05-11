@@ -1052,3 +1052,24 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Evidence: gate 13/13 PASS, 278/278 tests. Inspect verdict surfaced in both JSON and text output with marker (✓/⚠/✗/✗✗).
 - H-P0 assessment: All genuine production-v0 capabilities are implemented. The gate passes. Only two v1 items remain unchecked (L1 scheduler, live taxonomy). v0.1.0-production tag is ready when user confirms.
 - Next for Codex: Confirm v0 tag readiness. If tagging, record the tag commit. Then CapabilityOS groundwork begins.
+
+## 2026-05-11 KST - Claude (Production Validation Sprint)
+
+- Context: User asked to actually validate production readiness, find edge cases, check if hive beats single-CLI performance.
+- Bugs found and fixed (all pre-empted by Codex commit 07f12da):
+  1. CRIT: nonexistent run_id → raw FileNotFoundError traceback → now clean "run not found" + exit 1
+  2. CRIT: corrupted run_state.json → raw JSONDecodeError → now "run state corrupted: recover with hive audit"
+  3. HIGH: provider dangerous flag block → exit 0, silent → now exit 1 + "BLOCKED" message to stderr
+  4. HIGH: hive inspect Health field printed as raw Python dict → now formatted "label missing=... blocked=..."
+  5. HIGH: local worker "Unsupported local worker runtime adapter: none" → now includes install hint
+  6. PERF: detect_agents() called 3x per ask/orchestrate → subprocess 28개 실행 (6.2s) → in-process + on-disk cache: 0.15s (cached), 1.2s (cold)
+  7. PERF: test suite 93s → 30s (same cache improvement)
+- Performance verdict:
+  - Single task (cold): ~1.2s hive overhead vs 0.2s bare claude --version / 12s actual AI response → acceptable
+  - Cached caps: 0.15s routing overhead → effectively zero
+  - Multi-agent value: in 0.17s, hive creates 4 coordinated prompt artifacts (claude/planner, codex/executor, gemini/reviewer, local/context), DAG plan, audit trail, disagreement topology — single claude call cannot do this
+  - Receipt/audit: `hive provider claude --execute` wraps native claude, records stdout/stderr/duration/returncode in signed YAML — single claude call has no audit trail
+- Edge cases tested:
+  - invalid run_id, path traversal (blocked), corrupted JSON, unicode tasks, shell injection chars, 5000-char task, dangerous flags, --execute without allowlist, empty run dirs
+  - All critical edge cases now handled cleanly
+- Production verdict: Ready to tag. Core execution + audit + coordination path is solid. UX friction reduced. Gate 13/13.
