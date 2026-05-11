@@ -124,7 +124,7 @@ from .supervisor import (
     supervisor_status_report,
     tail_supervisor_log,
 )
-from .goal import build_goal_report, format_goal_report
+from .goal import build_goal_report, format_goal_report, write_attack_pack
 
 
 COMMANDS = {
@@ -458,6 +458,7 @@ def _main(argv: list[str] | None = None) -> None:
     goal_cmd = sub.add_parser("goal", help="show the active production-v0 goal sprint")
     goal_cmd.add_argument("--json", action="store_true")
     goal_cmd.add_argument("--attack-prompt", action="store_true", help="print only the Claude attack prompt")
+    goal_cmd.add_argument("--write-attack-pack", action="store_true", help="write a Markdown adversarial review pack")
 
     gaps_cmd = sub.add_parser("gaps", help="build gap-closure artifacts from docs/HIVE_MIND_GAPS.md")
     gaps_cmd.add_argument("--run-id")
@@ -1052,6 +1053,13 @@ def _main(argv: list[str] | None = None) -> None:
     if args.cmd == "goal":
         import json as _json
 
+        if args.write_attack_pack:
+            result = write_attack_pack(root)
+            if args.json:
+                print(_json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(result["path"])
+            return
         report = build_goal_report(root)
         if args.attack_prompt:
             print(report["claude_attack_prompt"])

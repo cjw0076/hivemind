@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from hivemind.goal import build_goal_report, format_goal_report
+from hivemind.goal import build_goal_report, format_goal_report, write_attack_pack
 
 
 class GoalReportTest(unittest.TestCase):
@@ -52,8 +52,23 @@ class GoalReportTest(unittest.TestCase):
             self.assertIn("Hive Mind Goal Sprint", text)
             self.assertIn("Claude attack prompt", text)
             self.assertIn("scripts/public-release-check.sh", text)
+            self.assertIn("hive goal --write-attack-pack", text)
+
+    def test_write_attack_pack_creates_markdown_for_reviewer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "docs").mkdir()
+            (root / "docs" / "GOAL.md").write_text("# Goal\n", encoding="utf-8")
+
+            result = write_attack_pack(root)
+
+            path = root / result["path"]
+            self.assertTrue(path.exists())
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("Hive Mind Production-v0 Attack Pack", text)
+            self.assertIn("Finding Format", text)
+            self.assertIn("provider passthrough", text)
 
 
 if __name__ == "__main__":
     unittest.main()
-

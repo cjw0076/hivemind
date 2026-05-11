@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +50,7 @@ def build_goal_report(root: Path) -> dict[str, Any]:
         "validation_commands": VALIDATION_COMMANDS,
         "latest_value_benchmark": benchmark,
         "latest_release_gate": release,
+        "attack_pack_command": "hive goal --write-attack-pack",
         "claude_attack_prompt": build_claude_attack_prompt(root, benchmark, release),
     }
 
@@ -95,7 +97,28 @@ def format_goal_report(report: dict[str, Any]) -> str:
     lines.append("")
     lines.append("Claude attack prompt:")
     lines.append(report.get("claude_attack_prompt", ""))
+    lines.append("")
+    lines.append(f"Attack pack: {report.get('attack_pack_command')}")
     return "\n".join(lines)
+
+
+def write_attack_pack(root: Path) -> dict[str, Any]:
+    """Write a self-contained Markdown pack for adversarial review."""
+    report = build_goal_report(root)
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    out_dir = root / ".hivemind" / "goal"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"attack-pack-{stamp}.md"
+    text = _format_attack_pack(report)
+    path.write_text(text, encoding="utf-8")
+    return {
+        "schema_version": 1,
+        "kind": "hive_goal_attack_pack",
+        "path": _rel(root, path),
+        "goal_status": report.get("status"),
+        "latest_value_benchmark": report.get("latest_value_benchmark"),
+        "latest_release_gate": report.get("latest_release_gate"),
+    }
 
 
 def _latest_value_benchmark(root: Path) -> dict[str, Any]:
@@ -113,6 +136,74 @@ def _latest_value_benchmark(root: Path) -> dict[str, Any]:
         "hive_for_audited_multi_agent": summary.get("hive_for_audited_multi_agent"),
         "required_failures": summary.get("required_failures", []),
     }
+
+
+def _format_attack_pack(report: dict[str, Any]) -> str:
+    benchmark = report.get("latest_value_benchmark") or {}
+    release = report.get("latest_release_gate") or {}
+    lines = [
+        "# Hive Mind Production-v0 Attack Pack",
+        "",
+        "## Objective",
+        "",
+        str(report.get("objective", "")),
+        "",
+        "## Stopping Condition",
+        "",
+        str(report.get("stopping_condition", "")),
+        "",
+        "## Latest Evidence",
+        "",
+        f"- Value benchmark: {benchmark.get('path')} verdict={benchmark.get('verdict')}",
+        f"- Direct CLI wins trivial calls: {benchmark.get('direct_cli_for_trivial')}",
+        f"- Hive wins audited multi-agent value: {benchmark.get('hive_for_audited_multi_agent')}",
+        f"- Release gate: {release.get('path')} user_value_verdict={release.get('user_value_verdict')}",
+        "",
+        "## Required Reads",
+        "",
+    ]
+    lines.extend(f"- `{item}`" for item in report.get("required_reads", []))
+    lines.extend(
+        [
+            "",
+            "## Validation Commands",
+            "",
+        ]
+    )
+    lines.extend(f"- `{item}`" for item in report.get("validation_commands", []))
+    lines.extend(
+        [
+            "",
+            "## Attack Prompt",
+            "",
+            "```text",
+            str(report.get("claude_attack_prompt", "")),
+            "```",
+            "",
+            "## Attack Checklist",
+            "",
+            "- Find provider passthrough flags that bypass policy.",
+            "- Find failed, skipped, timeout, blocked, or stopped paths without receipts.",
+            "- Find ledger replay false positives or false negatives.",
+            "- Corrupt run state and confirm the user gets a useful recovery path.",
+            "- Compare direct CLI against Hive for trivial and audited multi-agent work.",
+            "- Test Korean, Unicode, and long prompts.",
+            "- Test MemoryOS absence or bridge degradation.",
+            "- Report whether Hive adds ceremony without enough audit, policy, recovery, or coordination value.",
+            "",
+            "## Finding Format",
+            "",
+            "```text",
+            "Severity: high|medium|low",
+            "Surface:",
+            "Reproduction:",
+            "Expected:",
+            "Actual:",
+            "Recommended fix:",
+            "```",
+        ]
+    )
+    return "\n".join(lines) + "\n"
 
 
 def _latest_release_gate(root: Path) -> dict[str, Any]:
@@ -156,4 +247,3 @@ def _rel(root: Path, path: Path) -> str:
         return path.relative_to(root).as_posix()
     except ValueError:
         return path.as_posix()
-

@@ -71,6 +71,12 @@ Suggested attack surfaces:
 Claude should log findings in `.ai-runs/shared/comms_log.md` and, for release
 blockers, write a focused report under `docs/security/` or `docs/reviews/`.
 
+To generate the review packet:
+
+```bash
+hive goal --write-attack-pack
+```
+
 ## Sprint Loop
 
 Repeat this loop until the value benchmark and release gate both stay green
@@ -94,4 +100,3 @@ Hive Mind must be better when the task needs:
 - stop/resume/inspect/debug after a run;
 - disagreement, verifier, or reviewer pressure;
 - later MemoryOS import and context feedback.
-

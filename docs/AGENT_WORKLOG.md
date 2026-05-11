@@ -14,6 +14,13 @@
 - Evidence: Added `hivemind/goal.py`, `hive goal --json`, `hive goal --attack-prompt`, and tests. Verified command output, focused tests, value benchmark pass, full unit suite 282/282, and release gate 14/14.
 - Next: Give Claude `hive goal --attack-prompt` plus `.hivemind/release/20260511_191725/user-value-benchmark.json` as the attack target.
 
+## 2026-05-11 19:24 KST - Codex - Goal Attack Pack
+
+- Context: Continuing the v0 `/goal` sprint; Claude needs a reproducible attack target, not only a prompt string.
+- Decision: Add `hive goal --write-attack-pack`, which writes a Markdown evidence packet with objective, stopping condition, latest benchmark/gate paths, validation commands, attack checklist, and finding format.
+- Evidence: Added attack-pack writer and tests. Verified attack pack output, focused tests, value benchmark pass, full unit suite 283/283, and release gate 14/14.
+- Next: Hand `.hivemind/goal/attack-pack-*.md` to Claude and use any high/medium findings as the next sprint queue.
+
 ## 2026-05-03 00:00 KST - Codex - Product Evaluation Start
 
 - Context: User asked to act as a tester, create varied tasks/situations, verify CLI packaging/production readiness, and compare Hive Mind against the user's manual shared-folder collaboration method and direct single-agent usage.

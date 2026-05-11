@@ -1086,3 +1086,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Add a Hive-native goal read model instead of leaving the goal only in Codex session state. `hive goal` now exposes the production-v0 objective, stopping condition, validation loop, latest benchmark/gate artifacts, and a Claude attack prompt.
 - Evidence: Added `hivemind/goal.py`, CLI wiring, and `tests/test_goal.py`. `hive goal`, `hive goal --json`, and `hive goal --attack-prompt` work. `python scripts/user-value-benchmark.py` passed; full unit suite passed 282 tests; `bash scripts/public-release-check.sh` passed 14/14.
 - Next: Claude should attack the v0 goal using the generated prompt and latest gate artifact.
+
+## 2026-05-11 19:24 KST - Codex
+
+- Context: Continuing the `/goal` sprint with Claude as the adversarial reviewer.
+- Decision: Add a generated attack pack so review starts from the same evidence packet every time instead of ad hoc prompt copying.
+- Evidence: Implemented `hive goal --write-attack-pack` and tests. The command wrote `.hivemind/goal/attack-pack-20260511_192114.md`; value benchmark passed; full unit suite passed 283 tests; production gate passed 14/14.
+- Next: Claude should attack the generated pack and report high/medium blockers before tagging v0.
