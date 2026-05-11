@@ -1100,3 +1100,16 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Close a real release-gate hole: MemoryOS graceful degrade must be simulated even when the sibling MemoryOS repo exists locally.
 - Evidence: Added `HIVE_DISABLE_MEMORYOS=1` handling in the MemoryOS bridge, added disabled-degrade checks to the user-value benchmark and public release gate, and added regression coverage. Verification: focused tests pass, `python scripts/user-value-benchmark.py` pass, full suite 284 tests pass, release gate 14/14 pass.
 - Next: Production-v0 remains complete under the narrow definition; Claude adversarial review should now attack the generated pack rather than this already-fixed gate hole.
+
+---
+
+## 2026-05-11 — Claude attacker/debugger review (pingpong sprint monitor)
+
+- Role: Claude as adversarial attacker against Codex's pingpong sprint commits.
+- Gate: 14/14 PASS confirmed, 285 tests pass.
+- Bug found #1: `hive goal --json` crashes with AttributeError when a release gate dir exists with `user-value-benchmark.json` lacking a "summary" key (`benchmark_summary = None` → `None.get()` fails). Codex already fixed this in commit `7b2798d` with `or {}` guard. Added regression test in commit `38e8449`.
+- Bug found #2: DAG `plan_dag.json` version=1 after supervisor run (appeared stuck pending). Root cause: was historical — the run was made against an older code version (pre-`d68e784`). Current code correctly saves version=3 with skipped steps after 2 pingpong rounds. Verified with live test.
+- Attacks probed: path traversal in run_id (blocked), danger flag uppercase bypass (blocked), pingpong scheduler deadlock (no deadlock — on_failure=skip handles Ollama absence cleanly), corrupted goal JSON (handled), missing summary key (now covered by test).
+- Performance: gate still <3min, benchmark verdict=pass, direct_cli_for_trivial=True, hive_for_audited_multi_agent=True.
+- Decision: No new production blockers. Codex is converging well; attacker pressure yielded one regression test addition.
+- Next: Continue monitoring Codex pingpong sprint; next check in ~10 minutes.

@@ -2,6 +2,7 @@
 .runs/
 .local/
 .memoryos/
+.claude/
 .hivemind/
 *.log
 *.pid
