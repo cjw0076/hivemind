@@ -13,8 +13,9 @@ files or already believing in multi-agent harnesses.
   MemoryOS-compatible read model.
 - [ ] README starts with the quickstart path, not the full command surface.
 - [ ] `hive init` tells a new user the next command to run and why.
-- [ ] MemoryOS feedback loop demo exists: run result -> memory draft/import ->
+- [x] MemoryOS feedback loop demo exists: run result -> memory draft/import ->
   accepted context -> next Hive run references the accepted memory.
+- [x] Public release gate verifies the feedback loop with `hive demo memory-loop`.
 - [ ] CLI command surface has a recommended path: `hive demo quickstart`,
   `hive run`, `hive inspect`, `hive goal`; advanced commands are secondary.
 - [ ] Claude/foreign-context reviewer finds no high/medium public-alpha blockers.

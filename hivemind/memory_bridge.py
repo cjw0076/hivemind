@@ -18,8 +18,9 @@ def build_memoryos_context_report(root: Path, paths: Any, state: dict[str, Any])
     This module deliberately does not mutate run_state. The harness remains the
     authority for state updates and event emission.
     """
-    memoryos_root = root.parent / "memoryOS"
-    memoryos_cli = memoryos_root / "memoryos" / "cli.py"
+    memoryos_source_root = Path(os.environ.get("HIVE_MEMORYOS_SOURCE_ROOT") or (root.parent / "memoryOS")).resolve()
+    memoryos_root = Path(os.environ.get("HIVE_MEMORYOS_ROOT") or memoryos_source_root).resolve()
+    memoryos_cli = memoryos_source_root / "memoryos" / "cli.py"
     command = [
         sys.executable,
         "-m",
@@ -41,6 +42,7 @@ def build_memoryos_context_report(root: Path, paths: Any, state: dict[str, Any])
         "phase": "context_retrieval",
         "status": "unavailable",
         "memoryos_root": memoryos_root.as_posix(),
+        "memoryos_source_root": memoryos_source_root.as_posix(),
         "command": command,
         "trace_id": None,
         "accepted_memory_ids": [],
@@ -49,13 +51,13 @@ def build_memoryos_context_report(root: Path, paths: Any, state: dict[str, Any])
         "raw_refs": ["docs/HIVE_WORKING_METHOD.md", paths.context_pack.relative_to(root).as_posix()],
     }
     if not memoryos_cli.exists():
-        artifact["reason"] = "MemoryOS CLI not found next to Hive Mind workspace."
+        artifact["reason"] = "MemoryOS CLI source not found next to Hive Mind workspace."
         return artifact
     if os.environ.get("HIVE_DISABLE_MEMORYOS") in {"1", "true", "yes"}:
         artifact["reason"] = "MemoryOS bridge disabled by HIVE_DISABLE_MEMORYOS."
         return artifact
     try:
-        result = subprocess.run(command, cwd=memoryos_root, text=True, capture_output=True, timeout=30)
+        result = subprocess.run(command, cwd=memoryos_source_root, text=True, capture_output=True, timeout=30)
     except (OSError, subprocess.SubprocessError) as exc:
         artifact.update({"status": "failed", "reason": str(exc)})
         return artifact

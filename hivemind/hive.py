@@ -125,7 +125,13 @@ from .supervisor import (
     tail_supervisor_log,
 )
 from .goal import build_goal_report, format_goal_report, write_attack_pack
-from .quickstart import DEFAULT_QUICKSTART_TASK, format_quickstart_demo, quickstart_demo
+from .quickstart import (
+    DEFAULT_QUICKSTART_TASK,
+    format_memory_loop_demo,
+    format_quickstart_demo,
+    memory_loop_demo,
+    quickstart_demo,
+)
 
 
 COMMANDS = {
@@ -224,7 +230,7 @@ def resolve_root(root_arg: str) -> Path:
 def main(argv: list[str] | None = None) -> None:
     try:
         _main(argv)
-    except ValueError as exc:
+    except (ValueError, RuntimeError) as exc:
         raise SystemExit(f"hive: {exc}") from None
     except FileNotFoundError as exc:
         msg = str(exc)
@@ -409,6 +415,11 @@ def _main(argv: list[str] | None = None) -> None:
     demo_quickstart_cmd.add_argument("task", nargs="?", default=DEFAULT_QUICKSTART_TASK)
     demo_quickstart_cmd.add_argument("--delay", type=float, default=0.0, help="seconds between demo state transitions")
     demo_quickstart_cmd.add_argument("--json", action="store_true")
+    demo_memory_loop_cmd = demo_sub.add_parser("memory-loop", help="isolated Hive -> MemoryOS -> Hive feedback loop demo")
+    demo_memory_loop_cmd.add_argument("task", nargs="?", default="Remember this Hive Mind run and use it in the next run")
+    demo_memory_loop_cmd.add_argument("--delay", type=float, default=0.0, help="seconds between demo state transitions")
+    demo_memory_loop_cmd.add_argument("--memoryos-root", help="optional isolated MemoryOS root; default is .hivemind/demo_memoryos/<run_id>")
+    demo_memory_loop_cmd.add_argument("--json", action="store_true")
 
     status_cmd = sub.add_parser("status", help="show current run status")
     status_cmd.add_argument("--run-id")
@@ -1014,6 +1025,20 @@ def _main(argv: list[str] | None = None) -> None:
                 print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
             else:
                 print(format_quickstart_demo(report))
+            return
+        if args.demo_cmd == "memory-loop":
+            report = memory_loop_demo(
+                root,
+                task=args.task,
+                delay=args.delay,
+                memoryos_root=Path(args.memoryos_root).resolve() if args.memoryos_root else None,
+            )
+            if args.json:
+                import json
+
+                print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(format_memory_loop_demo(report))
             return
     if args.cmd == "status":
         if args.json:

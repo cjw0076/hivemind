@@ -116,3 +116,13 @@ hive demo quickstart
 The demo must show prompt intake, role routing, agent artifacts, verification,
 memory draft, inspect report, and MemoryOS-compatible observability without
 requiring provider keys.
+
+The next demo must close the feedback loop:
+
+```bash
+hive demo memory-loop
+```
+
+The public release gate now treats this loop as a first-class check: the first
+run must emit a memory draft, MemoryOS must import and approve it in an isolated
+root, and the next Hive run must retrieve that accepted memory as context.

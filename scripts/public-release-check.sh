@@ -14,7 +14,7 @@ mkdir -p "$OUT_DIR"
 PASS=0
 FAIL=0
 WARNINGS=()
-TOTAL=15
+TOTAL=16
 
 ok()   { echo "  PASS  $*"; ((PASS++)) || true; }
 fail() { echo "  FAIL  $*"; ((FAIL++)) || true; }
@@ -182,8 +182,23 @@ else
     fail "hive demo quickstart failed — see $OUT_DIR/quickstart-demo.json"
 fi
 
-# ── 13. MemoryOS bridge graceful degrade ─────────────────────────────────────
-echo "[ 13/$TOTAL ] MemoryOS bridge graceful degrade"
+# ── 13. MemoryOS feedback loop demo ──────────────────────────────────────────
+echo "[ 13/$TOTAL ] MemoryOS feedback loop demo"
+if python -m hivemind.hive demo memory-loop "public alpha memory loop smoke" --json > "$OUT_DIR/memory-loop-demo.json" 2>&1; then
+    MEMORY_LOOP_STATUS=$(python3 -c "import json; d=json.load(open('$OUT_DIR/memory-loop-demo.json')); print(d.get('status','?'))" 2>/dev/null || echo "?")
+    MEMORY_LOOP_APPROVED=$(python3 -c "import json; d=json.load(open('$OUT_DIR/memory-loop-demo.json')); print(len(d.get('approved_memory_ids') or []))" 2>/dev/null || echo "0")
+    MEMORY_LOOP_CONTEXT=$(python3 -c "import json; d=json.load(open('$OUT_DIR/memory-loop-demo.json')); print(len((d.get('second_run_context') or {}).get('accepted_memory_ids') or []))" 2>/dev/null || echo "0")
+    if [ "$MEMORY_LOOP_STATUS" = "closed_loop" ] && [ "$MEMORY_LOOP_APPROVED" -gt 0 ] && [ "$MEMORY_LOOP_CONTEXT" -gt 0 ]; then
+        ok "memory loop status=$MEMORY_LOOP_STATUS approved=$MEMORY_LOOP_APPROVED second_context=$MEMORY_LOOP_CONTEXT"
+    else
+        fail "memory loop did not close status=$MEMORY_LOOP_STATUS approved=$MEMORY_LOOP_APPROVED second_context=$MEMORY_LOOP_CONTEXT"
+    fi
+else
+    fail "hive demo memory-loop failed — see $OUT_DIR/memory-loop-demo.json"
+fi
+
+# ── 14. MemoryOS bridge graceful degrade ─────────────────────────────────────
+echo "[ 14/$TOTAL ] MemoryOS bridge graceful degrade"
 if HIVE_DISABLE_MEMORYOS=1 python -m hivemind.hive orchestrate "smoke degrade test without MemoryOS" --json > "$OUT_DIR/degrade-test.json" 2>&1; then
     DEGRADED_RUN=$(python3 -c "import json; d=json.load(open('$OUT_DIR/degrade-test.json')); print(d.get('run_id',''))" 2>/dev/null || true)
     if [ -n "$DEGRADED_RUN" ] && python3 -c "import json, pathlib, sys; p=pathlib.Path('.runs')/'$DEGRADED_RUN'/'artifacts'/'memory_context.json'; d=json.load(open(p)); sys.exit(0 if d.get('status') == 'unavailable' and 'disabled' in str(d.get('reason','')).lower() else 1)" 2>/dev/null; then
@@ -195,8 +210,8 @@ else
     fail "hive orchestrate failed when MemoryOS bridge was disabled"
 fi
 
-# ── 14. Secret / private path scan ───────────────────────────────────────────
-echo "[ 14/$TOTAL ] Secret and private path scan"
+# ── 15. Secret / private path scan ───────────────────────────────────────────
+echo "[ 15/$TOTAL ] Secret and private path scan"
 SECRET_FILES=$(git ls-files \
     | grep -v 'public-release-check.sh' \
     | xargs grep -rlI \
@@ -223,8 +238,8 @@ if [ "$SECRET_HITS" -eq 0 ] && [ "$PRIVATE_HITS" -eq 0 ]; then
     ok "no secret or private path patterns in tracked files"
 fi
 
-# ── 15. README production claim audit ────────────────────────────────────────
-echo "[ 15/$TOTAL ] README production claim audit"
+# ── 16. README production claim audit ────────────────────────────────────────
+echo "[ 16/$TOTAL ] README production claim audit"
 OVERCLAIMS=$(grep -ciE \
     '(self.improving|autonomous.*long.horizon|AIOS|complete.*memory.*swarm|capabilityos.*routed)' \
     README.md 2>/dev/null || true)

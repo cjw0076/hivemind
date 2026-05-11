@@ -1126,3 +1126,17 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Add `hive demo quickstart` and include it in the release gate as a value smoke, not just a technical smoke.
 - Evidence: Demo output now shows clean inspect, ledger record, provider/local artifacts, memory draft, and MemoryOS read model graph counts. Focused tests passed; `python scripts/user-value-benchmark.py` passed; `scripts/public-release-check.sh` passed 15/15.
 - Next: Build the real MemoryOS feedback loop demo and simplify README/onboarding around the quickstart path.
+
+## 2026-05-11 19:44 KST - Codex
+
+- Context: Continuing public-alpha sprint after quickstart. The missing loop is Hive -> MemoryOS -> Hive.
+- Decision: Add `hive demo memory-loop` with an isolated MemoryOS root by default. It imports the first run's memory draft, approves it, builds accepted context, then creates a second Hive run that references the accepted memory through the normal MemoryOS bridge.
+- Evidence: Implementation started; tests will verify accepted memory IDs in the second run context.
+- Next: Run focused smoke/tests, then decide whether to include the memory loop in the public release gate.
+
+## 2026-05-11 19:47 KST - Codex
+
+- Context: The first memory-loop smoke exposed a real bridge flaw: isolated MemoryOS data roots were treated as if they also contained the MemoryOS CLI source.
+- Decision: Separate MemoryOS source and data roots, then make `hive demo memory-loop` a public release gate check.
+- Evidence: `hive demo memory-loop --json` closed the loop with one approved memory returning in the second run context. `python -m unittest discover -s tests -p 'test_*.py'` passed 289 tests. `bash scripts/public-release-check.sh` passed 16/16, including MemoryOS feedback loop demo and graceful degrade.
+- Next: Public-alpha blockers now move to onboarding and UX clarity: README first path, `hive init` next-action copy, and foreign-context public-alpha review.

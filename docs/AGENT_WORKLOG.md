@@ -14,6 +14,13 @@
 - Evidence: CLI smoke produced `verdict=clean`, `ledger_records=1`, provider artifacts=3, local worker artifacts=2, MemoryOS graph nodes=8, edges=7, events=24. Focused quickstart/demo tests passed; value benchmark passed; public release check passed 15/15 with quickstart included.
 - Next: Close the MemoryOS feedback loop demo: run -> memory draft/import -> accepted context -> next Hive run references the accepted memory.
 
+## 2026-05-11 19:44 KST - Codex - Memory Loop Demo Start
+
+- Context: Public-alpha gate still needed the full feedback loop: Hive acts, MemoryOS remembers, accepted memory returns as next Hive context.
+- Decision: Add `hive demo memory-loop` using an isolated `.hivemind/demo_memoryos/<run_id>` root by default so the demo proves the loop without mutating the user's real MemoryOS store.
+- Evidence: Implementation started in `hivemind/quickstart.py`; MemoryOS CLI contracts confirmed: `import-run`, `drafts approve`, and `context build --json`.
+- Next: Verify the demo and add it to public-alpha evidence if it closes the loop.
+
 ## 2026-05-11 19:05 KST - Codex - Goal Sprint Contract
 
 - Context: User asked to set Codex goal mode from the official follow-goals workflow, set the final Hive Mind target, and keep sprinting while Claude attacks/debugs from a separate context.
@@ -423,3 +430,10 @@
 - Decision: Production is acceptable only as a narrow `production v0` local provider-CLI harness, not as faster-than-direct-CLI execution or AIOS. Fixed two edge-case blockers found during validation: mutable `supervisor_state.json` no longer causes artifact hash drift, and optional local worker failures are normalized to `skipped` when DAG `on_failure` allows skip.
 - Evidence: `bash scripts/public-release-check.sh` passed 13/13 with zero warnings; internal `npm test` passed 280 tests. Real-user smoke covered Korean prompt, long Unicode prompt, provider danger block, missing run error, supervised pingpong start/inspect/stop, disagreement escalation, and diff/ledger reporting. Direct `claude --help` was faster than Hive provider dry-run, so Hive's production value is auditability/receipts/policy/stop/inspect/next rather than raw latency.
 - Next: If publishing now, tag as `v0.1.0-production` with the narrow README/PUBLISHING_GATE definition.
+
+## 2026-05-11 19:47 KST - Codex - Memory Loop Demo Gate Pass
+
+- Context: Public-alpha readiness still needed a visible Hive -> MemoryOS -> Hive feedback loop, not only quickstart artifacts.
+- Decision: Added `hive demo memory-loop`, split MemoryOS bridge source root from data root with `HIVE_MEMORYOS_SOURCE_ROOT` and `HIVE_MEMORYOS_ROOT`, and promoted the loop into `scripts/public-release-check.sh`.
+- Evidence: `hive demo memory-loop --json` returned `status=closed_loop`; focused quickstart/goal/demo tests passed; full suite passed 289 tests; `scripts/public-release-check.sh` passed 16/16 with zero warnings.
+- Next: Simplify README/onboarding around `hive demo quickstart` and `hive demo memory-loop`, then ask Claude/foreign-context review to attack public-alpha UX blockers.
