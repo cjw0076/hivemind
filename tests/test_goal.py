@@ -74,5 +74,21 @@ class GoalReportTest(unittest.TestCase):
             self.assertIn("provider passthrough", text)
 
 
+    def test_goal_report_handles_release_gate_with_missing_summary_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "docs").mkdir()
+            (root / "docs" / "GOAL.md").write_text("# Goal\n", encoding="utf-8")
+            release = root / ".hivemind" / "release" / "20260511_040000"
+            release.mkdir(parents=True)
+            # benchmark JSON exists but has no "summary" key
+            (release / "user-value-benchmark.json").write_text(json.dumps({}), encoding="utf-8")
+            (release / "test.log").write_text("Ran 1 test\n", encoding="utf-8")
+
+            # should not raise AttributeError
+            report = build_goal_report(root)
+            self.assertIsNone(report["latest_release_gate"].get("user_value_verdict"))
+
+
 if __name__ == "__main__":
     unittest.main()
