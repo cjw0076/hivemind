@@ -116,6 +116,7 @@ from .workloop import format_execution_ledger, format_ledger_replay, read_execut
 from .live import build_live_report, build_memoryos_observability_report, format_live_report, start_live_prompt
 from .inspect_run import build_inspect_report, format_inspect_report
 from .arrival_pack import build_arrival_pack, format_arrival_pack
+from .evaluation import build_evaluation_report, format_evaluation_report
 from .handoff_import import import_handoff
 from .source_reads import format_source_read_summary, record_source_read, summarize_source_reads
 from .supervisor import (
@@ -160,6 +161,8 @@ COMMANDS = {
     "live",
     "inspect",
     "arrival-pack",
+    "evaluate",
+    "subagents",
     "source-read",
     "transcript",
     "artifacts",
@@ -471,6 +474,18 @@ def _main(argv: list[str] | None = None) -> None:
     arrival_pack_cmd.add_argument("--role", default="agent", help="incoming agent role label")
     arrival_pack_cmd.add_argument("--paths", action="store_true", help="show artifact/file paths for debugging")
     arrival_pack_cmd.add_argument("--json", action="store_true")
+
+    evaluate_cmd = sub.add_parser("evaluate", help="run durable verifier/product/user reviews for a run")
+    evaluate_cmd.add_argument("--run", "--run-id", dest="run_id", help="run ID to evaluate (default: most recent)")
+    evaluate_cmd.add_argument("--paths", action="store_true", help="show artifact/file paths for debugging")
+    evaluate_cmd.add_argument("--json", action="store_true")
+
+    subagents_cmd = sub.add_parser("subagents", help="subagent review helpers")
+    subagents_sub = subagents_cmd.add_subparsers(dest="subagents_cmd", required=True)
+    subagents_review_cmd = subagents_sub.add_parser("review", help="alias for hive evaluate")
+    subagents_review_cmd.add_argument("--run", "--run-id", dest="run_id", help="run ID to review (default: most recent)")
+    subagents_review_cmd.add_argument("--paths", action="store_true", help="show artifact/file paths for debugging")
+    subagents_review_cmd.add_argument("--json", action="store_true")
 
     source_read_cmd = sub.add_parser("source-read", help="record and summarize source artifacts read by agents")
     source_read_sub = source_read_cmd.add_subparsers(dest="source_read_cmd", required=True)
@@ -1564,6 +1579,19 @@ def _main(argv: list[str] | None = None) -> None:
             print(_json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
         else:
             print(format_arrival_pack(report, show_paths=bool(getattr(args, "paths", False))))
+        return
+    if args.cmd == "evaluate" or (args.cmd == "subagents" and args.subagents_cmd == "review"):
+        import json as _json
+
+        report = build_evaluation_report(
+            root,
+            getattr(args, "run_id", None) or None,
+            show_paths=bool(getattr(args, "paths", False)),
+        )
+        if args.json:
+            print(_json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_evaluation_report(report))
         return
     if args.cmd == "source-read":
         import json as _json

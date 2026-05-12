@@ -560,3 +560,31 @@
   -v` passed; `python -m py_compile hivemind/memory_bridge.py` passed.
 - Next: MyWorld should collect/release ASC-0027 after MemoryOS and Hive result
   packets are written.
+
+## 2026-05-12 20:50 KST - Codex - ASC-0047 Evaluation Command Start
+
+- Context: MyWorld ASC-0047 dispatched a Hive-owned command for durable
+  verifier, product evaluator, and actual-user persona review over an existing
+  run.
+- Ownership: Codex owns `hivemind/evaluation.py`, CLI wiring in
+  `hivemind/hive.py`, run-validation taxonomy, focused tests, and TODO/worklog
+  closeout.
+- Decision: Build the first slice over existing inspect and validation reports
+  rather than adding a new scheduler or provider execution path.
+- Evidence: Start entry only.
+- Next: Implement `hive evaluate` and `hive subagents review` so they write
+  `artifacts/evaluation_report.json` with paths hidden by default.
+
+## 2026-05-12 20:59 KST - Codex - ASC-0047 Evaluation Command Complete
+
+- Context: Completed the Hive-owned durable evaluation command under MyWorld
+  ASC-0047.
+- Decision: `hive evaluate` and the alias `hive subagents review` now read
+  existing inspect and validation reports, then write
+  `artifacts/evaluation_report.json` with the verifier, product evaluator, and
+  actual-user persona records. The command updates run state and uses an
+  allowlisted event type.
+- Evidence: `python -m pytest tests/test_evaluation.py -v` passed 6/6. CLI
+  smoke under `/tmp/asc-0047-evaluate-smoke` produced
+  `kind=hive_evaluation_report`, `overall_status=passed`, and paths hidden.
+- Next: Run the full Hive suite and return ASC-0047 result packet to MyWorld.

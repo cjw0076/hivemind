@@ -1334,3 +1334,24 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
   and link to `docs/AIOS_REPO_GOAL_LOOP.md`.
 - Next: MyWorld collects WP-0038-B, runs the verification gate, and closes
   ASC-0038 once all four work packets are done.
+
+## 2026-05-12 20:50 KST - Codex
+
+- Context: ASC-0047 opened for Hive's first-class evaluation command.
+- Decision: Implement a read-only, durable artifact surface: `hive evaluate`
+  and `hive subagents review` read existing run state, inspect output, and
+  validation output, then write `artifacts/evaluation_report.json`.
+- Evidence: Contract `docs/contracts/ASC-0047-hive-evaluate-subagents-review.md`.
+- Next: Add tests and return a result packet to MyWorld after full Hive
+  verification passes.
+
+## 2026-05-12 20:59 KST - Codex
+
+- Context: ASC-0047 Hive implementation completed.
+- Decision: Reused inspect and run-validation state instead of introducing a
+  provider-executing subagent scheduler. This keeps the first evaluation
+  command deterministic and safe by default.
+- Evidence: Focused evaluation tests passed 6/6; CLI evaluate and subagents
+  review smokes produced the same durable report schema.
+- Next: MyWorld should collect/release ASC-0047 after full Hive and control
+  plane verification pass.

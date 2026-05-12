@@ -53,6 +53,7 @@ ALLOWED_EVENT_TYPES = {
     "demo_started",
     "demo_completed",
     "handoff_imported",
+    "evaluation_report_created",
 }
 
 RUN_ARTIFACT_SPEC = {
