@@ -12,6 +12,7 @@ import yaml
 
 from hivemind.harness import create_run
 from hivemind.provider_loop import (
+    classify_provider_failure,
     prepare_provider_loop,
     provider_loop_status,
     stop_provider_loop,
@@ -82,7 +83,7 @@ class ProviderLoopTest(unittest.TestCase):
             self.assertTrue((root / stopped["receipt"]).exists())
             self.assertEqual(provider_loop_status(root)["workers"][0]["status"], "stopped")
 
-    def test_execute_failure_is_returned_as_review_next_action(self) -> None:
+    def test_execute_failure_is_returned_as_degraded_fallback_next_action(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             worker = prepare_provider_loop(root, "codex", "inspect")
@@ -92,7 +93,41 @@ class ProviderLoopTest(unittest.TestCase):
                     result = tick_provider_loop(root, worker_id=worker["worker_id"], execute=True)
 
             self.assertEqual(result["status"], "failed")
-            self.assertEqual(result["worker"]["next_action"], "review")
+            self.assertEqual(result["worker"]["status"], "degraded")
+            self.assertEqual(result["worker"]["next_action"], "fallback")
+            self.assertEqual(result["worker"]["failure_category"], "unknown_provider_failure")
+            self.assertIn("claude", result["worker"]["fallback_candidates"])
+            self.assertEqual(result["worker"]["role_capsule"]["provider"], "codex")
+
+    def test_policy_blocked_failure_is_classified_for_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            worker = prepare_provider_loop(root, "claude", "inspect")
+
+            result = tick_provider_loop(root, worker_id=worker["worker_id"], execute=True)
+
+            self.assertEqual(result["status"], "failed")
+            self.assertEqual(result["worker"]["status"], "degraded")
+            self.assertEqual(result["worker"]["failure_category"], "policy_blocked")
+            self.assertEqual(result["worker"]["next_action"], "fallback")
+            self.assertIn("codex", result["worker"]["fallback_candidates"])
+
+    def test_rate_limit_text_is_classified(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            stderr = root / "stderr.txt"
+            stderr.write_text("429 rate limit exceeded", encoding="utf-8")
+
+            category = classify_provider_failure(
+                {
+                    "status": "failed",
+                    "provider_mode": "native_passthrough",
+                    "stderr_path": "stderr.txt",
+                },
+                root,
+            )
+
+            self.assertEqual(category, "rate_limit")
 
     def test_cli_prepare_and_status_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

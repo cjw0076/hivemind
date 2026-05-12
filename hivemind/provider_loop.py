@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,16 @@ from .utils import now_iso, stable_id
 
 SCHEMA_VERSION = "hive.provider_loop.v1"
 PROVIDERS = {"claude", "codex", "local"}
+FAILURE_CATEGORIES = {
+    "rate_limit",
+    "quota_exhausted",
+    "auth_denied",
+    "policy_blocked",
+    "timeout",
+    "context_exhausted",
+    "provider_unavailable",
+    "unknown_provider_failure",
+}
 
 
 def loop_mode(provider: str) -> str:
@@ -78,6 +89,92 @@ def provider_native_args(provider: str, prompt: str) -> list[str]:
     if provider == "claude":
         return ["--print", prompt]
     raise ValueError(f"provider {provider} has no native CLI args")
+
+
+def classify_provider_failure(result: dict[str, Any], root: Path) -> str | None:
+    status = str(result.get("status") or "").lower()
+    if status in {"prepared", "completed"}:
+        return None
+    provider_mode = str(result.get("provider_mode") or "").lower()
+    reason = str(result.get("reason") or "")
+    policy_violations = " ".join(str(item) for item in (result.get("policy_violations") or []))
+    stderr_text = ""
+    stderr_path = result.get("stderr_path")
+    if isinstance(stderr_path, str) and stderr_path:
+        path = root / stderr_path
+        try:
+            stderr_text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            stderr_text = ""
+    text = " ".join([status, provider_mode, reason, policy_violations, stderr_text]).lower()
+    if "policy_blocked" in text or "policy blocked" in text or "allowlist" in text:
+        return "policy_blocked"
+    if status == "timeout" or "timed out" in text or "timeout" in text:
+        return "timeout"
+    if "rate limit" in text or "rate_limit" in text or "429" in text or "too many requests" in text:
+        return "rate_limit"
+    if "quota" in text or "insufficient credits" in text or "billing" in text:
+        return "quota_exhausted"
+    if "auth" in text or "unauthorized" in text or "forbidden" in text or "access denied" in text or "로그인" in text:
+        return "auth_denied"
+    if "context length" in text or "context exhausted" in text or "maximum context" in text:
+        return "context_exhausted"
+    if "not found" in text or "no such file" in text or "connection refused" in text or "unavailable" in text:
+        return "provider_unavailable"
+    return "unknown_provider_failure"
+
+
+def cooldown_until(category: str) -> str:
+    minutes = {
+        "rate_limit": 30,
+        "quota_exhausted": 240,
+        "auth_denied": 120,
+        "policy_blocked": 0,
+        "timeout": 10,
+        "context_exhausted": 0,
+        "provider_unavailable": 15,
+        "unknown_provider_failure": 15,
+    }.get(category, 15)
+    return (datetime.now(timezone.utc).astimezone() + timedelta(minutes=minutes)).isoformat(timespec="seconds")
+
+
+def fallback_candidates(provider: str, category: str) -> list[str]:
+    if category == "policy_blocked":
+        order = {
+            "claude": ["codex", "local"],
+            "codex": ["claude", "local"],
+            "local": ["codex", "claude"],
+        }
+    else:
+        order = {
+            "claude": ["codex", "local"],
+            "codex": ["claude", "local"],
+            "local": ["codex", "claude"],
+        }
+    return [item for item in order.get(provider, ["local"]) if item in PROVIDERS and item != provider]
+
+
+def role_capsule(worker: dict[str, Any], category: str) -> dict[str, Any]:
+    return {
+        "schema_version": "hive.provider_role_capsule.v1",
+        "run_id": worker.get("run_id"),
+        "worker_id": worker.get("worker_id"),
+        "provider": worker.get("provider"),
+        "loop_mode": worker.get("loop_mode"),
+        "prompt": worker.get("prompt"),
+        "failure_category": category,
+        "acceptance_rubric": [
+            "preserve original prompt intent",
+            "respect stop conditions",
+            "write provider-loop receipt",
+            "do not claim equivalence without verification",
+        ],
+        "stop_conditions": [
+            "provider_secret_leak",
+            "raw_private_data_leak",
+            "fallback_executes_without_contract",
+        ],
+    }
 
 
 def prepare_provider_loop(root: Path, provider: str, prompt: str, *, run_id: str | None = None) -> dict[str, Any]:
@@ -166,17 +263,39 @@ def tick_provider_loop(
         last_status = "prepared"
         result_ref = _rel(root, result_path)
 
-    worker.update(
-        {
-            "status": "active",
-            "updated_at": now_iso(),
-            "tick_count": tick_count,
-            "last_tick_at": now_iso(),
-            "last_status": last_status,
-            "last_result_path": result_ref,
-            "next_action": "tick" if last_status in {"prepared", "completed"} else "review",
-        }
-    )
+    failure_category = classify_provider_failure(result, root)
+    if failure_category:
+        worker.update(
+            {
+                "status": "degraded",
+                "updated_at": now_iso(),
+                "tick_count": tick_count,
+                "last_tick_at": now_iso(),
+                "last_status": last_status,
+                "last_result_path": result_ref,
+                "failure_category": failure_category,
+                "cooldown_until": cooldown_until(failure_category),
+                "fallback_candidates": fallback_candidates(provider, failure_category),
+                "role_capsule": role_capsule(worker, failure_category),
+                "next_action": "fallback",
+            }
+        )
+    else:
+        worker.update(
+            {
+                "status": "active",
+                "updated_at": now_iso(),
+                "tick_count": tick_count,
+                "last_tick_at": now_iso(),
+                "last_status": last_status,
+                "last_result_path": result_ref,
+                "failure_category": None,
+                "cooldown_until": None,
+                "fallback_candidates": [],
+                "role_capsule": None,
+                "next_action": "tick",
+            }
+        )
     _write(path, worker)
     h.append_event(paths, "provider_loop_tick", {"worker_id": worker["worker_id"], "provider": provider, "status": last_status, "result": result_ref})
     h.set_agent_status(paths, f"{provider}-loop", last_status)
