@@ -14,6 +14,55 @@ Read these first:
 8. `.ai-runs/shared/COMPACT_HANDOFF.md`
 9. `.ai-runs/shared/comms_log.md`
 
+## AIOS Shared Language
+
+Before any cross-repo AIOS work, read
+[`../docs/AIOS_SHARED_LANGUAGE.md`](../docs/AIOS_SHARED_LANGUAGE.md) and
+confirm you understand these contract meanings:
+
+- **AIOS** — the local-first control system coordinating myworld, Hive Mind,
+  MemoryOS, and CapabilityOS.
+- **AIOS smart contract** — a bounded work agreement with owner repos, allowed
+  files, required outputs, verification gates, and stop conditions.
+- **dispatch packet** — a repo-specific JSON handoff from myworld. It is not
+  permission to exceed the contract.
+- **memory draft** — a proposed memory object, not accepted until MemoryOS
+  review approves it.
+- **capability route** — a recommendation from CapabilityOS about tools,
+  providers, or fallbacks. It does not execute the tool.
+- **hive execution** — work performed through Hive Mind under scoped artifacts,
+  receipts, and verification.
+- **stop condition** — a named condition that pauses the loop instead of
+  broadening scope.
+- **semantic handshake** — a short pre-work statement confirming the contract
+  terms, target repo, and any ambiguous terms.
+
+### Semantic Handshake Rule
+
+Before cross-repo work, write or report a semantic handshake:
+
+```text
+semantic_handshake:
+  contract_id: <ASC id>
+  target_repo: hivemind
+  terms_confirmed:
+    - AIOS smart contract
+    - dispatch packet
+    - memory draft
+    - capability route
+    - hive execution
+    - stop condition
+  ambiguous_terms: []
+```
+
+If `ambiguous_terms` is not empty, stop at a checkpoint. Do not silently
+translate AIOS terms into local vocabulary.
+
+### Hive Execution Authority
+
+Hive Mind owns execution and verification. It does not accept memory (that is
+MemoryOS) and does not override capability routing (that is CapabilityOS).
+
 ## Current Boundary
 
 `/home/user/workspaces/jaewon/universe/quantum` is the quantum Paper #4 / P18 workspace.

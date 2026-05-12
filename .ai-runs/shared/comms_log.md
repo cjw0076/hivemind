@@ -1287,3 +1287,15 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Evidence: focused production-hardening MemoryOS bridge test passed; py_compile
   for `hivemind/memory_bridge.py` passed.
 - Next: MyWorld collects/releases ASC-0027 and advances the goal loop.
+
+## 2026-05-12 15:45 KST - Codex
+
+- Context: ASC-0036 WP-0036-B cross-repo semantic alignment for Hive Mind.
+- Decision: Added AIOS shared language section to `AGENTS.md` with glossary
+  reference (`../docs/AIOS_SHARED_LANGUAGE.md`), all eight required terms, the
+  semantic handshake template, and the hive execution authority rule.
+- Evidence: `hivemind/AGENTS.md` now references the glossary and contains all
+  terms checked by `aios_semantic_handshake.py` (AIOS, AIOS smart contract,
+  dispatch packet, memory draft, capability route, hive execution, stop
+  condition, semantic handshake).
+- Next: MyWorld runs the verification gate and collects/releases ASC-0036.
