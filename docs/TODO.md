@@ -198,6 +198,7 @@ Sources: `VG-03`, `VG-04`, `VG-13`, `VG-18`.
 - [x] Add `memoryos import-run .runs/<run_id>` or equivalent draft import path.
 - [x] Add `hive settings detect/shell` and `scripts/hive-workbench.sh` for context editing plus fast provider artifact preparation.
 - [x] Add `hive provider <claude|codex|gemini> -- <native args>` passthrough so native CLI features stay available behind Hive artifacts, ledger intents, policy decisions, stdout/stderr capture, and proof records.
+- [x] Add `hive provider-loop prepare|tick|status|stop` so Claude monitor plans, Codex one-shot ticks, and local worker ticks share bounded run artifacts and stop receipts.
 - [x] Add TUI prompt routing controls: `n` for new prompt and `a` for auto-routing the current run.
 - [x] Add `hive run -q --json` and shell completion script generation for bash/zsh/fish.
 - [x] Add interactive slash-command shell for `hive` inspired by OpenClaude/Open Codex.

@@ -120,6 +120,7 @@ from .evaluation import build_evaluation_report, format_evaluation_report
 from .handoff_import import import_handoff
 from .semantic_verifier import build_semantic_verification, format_semantic_verification
 from .source_reads import format_source_read_summary, record_source_read, summarize_source_reads
+from .provider_loop import prepare_provider_loop, provider_loop_status, stop_provider_loop, tick_provider_loop
 from .supervisor import (
     format_supervisor_status,
     format_supervisor_tail,
@@ -177,6 +178,7 @@ COMMANDS = {
     "handoff",
     "invoke",
     "provider",
+    "provider-loop",
     "loop",
     "verify",
     "summarize",
@@ -605,6 +607,27 @@ def _main(argv: list[str] | None = None) -> None:
     provider_cmd.add_argument("--timeout", type=int, default=600)
     provider_cmd.add_argument("--json", action="store_true")
     provider_cmd.add_argument("native_args", nargs="*", help="native provider args after --")
+
+    provider_loop_cmd = sub.add_parser("provider-loop", help="prepare and tick durable provider loop workers")
+    provider_loop_sub = provider_loop_cmd.add_subparsers(dest="provider_loop_cmd", required=True)
+    provider_loop_prepare = provider_loop_sub.add_parser("prepare", help="prepare a provider loop worker")
+    provider_loop_prepare.add_argument("--provider", required=True, choices=["claude", "codex", "local"])
+    provider_loop_prepare.add_argument("--prompt", required=True)
+    provider_loop_prepare.add_argument("--run-id")
+    provider_loop_prepare.add_argument("--json", action="store_true")
+    provider_loop_tick = provider_loop_sub.add_parser("tick", help="run one bounded provider loop tick")
+    provider_loop_tick.add_argument("--worker")
+    provider_loop_tick.add_argument("--run-id")
+    provider_loop_tick.add_argument("--execute", action="store_true")
+    provider_loop_tick.add_argument("--timeout", type=int, default=600)
+    provider_loop_tick.add_argument("--json", action="store_true")
+    provider_loop_status_cmd = provider_loop_sub.add_parser("status", help="list provider loop workers")
+    provider_loop_status_cmd.add_argument("--run-id")
+    provider_loop_status_cmd.add_argument("--json", action="store_true")
+    provider_loop_stop = provider_loop_sub.add_parser("stop", help="stop a provider loop worker")
+    provider_loop_stop.add_argument("--worker")
+    provider_loop_stop.add_argument("--run-id")
+    provider_loop_stop.add_argument("--json", action="store_true")
 
     loop_cmd = sub.add_parser("loop", help="option-only self-judgment loop over safe internal actions")
     loop_cmd.add_argument("--run-id")
@@ -1463,6 +1486,24 @@ def _main(argv: list[str] | None = None) -> None:
                 print(result_path)
         if is_blocked or (is_failed and not result_data.get("provider_mode") == "native_passthrough"):
             raise SystemExit(1)
+        return
+    if args.cmd == "provider-loop":
+        import json
+
+        if args.provider_loop_cmd == "prepare":
+            report = prepare_provider_loop(root, args.provider, args.prompt, run_id=args.run_id)
+        elif args.provider_loop_cmd == "tick":
+            report = tick_provider_loop(root, worker_id=args.worker, run_id=args.run_id, execute=args.execute, timeout=args.timeout)
+        elif args.provider_loop_cmd == "status":
+            report = provider_loop_status(root, run_id=args.run_id)
+        elif args.provider_loop_cmd == "stop":
+            report = stop_provider_loop(root, worker_id=args.worker, run_id=args.run_id)
+        else:
+            parser.error("unknown provider-loop command")
+        if args.json:
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(report.get("path") or report.get("status"))
         return
     if args.cmd == "loop":
         report = auto_loop(root, run_id=args.run_id, max_steps=args.max_steps, execute=args.execute, allowed_actions=args.allow, goal=args.goal)

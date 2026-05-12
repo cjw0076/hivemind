@@ -614,3 +614,35 @@
   `/tmp/asc-0049-semantic-smoke` returned `status=review_required`,
   `risk_level=high`, and `provider_executed=false`.
 - Next: Run the full Hive suite and return ASC-0049 result packet to MyWorld.
+
+## 2026-05-13 00:00 KST - Codex - ASC-0053 Provider Loop Runner Start
+
+- Context: MyWorld ASC-0053 dispatched Hive to absorb Claude monitor-style
+  persistence, Codex one-shot execution, and local workers behind one Hive
+  provider-loop artifact surface.
+- Ownership: Codex owns `hivemind/provider_loop.py`, CLI wiring in
+  `hivemind/hive.py`, focused provider-loop tests, TODO/worklog closeout, and
+  the Hive result packet.
+- Decision: Build prepare/tick/status/stop over existing run artifacts and
+  provider passthrough instead of adding a new daemon. Provider execution stays
+  bounded and opt-in.
+- Evidence: Start entry only.
+- Next: Verify focused and full Hive suites, then return ASC-0053 result packet
+  to MyWorld for collect/release.
+
+## 2026-05-13 00:02 KST - Codex - ASC-0053 Provider Loop Runner Complete
+
+- Context: Completed the Hive provider-loop runner under MyWorld ASC-0053.
+- Decision: `hive provider-loop prepare|tick|status|stop` now records durable
+  workers under run artifacts. Codex is modeled as one-shot tickable, Claude as
+  a monitor-style artifact plan, and local workers as local tick receipts. No
+  provider CLI executes unless `tick --execute` goes through existing provider
+  passthrough policy.
+- Evidence: `python -m py_compile hivemind/provider_loop.py hivemind/hive.py`
+  passed; `python -m pytest tests/test_provider_loop.py -v` passed 7/7;
+  provider-loop/passthrough/supervisor focused suite passed 23/23; CLI smoke
+  under `/tmp/asc-0053-hive` wrote one Codex worker with
+  `loop_mode=one_shot_tick`; full `python -m pytest` passed 329/329.
+- Next: MyWorld should collect/release ASC-0053 and then open the global
+  `aios` launcher contract so provider loops are reachable without direct
+  Claude/Codex CLI use.

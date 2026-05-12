@@ -1378,3 +1378,26 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
   `provider_executed=false`.
 - Next: MyWorld should collect/release ASC-0049 after full Hive and control
   plane verification pass.
+
+## 2026-05-13 00:00 KST - Codex
+
+- Context: ASC-0053 Hive provider-loop runner.
+- Decision: Add a Hive-owned prepare/tick/status/stop surface so Claude,
+  Codex, and local workers share run artifacts and stop receipts. Codex remains
+  one-shot tickable; Claude monitor behavior is represented as an artifact plan;
+  local workers use the same status surface.
+- Evidence: Contract `docs/contracts/ASC-0053-hive-provider-loop-runner.md`.
+- Next: Verify focused/full Hive suites and return a result packet to MyWorld.
+
+## 2026-05-13 00:02 KST - Codex
+
+- Context: ASC-0053 Hive provider-loop runner completed.
+- Decision: Hive now owns provider-loop workers as durable run artifacts:
+  Codex is one-shot tickable, Claude is a monitor-style plan, and local workers
+  share the same tick/status/stop surface. Execution remains opt-in through
+  provider passthrough policy.
+- Evidence: Focused provider-loop tests passed 7/7; provider-loop,
+  passthrough, and supervisor suite passed 23/23; full Hive suite passed
+  329/329; CLI smoke wrote a Codex worker with `loop_mode=one_shot_tick`.
+- Next: MyWorld should collect/release ASC-0053, then route the global `aios`
+  launcher as the next control-plane contract.
