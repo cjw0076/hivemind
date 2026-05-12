@@ -52,6 +52,7 @@ ALLOWED_EVENT_TYPES = {
     "workflow_state_created",
     "demo_started",
     "demo_completed",
+    "handoff_imported",
 }
 
 RUN_ARTIFACT_SPEC = {

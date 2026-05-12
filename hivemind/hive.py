@@ -116,6 +116,7 @@ from .workloop import format_execution_ledger, format_ledger_replay, read_execut
 from .live import build_live_report, build_memoryos_observability_report, format_live_report, start_live_prompt
 from .inspect_run import build_inspect_report, format_inspect_report
 from .arrival_pack import build_arrival_pack, format_arrival_pack
+from .handoff_import import import_handoff
 from .source_reads import format_source_read_summary, record_source_read, summarize_source_reads
 from .supervisor import (
     format_supervisor_status,
@@ -559,8 +560,13 @@ def _main(argv: list[str] | None = None) -> None:
     context_cmd.add_argument("--run-id")
     context_cmd.add_argument("--for", dest="for_role", help="agent role, for example claude.planner or codex.executor")
 
-    handoff_cmd = sub.add_parser("handoff", help="print current handoff path")
+    handoff_cmd = sub.add_parser("handoff", help="print current handoff path or import old HANDOFF.json state")
     handoff_cmd.add_argument("--run-id")
+    handoff_sub = handoff_cmd.add_subparsers(dest="handoff_cmd")
+    handoff_import_cmd = handoff_sub.add_parser("import", help="import HANDOFF.json into a Hive run")
+    handoff_import_cmd.add_argument("source")
+    handoff_import_cmd.add_argument("--paths", action="store_true", help="include source path for debugging")
+    handoff_import_cmd.add_argument("--json", action="store_true")
 
     invoke_cmd = sub.add_parser("invoke", help="invoke or prepare an agent artifact")
     invoke_cmd.add_argument("agent", choices=["local", "claude", "codex", "gemini"])
@@ -1373,6 +1379,16 @@ def _main(argv: list[str] | None = None) -> None:
         print(paths.context_pack)
         return
     if args.cmd == "handoff":
+        if getattr(args, "handoff_cmd", None) == "import":
+            import json as _json
+
+            report = import_handoff(root, Path(args.source), show_paths=bool(getattr(args, "paths", False)))
+            if args.json:
+                print(_json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(f"Imported HANDOFF.json into {report['run_id']}")
+                print(f"Inspect: {report['inspect_command']}")
+            return
         paths, _ = load_run(root, args.run_id)
         print(paths.handoff)
         return

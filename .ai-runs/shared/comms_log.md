@@ -1,5 +1,26 @@
 # MyWorld Shared Comms Log
 
+## 2026-05-12 20:19 KST - Codex
+
+- Context: Starting ASC-0045 from MyWorld control plane.
+- Decision: Implement a local Hive `handoff import` compatibility surface that
+  converts old `HANDOFF.json` shared-folder loop state into inspectable Hive
+  run artifacts.
+- Evidence: ASC-0045 accepted; MemoryOS trace `rtrace_574a26fbfc3f431c`;
+  CapabilityOS recommended local MemoryOS import/Hive execution routes.
+- Next: Add synthetic tests and keep imported records path/ref-based rather
+  than raw-body based.
+
+## 2026-05-12 20:27 KST - Codex
+
+- Context: Finished ASC-0045 implementation.
+- Decision: Old `HANDOFF.json` loops can now be converted into inspectable Hive
+  runs through `hive handoff import`.
+- Evidence: Focused handoff/import tests passed 4/4; handoff+inspect tests
+  passed 15/15; full Hive pytest passed 310/310; smoke import of
+  `docs/HANDOFF.json` produced `run_20260512_202643_5921bf`.
+- Next: Return result to MyWorld control plane for ASC-0045 release.
+
 Naming note as of 2026-05-02 12:24 KST:
 
 - `hive` / Hive Mind is the canonical orchestration runtime and CLI.

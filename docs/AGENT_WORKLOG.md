@@ -1,5 +1,39 @@
 # Agent Worklog
 
+## 2026-05-12 20:19 KST - Codex - ASC-0045 HANDOFF import start
+
+- Context: MyWorld accepted ASC-0045 to add a Hive-owned compatibility import
+  for old MemoryOS-style `HANDOFF.json` / shared-folder handoff loops.
+- Ownership: Codex owns `hivemind/handoff_import.py`, CLI wiring in
+  `hivemind/hive.py`, event validation if needed, focused tests, TODO closeout,
+  and shared comms.
+- Semantic handshake: ASC-0045 terms confirmed: AIOS smart contract, dispatch
+  packet, memory draft, capability route, hive execution, stop condition.
+  Ambiguous terms: none.
+- Constraints: Do not mutate committed `.runs/**`; do not store raw provider
+  logs, prompts, stdout/stderr bodies, private export bodies, or MemoryOS
+  accepted-memory state.
+- Next: Implement `hive handoff import <path> --json` with synthetic tests and
+  inspect compatibility.
+
+## 2026-05-12 20:27 KST - Codex - ASC-0045 HANDOFF import complete
+
+- Context: Completed the Hive-owned implementation for ASC-0045.
+- Decision: `hive handoff import <HANDOFF.json|directory> --json` now creates a
+  standard Hive run with `artifacts/handoff_import.json`, imported context and
+  handoff summaries, and inspect-compatible run state. The importer summarizes
+  structured fields only and omits raw source bodies, provider logs, prompts,
+  stdout/stderr, and private export bodies.
+- Evidence: `python -m pytest tests/test_handoff_import.py -v` passed 4/4;
+  `python -m pytest tests/test_handoff_import.py tests/test_inspect.py -v`
+  passed 15/15; `python -m hivemind.hive --root
+  /tmp/asc-0045-handoff-smoke handoff import docs/HANDOFF.json --json`
+  imported `run_20260512_202643_5921bf`; `hive inspect` on that run returned
+  `status=imported` and validation verdict `pass`; full `python -m pytest`
+  passed 310/310.
+- Next: MyWorld should collect/release ASC-0045 and decide whether the next
+  Hive packet should be `hive evaluate` or disagreement extraction.
+
 ## 2026-05-11 22:47 KST - Codex - ASC-0010 Radar Review Gate
 
 - Context: ASC-0010 required a no-external-LLM semantic quality gate over ASC-0007 task-radar candidates.

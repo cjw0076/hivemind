@@ -153,7 +153,7 @@ Source: `docs/HIVE_MIND_GAPS.md` section "Header Role Decomposition and Per-Laye
 - [ ] Add provider-family metadata to provider capabilities so L2/L3/L5 can enforce model-family heterogeneity.
 - [ ] Add role routing policy: L0 code/local-only, L1 code/local/cheap-hosted, L2 frontier workers, L3 different-family referee, L4 long-context auditor, L5 different-family conflict reviewer.
 - [x] Promote the MemoryOS pingpong pattern into `hive run start --scheduler pingpong` as an L0 serialized execution kernel.
-- [ ] Add `HANDOFF.json`/shared-folder compatibility import so old MemoryOS pingpong loops can be replayed into Hive run artifacts.
+- [x] Add `HANDOFF.json`/shared-folder compatibility import so old MemoryOS pingpong loops can be replayed into Hive run artifacts.
 - [ ] Add L1 blackboard claim/scope artifacts for multi-agent ownership beyond a single current turn.
 - [ ] Add `foreign-context reviewer` routing: export a compact artifact for review from a sibling directory/context basin before accepting architecture, policy, or research-framing changes.
 - [ ] Add `ContextBasin` metadata and `coupling_score`/`independence_score` to reviewer routing so repeated cross-directory interaction can decay independence over time.
