@@ -118,6 +118,7 @@ from .inspect_run import build_inspect_report, format_inspect_report
 from .arrival_pack import build_arrival_pack, format_arrival_pack
 from .evaluation import build_evaluation_report, format_evaluation_report
 from .handoff_import import import_handoff
+from .semantic_verifier import build_semantic_verification, format_semantic_verification
 from .source_reads import format_source_read_summary, record_source_read, summarize_source_reads
 from .supervisor import (
     format_supervisor_status,
@@ -162,6 +163,7 @@ COMMANDS = {
     "inspect",
     "arrival-pack",
     "evaluate",
+    "semantic-review",
     "subagents",
     "source-read",
     "transcript",
@@ -479,6 +481,11 @@ def _main(argv: list[str] | None = None) -> None:
     evaluate_cmd.add_argument("--run", "--run-id", dest="run_id", help="run ID to evaluate (default: most recent)")
     evaluate_cmd.add_argument("--paths", action="store_true", help="show artifact/file paths for debugging")
     evaluate_cmd.add_argument("--json", action="store_true")
+
+    semantic_review_cmd = sub.add_parser("semantic-review", help="prepare semantic verifier review for high-risk runs")
+    semantic_review_cmd.add_argument("--run", "--run-id", dest="run_id", help="run ID to review (default: most recent)")
+    semantic_review_cmd.add_argument("--paths", action="store_true", help="show artifact/file paths for debugging")
+    semantic_review_cmd.add_argument("--json", action="store_true")
 
     subagents_cmd = sub.add_parser("subagents", help="subagent review helpers")
     subagents_sub = subagents_cmd.add_subparsers(dest="subagents_cmd", required=True)
@@ -1592,6 +1599,19 @@ def _main(argv: list[str] | None = None) -> None:
             print(_json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
         else:
             print(format_evaluation_report(report))
+        return
+    if args.cmd == "semantic-review":
+        import json as _json
+
+        report = build_semantic_verification(
+            root,
+            getattr(args, "run_id", None) or None,
+            show_paths=bool(getattr(args, "paths", False)),
+        )
+        if args.json:
+            print(_json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_semantic_verification(report))
         return
     if args.cmd == "source-read":
         import json as _json

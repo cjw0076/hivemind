@@ -176,7 +176,7 @@ Source mirror: `docs/HIVE_MIND_GAPS.md` from `../memoryOS/docs/shared/HIVE_MIND_
 - [x] Add cross-agent conflict set artifacts with reviewer assignment and accepted/rejected/superseded resolution.
 - [x] Refine `hive next` into a prioritized operator decision surface grounded in run state.
 - [ ] Replace placeholder MemoryOS context command with the sibling repo's canonical command after MemoryOS exposes it.
-- [ ] Add semantic verifier LLM review for high-risk runs.
+- [x] Add semantic verifier LLM review for high-risk runs.
 - [ ] Add document supersession edges so stale handoffs are explicitly replaced, not inferred from mtimes.
 - [ ] Add claim/evidence ledger with supported, blocked, falsified, superseded, required evidence, allowed wording, and forbidden wording fields.
 - [x] Add arrival packs generated from live run state: objective, owners, blocked tasks, accepted claims, contested claims, scope, logs, and latest artifacts.
@@ -427,7 +427,7 @@ Sources: `VG-00`, `VG-03`, `VG-06`, `VG-12`, `VG-14`.
 - [x] Run foreign-context public-alpha review and resolve high/medium onboarding blockers.
 - [ ] Add structured disagreement extraction to `hive debate`.
 - [ ] Connect `hive gaps` to canonical MemoryOS context builder.
-- [ ] Add semantic verifier review for high-risk runs.
+- [x] Add semantic verifier review for high-risk runs.
 - [ ] Publish release/tag/package/announcement only after the North Star gate is materially met.
 
 ## Documentation

@@ -54,6 +54,7 @@ ALLOWED_EVENT_TYPES = {
     "demo_completed",
     "handoff_imported",
     "evaluation_report_created",
+    "semantic_verification_created",
 }
 
 RUN_ARTIFACT_SPEC = {

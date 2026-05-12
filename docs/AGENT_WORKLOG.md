@@ -588,3 +588,29 @@
   smoke under `/tmp/asc-0047-evaluate-smoke` produced
   `kind=hive_evaluation_report`, `overall_status=passed`, and paths hidden.
 - Next: Run the full Hive suite and return ASC-0047 result packet to MyWorld.
+
+## 2026-05-12 22:48 KST - Codex - ASC-0049 Semantic Verifier Start
+
+- Context: MyWorld ASC-0049 dispatched a Hive-owned semantic verifier review
+  surface for high-risk runs.
+- Ownership: Codex owns `hivemind/semantic_verifier.py`, CLI wiring,
+  evaluation integration, run-validation taxonomy, tests, and TODO/worklog
+  closeout.
+- Decision: Build a provider-free verifier artifact and redacted prompt first.
+  Do not auto-run provider CLIs or local LLMs under this contract.
+- Evidence: Start entry only.
+- Next: Implement `hive semantic-review --run <run_id> --json`.
+
+## 2026-05-12 22:55 KST - Codex - ASC-0049 Semantic Verifier Complete
+
+- Context: Completed the Hive-owned semantic verifier review surface under
+  MyWorld ASC-0049.
+- Decision: `hive semantic-review` now detects high-risk semantic signals,
+  writes `artifacts/semantic_verification.json`, creates a redacted verifier
+  prompt, updates run state, and is cited by `hive evaluate`. Provider/local
+  LLM execution remains explicitly out of scope.
+- Evidence: `python -m pytest tests/test_semantic_verifier.py -v` passed 6/6;
+  semantic verifier plus evaluation focused suite passed 12/12; CLI smoke under
+  `/tmp/asc-0049-semantic-smoke` returned `status=review_required`,
+  `risk_level=high`, and `provider_executed=false`.
+- Next: Run the full Hive suite and return ASC-0049 result packet to MyWorld.

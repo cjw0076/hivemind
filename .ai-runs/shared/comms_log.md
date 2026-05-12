@@ -1355,3 +1355,26 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
   review smokes produced the same durable report schema.
 - Next: MyWorld should collect/release ASC-0047 after full Hive and control
   plane verification pass.
+
+## 2026-05-12 22:48 KST - Codex
+
+- Context: ASC-0049 opened for Hive semantic verifier review on high-risk runs.
+- Decision: First slice is a durable, provider-free semantic review artifact
+  plus redacted verifier prompt. Provider/local LLM execution remains a later
+  explicitly authorized step.
+- Evidence: Contract `docs/contracts/ASC-0049-hive-semantic-verifier-review.md`.
+- Next: Add `hive semantic-review`, focused tests, and return a result packet
+  to MyWorld.
+
+## 2026-05-12 22:55 KST - Codex
+
+- Context: ASC-0049 Hive implementation completed.
+- Decision: High-risk semantic review is now a durable artifact and prompt
+  preparation surface, not automatic provider execution. `hive evaluate`
+  blocks high-risk runs that lack semantic review and cites the review once it
+  exists.
+- Evidence: Focused tests passed 12/12; CLI smoke produced
+  `kind=hive_semantic_verification`, `status=review_required`, and
+  `provider_executed=false`.
+- Next: MyWorld should collect/release ASC-0049 after full Hive and control
+  plane verification pass.

@@ -8,6 +8,7 @@ from typing import Any
 from .harness import append_event, load_run, update_state, write_json
 from .inspect_run import build_inspect_report
 from .run_validation import validate_run_artifacts
+from .semantic_verifier import assess_semantic_risk
 from .utils import now_iso
 
 
@@ -25,8 +26,9 @@ def build_evaluation_report(
     paths, state = load_run(root, run_id)
     inspect = build_inspect_report(root, paths.run_id, show_paths=show_paths)
     validation = validate_run_artifacts(paths.run_dir, root)
+    semantic = assess_semantic_risk(root, paths.run_id, show_paths=show_paths)
     reviews = [
-        verifier_review(validation, inspect),
+        verifier_review(validation, inspect, semantic),
         product_evaluator_review(state, inspect, validation),
         actual_user_review(inspect, validation),
     ]
@@ -46,7 +48,10 @@ def build_evaluation_report(
             "inspect_kind": inspect.get("kind"),
             "inspect_verdict": inspect.get("verdict"),
             "validation_verdict": validation.get("verdict"),
+            "semantic_risk_level": semantic.get("risk_level"),
+            "semantic_status": (semantic.get("semantic_verification") or {}).get("status"),
         },
+        "semantic_verification": semantic.get("semantic_verification"),
         "reviews": reviews,
         "next_actions": next_actions(reviews, inspect),
         "privacy": {
@@ -71,15 +76,22 @@ def build_evaluation_report(
     return report
 
 
-def verifier_review(validation: dict[str, Any], inspect: dict[str, Any]) -> dict[str, Any]:
+def verifier_review(validation: dict[str, Any], inspect: dict[str, Any], semantic: dict[str, Any] | None = None) -> dict[str, Any]:
     findings: list[str] = []
     blockers: list[str] = []
     recommendations: list[str] = []
+    semantic = semantic or {}
+    semantic_existing = semantic.get("semantic_verification") or {}
     if validation.get("verdict") != "pass":
         findings.extend(validation.get("issues") or ["run validation needs review"])
         recommendations.append("run hive verify or inspect validation issues before publish")
     if inspect.get("verdict") in {"failures", "chain_tampered"}:
         blockers.append(f"inspect verdict is {inspect.get('verdict')}")
+    if semantic.get("risk_level") == "high" and semantic_existing.get("status") == "missing":
+        blockers.append("high-risk run lacks semantic verifier review")
+        recommendations.append("run hive semantic-review before publish or release")
+    elif semantic_existing.get("status") in {"review_required", "needs_review", "not_required"}:
+        findings.append(f"semantic verifier status is {semantic_existing.get('status')}")
     if not blockers and not findings:
         findings.append("run artifacts validate and inspect verdict is clean")
     return {
@@ -93,6 +105,8 @@ def verifier_review(validation: dict[str, Any], inspect: dict[str, Any]) -> dict
             "validation_verdict": validation.get("verdict"),
             "inspect_verdict": inspect.get("verdict"),
             "ledger_ok": (inspect.get("ledger") or {}).get("ok"),
+            "semantic_risk_level": semantic.get("risk_level"),
+            "semantic_status": semantic_existing.get("status"),
         },
     }
 
