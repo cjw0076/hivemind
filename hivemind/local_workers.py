@@ -27,6 +27,8 @@ class WorkerSpec:
     system: str
     output_schema: dict[str, Any]
     timeout_seconds: int = 120
+    endpoint: str = ""
+    capabilities: tuple[str, ...] = ()
 
 
 WORKERS: dict[str, WorkerSpec] = {
@@ -268,6 +270,29 @@ WORKERS: dict[str, WorkerSpec] = {
             "escalation_reason": "",
         },
     ),
+    "ollama_qwen25_7b": WorkerSpec(
+        name="ollama_qwen25_7b",
+        purpose="Recommendation-only local Qwen 2.5 7B worker spec for private summarization, drafting, and tool-use planning.",
+        default_model="qwen2.5:7b",
+        fast_model="qwen2.5:7b",
+        strong_model="qwen2.5:7b",
+        endpoint="http://localhost:11434",
+        capabilities=("private_local_llm", "summarize", "draft", "classify", "tool_use_plan"),
+        system=(
+            "You are OllamaQwen25Local for Hive Mind. You are declared as a local "
+            "recommendation-only worker spec. Do not assume network availability or execute tools. "
+            "Return valid JSON only."
+        ),
+        output_schema={
+            "summary": "",
+            "draft": "",
+            "tool_use_plan": [],
+            "confidence": 0.75,
+            "should_escalate": False,
+            "escalation_reason": "",
+        },
+        timeout_seconds=90,
+    ),
 }
 
 
@@ -279,6 +304,8 @@ def list_workers() -> list[dict[str, str]]:
             "fast_model": spec.fast_model,
             "default_model": spec.default_model,
             "strong_model": spec.strong_model,
+            "endpoint": spec.endpoint,
+            "capabilities": list(spec.capabilities),
         }
         for spec in WORKERS.values()
     ]
@@ -295,9 +322,20 @@ def worker_route_table() -> dict[str, Any]:
             },
             "expected_schema": spec.output_schema,
             "escalation_fields": ["confidence", "should_escalate", "escalation_reason"],
+            "endpoint": spec.endpoint,
+            "capabilities": list(spec.capabilities),
         }
         for name, spec in WORKERS.items()
     }
+
+
+def route_local_worker(intent_text: str) -> str:
+    normalized = intent_text.lower()
+    local_terms = {"private", "local", "localhost", "offline", "ollama"}
+    llm_terms = {"llm", "model", "qwen", "summarize", "draft", "classify", "tool"}
+    if any(term in normalized for term in local_terms) and any(term in normalized for term in llm_terms):
+        return "ollama_qwen25_7b"
+    return "intent_router"
 
 
 def validate_worker_result(worker_name: str, result: dict[str, Any]) -> dict[str, Any]:

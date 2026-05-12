@@ -1,6 +1,6 @@
 import unittest
 
-from hivemind.local_workers import WORKERS, add_no_think, choose_model, ollama_generate_payload, requires_no_think
+from hivemind.local_workers import WORKERS, add_no_think, choose_model, ollama_generate_payload, requires_no_think, route_local_worker
 
 
 class LocalWorkerRoutingTest(unittest.TestCase):
@@ -26,6 +26,14 @@ class LocalWorkerRoutingTest(unittest.TestCase):
         self.assertTrue(requires_no_think("qwen3-coder:30b"))
         self.assertFalse(requires_no_think("qwen2.5-coder:7b"))
         self.assertEqual(add_no_think("/no_think\nReturn JSON."), "/no_think\nReturn JSON.")
+
+    def test_ollama_qwen25_worker_spec_is_declared_not_invoked(self) -> None:
+        spec = WORKERS["ollama_qwen25_7b"]
+
+        self.assertEqual(spec.default_model, "qwen2.5:7b")
+        self.assertEqual(spec.endpoint, "http://localhost:11434")
+        self.assertIn("private_local_llm", spec.capabilities)
+        self.assertEqual(route_local_worker("private local LLM with tool use"), "ollama_qwen25_7b")
 
 
 if __name__ == "__main__":
