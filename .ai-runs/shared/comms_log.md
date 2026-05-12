@@ -1299,3 +1299,17 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
   dispatch packet, memory draft, capability route, hive execution, stop
   condition, semantic handshake).
 - Next: MyWorld runs the verification gate and collects/releases ASC-0036.
+
+## 2026-05-12 17:31 KST - Codex
+
+- Context: ASC-0038 WP-0038-B — self-resonant repo loop, Hive Mind slice.
+- Decision: Added repo-goal submission rule to `AGENTS.md` so Hive agents submit
+  execution friction, cross-repo blockers, and new goals through myworld's
+  `scripts/aios_repo_goal.py submit` protocol instead of chat relay. Hive
+  execution authority is preserved: submission does not cede execution, accept
+  memory, or bind tools.
+- Evidence: `hivemind/AGENTS.md` now contains the Repo-Goal Submission Rule
+  section with command example, kind values, authority preservation statement,
+  and link to `docs/AIOS_REPO_GOAL_LOOP.md`.
+- Next: MyWorld collects WP-0038-B, runs the verification gate, and closes
+  ASC-0038 once all four work packets are done.

@@ -63,6 +63,43 @@ translate AIOS terms into local vocabulary.
 Hive Mind owns execution and verification. It does not accept memory (that is
 MemoryOS) and does not override capability routing (that is CapabilityOS).
 
+### Repo-Goal Submission Rule (ASC-0038)
+
+When a Hive Mind agent encounters AIOS-relevant friction — a cross-repo blocker,
+a missing capability route, a context gap from MemoryOS, an ambiguous dispatch,
+or a new goal that requires myworld coordination — it must submit a repo-goal
+packet to the myworld control plane instead of relying on chat relay or
+broadening its own scope.
+
+**How to submit** (from the myworld root):
+
+```bash
+python scripts/aios_repo_goal.py submit \
+  --repo hivemind \
+  --kind friction \
+  --goal "short description of the friction or goal" \
+  --summary "what happened, what evidence exists, what is blocked" \
+  --evidence-ref "path/to/relevant/artifact" \
+  --json
+```
+
+Valid `--kind` values: `goal`, `friction`, `blocker`, `improvement`.
+
+**What happens next**: myworld reads the pending packet, generates a
+deterministic route packet that names MemoryOS context, CapabilityOS
+recommendations, and Hive execution responsibilities, and the operator converts
+that route into a smart contract and dispatch.
+
+**Hive authority preserved**: submitting a repo-goal does not cede execution
+authority. Hive still executes routed work after contract and dispatch. Submitted
+goals do not auto-accept memory, bind tools, or edit other repos.
+
+**Do not include** in submissions: secrets, `.env` values, raw private exports,
+unreviewed source dumps, or absolute local paths to private data.
+
+See [`../docs/AIOS_REPO_GOAL_LOOP.md`](../docs/AIOS_REPO_GOAL_LOOP.md) for the
+full protocol specification.
+
 ## Current Boundary
 
 `/home/user/workspaces/jaewon/universe/quantum` is the quantum Paper #4 / P18 workspace.
