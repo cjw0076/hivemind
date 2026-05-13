@@ -782,3 +782,25 @@
   passed 341/341; `python -m hivemind.hive demo quickstart --json` and
   `python -m hivemind.hive inspect --json` exited 0.
 - Next: MyWorld should collect the Hive result and close ASC-0079.
+
+## 2026-05-13 21:40 KST - Codex - ASC-0114 Living Organism Deliberation
+
+- Context: MyWorld ASC-0114 requested a long-round Hive deliberation on AIOS
+  substituting for founder routine decisions while preserving operator
+  authority and avoiding irreversible alignment drift.
+- Semantic handshake: AIOS smart contract, dispatch packet, memory draft,
+  capability route, hive execution, stop condition, and verification gate are
+  understood. Ambiguous terms: none.
+- Ownership: Codex produced deliberation artifacts under
+  `.runs/living_organism_debate/` and updated this worklog only. No L2/L3
+  implementation scripts or downstream contracts were created in Hive.
+- Decision: 5 rounds converged on `proceed_role_substitution_only`.
+  Role substitution should be leased, scoped, expiring, auditable, and
+  refusal-capable. Executable organism dynamics and swarm reproduction are
+  deferred.
+- Evidence: `round_1/` through `round_5/` each contain proposer, critic,
+  extender, and synthesis artifacts; `final_state.md` maps all 8 probes to
+  conclusions and names the downstream recommendation.
+- Next: MyWorld should write/keep the discovery summary, verify artifact
+  presence, close ASC-0114, and open a separate lease-schema contract only
+  after this debate is accepted.
