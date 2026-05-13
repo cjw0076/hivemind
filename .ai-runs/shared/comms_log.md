@@ -1401,3 +1401,17 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
   329/329; CLI smoke wrote a Codex worker with `loop_mode=one_shot_tick`.
 - Next: MyWorld should collect/release ASC-0053, then route the global `aios`
   launcher as the next control-plane contract.
+
+## 2026-05-13 21:02 KST - Codex
+
+- Context: MyWorld monitor flagged ASC-0097 Hive TUI work as orphan dirty after a failed child-agent/provider attempt.
+- Decision: Rescue the existing TUI explore implementation in-place instead of stacking new work. Scope is limited to ASC-0097 allowed files.
+- Evidence: Pending focused tests and verification gate.
+- Next: Verify `hive tui --explore`, pane navigation/state propagation, and TUI tests; return an ASC-0097 result packet to myworld.
+
+## 2026-05-13 21:04 KST - Codex
+
+- Context: ASC-0097 rescue verification completed.
+- Decision: Treat the orphan work as salvageable and return a successful rescued result packet to myworld.
+- Evidence: TUI py_compile passed; `tests/test_tui*.py` passed 49/49; `hive tui --help` exposes `--explore`; myworld `test_aios_*` passed 275/275; `git diff --check` passed.
+- Next: Commit the Hive repo rescue slice so MyWorld monitor no longer blocks on orphan dirty work.

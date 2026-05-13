@@ -1,5 +1,20 @@
 # Agent Worklog
 
+## 2026-05-13 21:02 KST - Codex - ASC-0097 orphan TUI rescue start
+
+- Context: MyWorld monitor flagged ASC-0097 as `orphan_dirty_post_failure` after a provider fallback failed while leaving Hive TUI explore changes in the worktree.
+- Semantic handshake: ASC-0097 terms confirmed: AIOS smart contract, dispatch packet, memory draft, capability route, hive execution, verification gate, stop condition. Ambiguous terms: none.
+- Ownership: Codex is triaging and, if salvageable, finishing only the allowed Hive TUI files: `hivemind/hive.py`, `hivemind/tui.py`, `hivemind/tui_explore.py`, `tests/test_tui_explore.py`, and `docs/HIVE_TUI.md`.
+- Deferred: Provider fallback design and MemoryOS/CapabilityOS changes remain outside ASC-0097.
+- Next: Run focused TUI tests and verification gate, then write a proper result packet for myworld collection.
+
+## 2026-05-13 21:04 KST - Codex - ASC-0097 orphan TUI rescue complete
+
+- Context: Completed the ASC-0097 rescue after the child watcher left salvageable TUI explore work in a failed state.
+- Decision: Kept the unified explore view as a TUI composition over existing Hive surfaces. `hive tui --explore` and F10 now open the explore view; `/explore` and `/view 0` work from the composer. No new dependency was added.
+- Evidence: `python -m py_compile hivemind/hive.py hivemind/tui.py hivemind/tui_explore.py` passed; `python -m pytest tests/test_tui*.py -v` passed 49/49; `python -m hivemind.hive tui --help` shows `--explore`; myworld `python -m unittest discover -s tests -p 'test_aios_*.py'` passed 275/275; `git diff --check` passed.
+- Next: MyWorld should collect `.aios/outbox/hivemind/asc-0097.hivemind.result.json`, then release or close ASC-0097 after monitor confirms the orphan dirty alert is gone.
+
 ## 2026-05-13 10:50 KST - Claude - ASC-0089 Hive Debate on ASC-0088 Alternatives
 
 - Context: Founder flagged claude's auto-accept of ASC-0088 (B5 full spec) as prompt-prison. Directed Hive deliberation on 5 alternatives (B1 tiny spec / B2 HTTP / B3 library / B4 augment ASC-0087 / B5 full spec).

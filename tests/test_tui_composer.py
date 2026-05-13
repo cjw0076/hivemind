@@ -122,11 +122,16 @@ class TuiComposerTest(unittest.TestCase):
         self.assertEqual(view_for_key(key_f(1)), "board")
         self.assertEqual(view_for_key(key_f(8)), "diff")
         self.assertEqual(view_for_key(key_f(9)), "ledger")
+        self.assertEqual(view_for_key(key_f(10)), "explore")
         self.assertIsNone(view_for_key(ord("1")))
 
     def test_ledger_view_command(self) -> None:
         self.assertEqual(handle_local_composer_command("/ledger"), {"action": "view", "view": "ledger"})
         self.assertEqual(handle_local_composer_command("/view 9"), {"action": "view", "view": "ledger"})
+
+    def test_explore_view_commands(self) -> None:
+        self.assertEqual(handle_local_composer_command("/explore"), {"action": "view", "view": "explore"})
+        self.assertEqual(handle_local_composer_command("/view 0"), {"action": "view", "view": "explore"})
 
     def test_protocol_authority_rows_show_active_gate(self) -> None:
         replay = {

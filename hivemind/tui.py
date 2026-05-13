@@ -40,8 +40,9 @@ from .harness import (
     orchestrate_prompt,
 )
 from .workloop import format_ledger_entry, format_probe_confidence, read_execution_ledger, replay_execution_ledger
+from .tui_explore import ExploreState, draw_explore_view, refresh_explore_data, update_explore_navigation
 
-TUI_VIEWS = {"board", "events", "transcript", "agents", "artifacts", "memory", "society", "diff", "ledger"}
+TUI_VIEWS = {"board", "events", "transcript", "agents", "artifacts", "memory", "society", "diff", "ledger", "explore"}
 
 CTRL_A = "\x01"
 CTRL_C = "\x03"
@@ -88,28 +89,37 @@ def draw_loop(screen, root: Path, run_id: str | None, initial_view: str, control
     active_submits = 0
     lock_run_id: str | None = None
     lock_session_id: str | None = None
+    explore = ExploreState()
     try:
         while True:
             while True:
                 try:
-                    message = submit_results.get_nowait()
+                    result_msg = submit_results.get_nowait()
+                    message = result_msg
                     active_submits = max(0, active_submits - 1)
+                    if view == "explore":
+                        explore.last_ask_result = result_msg
+                        refresh_explore_data(root, explore, force=True)
                 except queue.Empty:
                     break
             screen.erase()
             height, width = screen.getmaxyx()
             try:
-                paths, state = load_run(root, run_id)
-                if control:
-                    lock_run_id, lock_session_id = sync_tui_control_lock(root, paths.run_id, lock_run_id, lock_session_id)
-                event_limit = 80 if view == "events" else 12
-                transcript_limit = 160 if view == "transcript" else 24
-                events = read_events(paths, limit=event_limit)
-                activities = read_hive_activity(paths, limit=event_limit) or events
-                transcript_lines = [line for line in read_transcript(root, paths.run_id, tail=transcript_limit).splitlines() if line.strip()]
-                health = collect_run_health(root, paths, state, events)
-                board = run_board(root, paths.run_id)
-                draw_view(screen, height, width, root, paths, state, activities, transcript_lines, health, board, view, control)
+                if view == "explore":
+                    refresh_explore_data(root, explore)
+                    draw_explore_view(screen, height, width, root, explore, add_line, draw_box, truncate, color, clear_line)
+                else:
+                    paths, state = load_run(root, run_id)
+                    if control:
+                        lock_run_id, lock_session_id = sync_tui_control_lock(root, paths.run_id, lock_run_id, lock_session_id)
+                    event_limit = 80 if view == "events" else 12
+                    transcript_limit = 160 if view == "transcript" else 24
+                    events = read_events(paths, limit=event_limit)
+                    activities = read_hive_activity(paths, limit=event_limit) or events
+                    transcript_lines = [line for line in read_transcript(root, paths.run_id, tail=transcript_limit).splitlines() if line.strip()]
+                    health = collect_run_health(root, paths, state, events)
+                    board = run_board(root, paths.run_id)
+                    draw_view(screen, height, width, root, paths, state, activities, transcript_lines, health, board, view, control)
             except Exception as exc:  # TUI should show recoverable state instead of crashing.
                 add_line(screen, 1, 2, "Hive Mind Harness", curses.A_BOLD)
                 add_wrapped(screen, 3, 2, width - 4, str(exc))
@@ -124,8 +134,21 @@ def draw_loop(screen, root: Path, run_id: str | None, initial_view: str, control
                         message = f"view -> {view}"
                         continue
                     if key_code == key_f(10):
-                        message = handle_key(screen, root, run_id, ord("?"), control)
+                        view = "explore"
+                        message = "view -> explore"
                         continue
+                    if view == "explore" and isinstance(key_code, int):
+                        explore_action = update_explore_navigation(explore, key_code)
+                        if explore_action == "run_selected":
+                            refresh_explore_data(root, explore, force=True)
+                            message = f"run -> {explore.selected_run_id}"
+                            continue
+                        if explore_action == "agent_selected":
+                            message = f"agent -> {explore.selected_agent_id}"
+                            continue
+                        if explore_action in {"pane_changed", "scrolled"}:
+                            message = f"explore: {explore.active_pane}"
+                            continue
                 composer_action, composer = update_composer(composer, key)
                 if composer_action == "submit":
                     local_action = handle_local_composer_command(composer.text)
@@ -309,6 +332,7 @@ def view_for_key(key: int) -> str | None:
         key_f(7): "society",
         key_f(8): "diff",
         key_f(9): "ledger",
+        key_f(10): "explore",
     }.get(key)
 
 
@@ -334,10 +358,11 @@ def handle_local_composer_command(prompt: str) -> dict[str, Any]:
             "7": "society",
             "8": "diff",
             "9": "ledger",
+            "0": "explore",
         }.get(parts[1].lower(), parts[1].lower())
         if view in TUI_VIEWS:
             return {"action": "view", "view": view}
-    if name in {"/board", "/events", "/transcript", "/agents", "/artifacts", "/memory", "/society", "/diff", "/ledger"}:
+    if name in {"/board", "/events", "/transcript", "/agents", "/artifacts", "/memory", "/society", "/diff", "/ledger", "/explore"}:
         return {"action": "view", "view": name[1:]}
     return {}
 
@@ -385,7 +410,7 @@ def handle_key(screen, root: Path, run_id: str | None, key: int, control: bool =
             report = git_diff_report(root, run_id=run_id)
             return f"diff -> {report.get('path')} ({len(report.get('changed_files') or [])} files)"
         if key in {ord("h"), ord("H"), ord("?")}:
-            return "views: F1 board F2 events F3 transcript F4 agents F5 artifacts F6 memory F7 society F8 diff F9 ledger"
+            return "views: F1 board F2 events F3 transcript F4 agents F5 artifacts F6 memory F7 society F8 diff F9 ledger F10 explore"
     except Exception as exc:
         return f"error: {exc}"
     return "unknown key"
@@ -514,6 +539,8 @@ def draw_view(
     if view == "ledger":
         draw_ledger_view(screen, height, width, root, paths)
         return
+    if view == "explore":
+        return
     draw_board_view(screen, height, width, state, events, health, board, control)
 
 
@@ -602,7 +629,7 @@ def draw_global_composer(screen, height: int, width: int, message: str, view: st
     mode = "controller" if control else "observer"
     help_text = (
         f"view:{view} mode:{mode}  Enter submits  Ctrl+C cancels  Ctrl+V pastes  Ctrl+D quits  "
-        "F1-F9 views"
+        "F1-F10 views"
     )
     clear_line(screen, height - 2)
     clear_line(screen, height - 1)

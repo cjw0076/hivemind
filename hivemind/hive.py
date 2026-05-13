@@ -544,6 +544,7 @@ def _main(argv: list[str] | None = None) -> None:
     tui_cmd.add_argument("--run-id")
     tui_cmd.add_argument("--view", choices=sorted(TUI_VIEWS), default="board")
     tui_cmd.add_argument("--observer", action="store_true", help="read-only TUI session")
+    tui_cmd.add_argument("--explore", action="store_true", help="open unified explore view (Agents/Runs/Inspect/Events)")
 
     plan_cmd = sub.add_parser("plan", help="show routing plan or generate a task DAG")
     plan_sub = plan_cmd.add_subparsers(dest="plan_sub")
@@ -1231,7 +1232,8 @@ def _main(argv: list[str] | None = None) -> None:
             print(format_gap_closure_report(report))
         return
     if args.cmd == "tui":
-        run_tui(root, run_id=args.run_id, view=args.view, control=not args.observer)
+        view = "explore" if args.explore else args.view
+        run_tui(root, run_id=args.run_id, view=view, control=not args.observer)
         return
     if args.cmd == "ledger":
         if args.ledger_action == "replay":
