@@ -727,3 +727,19 @@
   passed; `python -m pytest tests/test_provider_loop.py -v` passed 13/13.
 - Next: MyWorld should collect ASC-0094 and, later, define a semantic
   verifier/distillation layer for checking actual fallback output quality.
+
+## 2026-05-13 11:59 KST - Codex - ASC-0095 Provider Output Projection
+
+- Context: MyWorld ASC-0095 dispatched Hive to add a redacted provider-output
+  projection layer before semantic quality checks read provider result bodies.
+- Ownership: Codex changed `hivemind/provider_projection.py`,
+  `hivemind/hive.py`, and `tests/test_provider_projection.py`.
+- Decision: Added `hive.provider_output_projection.v1` and
+  `hive provider-output-projection`. The artifact records provider receipt
+  metadata, output/stdout/stderr byte and line counts, and privacy flags. It
+  does not copy raw stdout, stderr, or provider output bodies.
+- Evidence: `python -m py_compile hivemind/provider_projection.py
+  hivemind/hive.py` passed; `python -m pytest tests/test_provider_projection.py
+  -v` passed 3/3.
+- Next: MyWorld should collect ASC-0095 and use this projection as the input
+  boundary for future semantic/provider-output quality checks.

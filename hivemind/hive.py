@@ -121,6 +121,7 @@ from .handoff_import import import_handoff
 from .semantic_verifier import build_semantic_verification, format_semantic_verification
 from .source_reads import format_source_read_summary, record_source_read, summarize_source_reads
 from .provider_loop import prepare_provider_loop, provider_loop_status, stop_provider_loop, tick_provider_loop, verify_provider_fallback
+from .provider_projection import build_provider_output_projection, format_provider_output_projection
 from .supervisor import (
     format_supervisor_status,
     format_supervisor_tail,
@@ -179,6 +180,7 @@ COMMANDS = {
     "invoke",
     "provider",
     "provider-loop",
+    "provider-output-projection",
     "loop",
     "verify",
     "summarize",
@@ -634,6 +636,10 @@ def _main(argv: list[str] | None = None) -> None:
     provider_loop_stop.add_argument("--worker")
     provider_loop_stop.add_argument("--run-id")
     provider_loop_stop.add_argument("--json", action="store_true")
+    provider_projection_cmd = sub.add_parser("provider-output-projection", help="write a raw-body-free provider output projection for one run")
+    provider_projection_cmd.add_argument("--run", "--run-id", dest="run_id", help="run ID to project (default: most recent)")
+    provider_projection_cmd.add_argument("--paths", action="store_true", help="include relative artifact path refs")
+    provider_projection_cmd.add_argument("--json", action="store_true")
 
     loop_cmd = sub.add_parser("loop", help="option-only self-judgment loop over safe internal actions")
     loop_cmd.add_argument("--run-id")
@@ -1518,6 +1524,15 @@ def _main(argv: list[str] | None = None) -> None:
             print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
         else:
             print(report.get("path") or report.get("status"))
+        return
+    if args.cmd == "provider-output-projection":
+        import json
+
+        report = build_provider_output_projection(root, args.run_id, show_paths=args.paths)
+        if args.json:
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_provider_output_projection(report))
         return
     if args.cmd == "loop":
         report = auto_loop(root, run_id=args.run_id, max_steps=args.max_steps, execute=args.execute, allowed_actions=args.allow, goal=args.goal)
