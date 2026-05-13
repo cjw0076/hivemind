@@ -743,3 +743,27 @@
   -v` passed 3/3.
 - Next: MyWorld should collect ASC-0095 and use this projection as the input
   boundary for future semantic/provider-output quality checks.
+
+## 2026-05-13 19:40 KST - Codex - ASC-0079 Public Alpha Hardening
+
+- Context: MyWorld ASC-0079 converted an outside-reader GitHub review into a
+  Hive-owned public-alpha hardening pass. Child watcher attempted Codex and
+  Claude first; local fallback produced a held result because local cannot be
+  final acceptor without verifier.
+- Semantic handshake: AIOS smart contract, dispatch packet, memory draft,
+  capability route, hive execution, stop condition, and verification gate are
+  understood. Ambiguous terms: none.
+- Ownership: Codex changed `README.md`, `docs/HIVE_PUBLIC_ALPHA.md`,
+  `tests/test_production_hardening.py`, and this worklog only.
+- Decision: keep this slice to public-facing boundaries and tests. Do not
+  split `harness.py`, `hive.py`, or `plan_dag.py` in the public-alpha pass;
+  document staged extraction targets and stop conditions instead.
+- Evidence: focused production-hardening tests cover provider-free quickstart
+  wording, MemoryOS/CapabilityOS boundary, public-alpha maturity limits, and
+  large-module staged targets.
+- Verification: `python -m pytest
+  tests/test_cli_entrypoint.py tests/test_quickstart.py tests/test_plan_dag.py
+  tests/test_production_hardening.py -v` passed 145/145; `python -m pytest -q`
+  passed 341/341; `python -m hivemind.hive demo quickstart --json` and
+  `python -m hivemind.hive inspect --json` exited 0.
+- Next: MyWorld should collect the Hive result and close ASC-0079.

@@ -35,6 +35,34 @@ from unittest.mock import patch
 
 
 class ProductionHardeningTest(unittest.TestCase):
+    def test_public_alpha_docs_state_boundaries_and_module_split_strategy(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        readme = (root / "README.md").read_text(encoding="utf-8")
+        public_alpha = (root / "docs" / "HIVE_PUBLIC_ALPHA.md").read_text(encoding="utf-8")
+        normalized_public_alpha = " ".join(public_alpha.split())
+
+        self.assertIn("demo quickstart", readme)
+        self.assertIn("no provider keys required", readme)
+        self.assertIn("docs/HIVE_PUBLIC_ALPHA.md", readme)
+        self.assertIn("does not replace provider CLIs", normalized_public_alpha)
+        self.assertIn("requires no provider API keys", public_alpha)
+        self.assertIn("MemoryOS and CapabilityOS integrations stay optional", public_alpha)
+        self.assertIn("Module Split Strategy", public_alpha)
+        self.assertIn("Stop condition", public_alpha)
+
+    def test_public_alpha_large_module_guard_names_staged_targets(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        public_alpha = (root / "docs" / "HIVE_PUBLIC_ALPHA.md").read_text(encoding="utf-8")
+        large_targets = [
+            ("hivemind/harness.py", "hivemind/hivemind/harness.py"),
+            ("hivemind/plan_dag.py", "hivemind/hivemind/plan_dag.py"),
+            ("hivemind/hive.py", "hivemind/hivemind/hive.py"),
+        ]
+
+        for stat_rel, doc_rel in large_targets:
+            self.assertGreater((root / stat_rel).stat().st_size, 50_000)
+            self.assertIn(doc_rel, public_alpha)
+
     def test_policy_report_writes_default_policy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

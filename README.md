@@ -91,4 +91,6 @@ Onboarding persists detected provider/runtime settings to `.hivemind/settings_pr
 ## Contributing
 
 Contributor and internal workspace notes live in `CONTRIBUTING.md` and
-`AGENTS.md`. Public users can start with the demos above.
+`AGENTS.md`. Public users can start with the demos above. See
+`docs/HIVE_PUBLIC_ALPHA.md` for public-alpha boundaries, provider-free
+onboarding, and the staged module split strategy.
