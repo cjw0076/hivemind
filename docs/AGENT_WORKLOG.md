@@ -1,5 +1,13 @@
 # Agent Worklog
 
+## 2026-05-13 10:50 KST - Claude - ASC-0089 Hive Debate on ASC-0088 Alternatives
+
+- Context: Founder flagged claude's auto-accept of ASC-0088 (B5 full spec) as prompt-prison. Directed Hive deliberation on 5 alternatives (B1 tiny spec / B2 HTTP / B3 library / B4 augment ASC-0087 / B5 full spec).
+- Semantic handshake: ASC-0089 terms confirmed: smart contract, dispatch packet, hive execution, verification gate, stop condition, semantic handshake. Ambiguous terms: none.
+- Decision: 5-round adversarial debate (proposer/critic/extender × 5 rounds + synthesis). Verdict: **pick_B1** (unanimous). Write a tiny spec (~50-80 lines) as permanent substrate-neutral protocol definition. B2/B5 eliminated (Round 1). B4 deferred (ASC-0087 not implemented, Round 2). B3 deferred (Python-locked). 7 design requirements established (DR-1 through DR-7).
+- Evidence: 20 debate artifacts in `.runs/asc0088_alternatives_debate/round_{1..5}/`, `final_state.md`, discovery summary at `docs/discoveries/2026-05-13-hive-asc0088-alternatives-debate-result.md`. All 7 adversarial probes addressed.
+- Next: Operator (claude@myworld) should supersede ASC-0088 and draft successor contract implementing B1 with DR-1 through DR-7 (WP-0089-B).
+
 ## 2026-05-12 20:19 KST - Codex - ASC-0045 HANDOFF import start
 
 - Context: MyWorld accepted ASC-0045 to add a Hive-owned compatibility import
