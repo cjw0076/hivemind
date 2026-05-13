@@ -72,6 +72,20 @@ class ProviderLoopTest(unittest.TestCase):
             self.assertEqual(status["workers"][0]["loop_mode"], "local_worker_tick")
             self.assertTrue((root / result["worker"]["last_result_path"]).exists())
 
+    def test_prepare_records_gemini_as_one_shot_tick_worker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            worker = prepare_provider_loop(root, "gemini", "review status")
+            result = tick_provider_loop(root, worker_id=worker["worker_id"])
+
+            self.assertEqual(worker["provider"], "gemini")
+            self.assertEqual(worker["loop_mode"], "one_shot_tick")
+            self.assertEqual(result["worker"]["last_status"], "prepared")
+            receipt = yaml.safe_load((root / result["worker"]["last_result_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(receipt["provider"], "gemini")
+            self.assertEqual(receipt["provider_mode"], "native_passthrough")
+
     def test_stop_writes_stop_receipt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -111,6 +125,7 @@ class ProviderLoopTest(unittest.TestCase):
             self.assertEqual(result["worker"]["failure_category"], "policy_blocked")
             self.assertEqual(result["worker"]["next_action"], "fallback")
             self.assertIn("codex", result["worker"]["fallback_candidates"])
+            self.assertIn("gemini", result["worker"]["fallback_candidates"])
 
     def test_rate_limit_text_is_classified(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

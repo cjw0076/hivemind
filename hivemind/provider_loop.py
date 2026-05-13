@@ -1,4 +1,4 @@
-"""Provider loop worker artifacts for Claude/Codex/local workers."""
+"""Provider loop worker artifacts for provider CLI and local workers."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from .utils import now_iso, stable_id
 
 
 SCHEMA_VERSION = "hive.provider_loop.v1"
-PROVIDERS = {"claude", "codex", "local"}
+PROVIDERS = {"claude", "codex", "gemini", "local"}
 FAILURE_CATEGORIES = {
     "rate_limit",
     "quota_exhausted",
@@ -33,6 +33,8 @@ def loop_mode(provider: str) -> str:
         return "one_shot_tick"
     if provider == "claude":
         return "monitor_plan"
+    if provider == "gemini":
+        return "one_shot_tick"
     if provider == "local":
         return "local_worker_tick"
     raise ValueError(f"unsupported provider loop provider: {provider}")
@@ -88,6 +90,8 @@ def provider_native_args(provider: str, prompt: str) -> list[str]:
         return ["exec", "--cd", ".", "--sandbox", "read-only", prompt]
     if provider == "claude":
         return ["--print", prompt]
+    if provider == "gemini":
+        return ["--prompt", prompt]
     raise ValueError(f"provider {provider} has no native CLI args")
 
 
@@ -141,15 +145,17 @@ def cooldown_until(category: str) -> str:
 def fallback_candidates(provider: str, category: str) -> list[str]:
     if category == "policy_blocked":
         order = {
-            "claude": ["codex", "local"],
-            "codex": ["claude", "local"],
-            "local": ["codex", "claude"],
+            "claude": ["codex", "gemini", "local"],
+            "codex": ["claude", "gemini", "local"],
+            "gemini": ["claude", "codex", "local"],
+            "local": ["codex", "claude", "gemini"],
         }
     else:
         order = {
-            "claude": ["codex", "local"],
-            "codex": ["claude", "local"],
-            "local": ["codex", "claude"],
+            "claude": ["codex", "gemini", "local"],
+            "codex": ["claude", "gemini", "local"],
+            "gemini": ["claude", "codex", "local"],
+            "local": ["codex", "claude", "gemini"],
         }
     return [item for item in order.get(provider, ["local"]) if item in PROVIDERS and item != provider]
 
@@ -234,7 +240,7 @@ def tick_provider_loop(
     provider = str(worker["provider"])
     prompt = str(worker["prompt"])
     tick_count = int(worker.get("tick_count") or 0) + 1
-    if provider in {"claude", "codex"}:
+    if provider in {"claude", "codex", "gemini"}:
         result_path = provider_passthrough(
             root,
             provider,

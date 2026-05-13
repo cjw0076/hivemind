@@ -611,7 +611,7 @@ def _main(argv: list[str] | None = None) -> None:
     provider_loop_cmd = sub.add_parser("provider-loop", help="prepare and tick durable provider loop workers")
     provider_loop_sub = provider_loop_cmd.add_subparsers(dest="provider_loop_cmd", required=True)
     provider_loop_prepare = provider_loop_sub.add_parser("prepare", help="prepare a provider loop worker")
-    provider_loop_prepare.add_argument("--provider", required=True, choices=["claude", "codex", "local"])
+    provider_loop_prepare.add_argument("--provider", required=True, choices=["claude", "codex", "gemini", "local"])
     provider_loop_prepare.add_argument("--prompt", required=True)
     provider_loop_prepare.add_argument("--run-id")
     provider_loop_prepare.add_argument("--json", action="store_true")

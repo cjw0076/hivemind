@@ -695,3 +695,18 @@
 - Next: MyWorld should collect ASC-0084, write the discovery summary
   (WP-0084-B), and open a downstream contract for the actual
   `docs/AIOS_DNA.md` spec — this contract deliberately did not create it.
+
+## 2026-05-13 11:28 KST - Codex - ASC-0081 Provider Loop Substrate Expansion
+
+- Context: MyWorld ASC-0081 accepted provider fallback execution binding so
+  Hive dispatch workers can be represented across provider CLIs and local LLM
+  substrates without claiming unchecked equivalence.
+- Ownership: Codex changed `hivemind/provider_loop.py`, `hivemind/hive.py`,
+  and `tests/test_provider_loop.py`.
+- Decision: `gemini` is now a provider-loop identity with one-shot tick
+  semantics. Fallback candidate lists include `gemini` and `local`; `local`
+  remains a local-worker substrate, not final acceptance.
+- Evidence: `python -m pytest tests/test_provider_loop.py
+  tests/test_local_worker_routing.py -v` passed 15/15.
+- Next: MyWorld should collect ASC-0081 route/watcher receipts and keep local
+  LLM final acceptance behind a separate verifier gate.
