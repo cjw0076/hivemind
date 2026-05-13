@@ -1,5 +1,30 @@
 # Agent Worklog
 
+## 2026-05-14 KST - Codex - ASC-0124 proposer start
+
+- Context: Assigned as Worker Proposer for ASC-0124 to create only the six proposer voice artifacts for the ecosystem-substrate debate.
+- semantic_handshake:
+  contract_id: ASC-0124
+  target_repo: hivemind
+  terms_confirmed:
+    - AIOS smart contract
+    - dispatch packet
+    - memory draft
+    - capability route
+    - hive execution
+    - stop condition
+  ambiguous_terms: []
+- Ownership: Codex will touch only `hivemind/.runs/ecosystem_substrate_debate/round_*/proposer.md` and `hivemind/docs/AGENT_WORKLOG.md`.
+- Next: Write six proposer rounds, cover all nine adversarial probes, then verify word counts with `wc -w`.
+
+## 2026-05-14 KST - Codex - ASC-0124 proposer complete
+
+- Context: Completed the ASC-0124 proposer-only artifact slice.
+- Changed: `hivemind/.runs/ecosystem_substrate_debate/round_1/proposer.md` through `round_6/proposer.md`, plus this worklog.
+- Evidence: `wc -w hivemind/.runs/ecosystem_substrate_debate/round_{1,2,3,4,5,6}/proposer.md` was run after writing; each proposer file is at least 700 words.
+- Decision: Proposer converges on `proceed_hybrid`: protocol core first, optional container packaging later, open-source floor required, federation projection-first, export path mandatory.
+- Next: Critic, extender, synthesis, and final_state are outside this proposer-only slice.
+
 ## 2026-05-13 21:02 KST - Codex - ASC-0097 orphan TUI rescue start
 
 - Context: MyWorld monitor flagged ASC-0097 as `orphan_dirty_post_failure` after a provider fallback failed while leaving Hive TUI explore changes in the worktree.
