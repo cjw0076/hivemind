@@ -646,3 +646,44 @@
 - Next: MyWorld should collect/release ASC-0053 and then open the global
   `aios` launcher contract so provider loops are reachable without direct
   Claude/Codex CLI use.
+
+## 2026-05-13 10:30 KST - Claude - ASC-0084 Hive DNA Debate Start
+
+- Context: MyWorld ASC-0084 dispatched codex@hivemind to run a 5+ round
+  adversarial Hive deliberation on the candidate AIOS DNA invariant set.
+  Founder directive: "hive로 토론 진행해. round는 길게."
+- Ownership: codex@hivemind owns the multi-round debate artifacts under
+  `hivemind/.runs/aios_dna_debate/`.
+- Semantic handshake: ASC-0084 terms confirmed: AIOS smart contract, dispatch
+  packet, hive execution, stop condition, verification gate, semantic
+  handshake. Ambiguous terms: none.
+- Evidence: Start entry only.
+- Next: Execute 5-round debate with proposer/critic/extender voices,
+  covering all 7 adversarial probes.
+
+## 2026-05-13 10:45 KST - Claude - ASC-0084 Hive DNA Debate Complete
+
+- Context: Completed 5-round adversarial Hive deliberation on AIOS DNA under
+  MyWorld ASC-0084.
+- Decision: Convergence verdict is `accept_with_dissent` (unanimous across
+  all 3 voices). The original 7-invariant candidate was refined to 8
+  invariants: 5 reworded, 1 gained a precedence exception (privacy > audit),
+  and 1 new invariant added (reversibility classification). The DNA gained
+  a scoping preamble (5 clauses), an amendment clause, drift markers per
+  invariant, and a 4-point dissent register.
+- Final invariant set:
+  1. Decide before acting (reworded from "recommendation-only")
+  2. Draft-first (unchanged)
+  3. No record destroyed (reworded, privacy-redaction tombstone exception)
+  4. Every loop has a named exit (reworded, default-stop clause added)
+  5. Provenance chain (unchanged)
+  6. Operator override always possible (privacy hierarchy made explicit)
+  7. AIOS never sends private-gated data (scoped to control plane)
+  8. Classify before committing (NEW — reversibility assessment)
+- Probes covered: substrate (R1), scale (R1), adversary (R2),
+  composability (R2), drift (R3), minimal set (R3), missing (R4).
+- Evidence: 21 debate artifacts (15 voice + 5 synthesis + 1 final_state)
+  under `hivemind/.runs/aios_dna_debate/`. All artifacts verified present.
+- Next: MyWorld should collect ASC-0084, write the discovery summary
+  (WP-0084-B), and open a downstream contract for the actual
+  `docs/AIOS_DNA.md` spec — this contract deliberately did not create it.
