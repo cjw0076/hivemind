@@ -17,6 +17,7 @@ from hivemind.provider_loop import (
     provider_loop_status,
     stop_provider_loop,
     tick_provider_loop,
+    verify_provider_fallback,
 )
 
 
@@ -144,6 +145,92 @@ class ProviderLoopTest(unittest.TestCase):
 
             self.assertEqual(category, "rate_limit")
 
+    def test_verify_fallback_promotes_completed_non_local_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            original = prepare_provider_loop(root, "codex", "implement bounded task")
+            completed = subprocess.CompletedProcess(args=["codex"], returncode=7, stdout="", stderr="access denied")
+            with patch("hivemind.harness.resolve_provider_binary", return_value="codex"):
+                with patch("hivemind.provider_passthrough.subprocess.run", return_value=completed):
+                    tick_provider_loop(root, worker_id=original["worker_id"], execute=True)
+            fallback = prepare_provider_loop(root, "gemini", "implement bounded task", run_id=original["run_id"])
+            self._mark_worker_completed(root, fallback["path"], "completed")
+
+            receipt = verify_provider_fallback(
+                root,
+                original_worker_id=original["worker_id"],
+                fallback_worker_id=fallback["worker_id"],
+                run_id=original["run_id"],
+            )
+
+            self.assertEqual(receipt["schema_version"], "hive.provider_fallback_verification.v1")
+            self.assertEqual(receipt["status"], "passed")
+            self.assertTrue(receipt["promoted"])
+            self.assertEqual(receipt["fallback_provider"], "gemini")
+            self.assertEqual(receipt["stop_conditions_triggered"], [])
+            self.assertTrue((root / receipt["path"]).exists())
+
+    def test_verify_fallback_holds_local_without_independent_verifier(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            original = prepare_provider_loop(root, "codex", "summarize private context")
+            completed = subprocess.CompletedProcess(args=["codex"], returncode=7, stdout="", stderr="access denied")
+            with patch("hivemind.harness.resolve_provider_binary", return_value="codex"):
+                with patch("hivemind.provider_passthrough.subprocess.run", return_value=completed):
+                    tick_provider_loop(root, worker_id=original["worker_id"], execute=True)
+            fallback = prepare_provider_loop(root, "local", "summarize private context", run_id=original["run_id"])
+            self._mark_worker_completed(root, fallback["path"], "done")
+
+            receipt = verify_provider_fallback(
+                root,
+                original_worker_id=original["worker_id"],
+                fallback_worker_id=fallback["worker_id"],
+                run_id=original["run_id"],
+            )
+
+            self.assertEqual(receipt["status"], "held")
+            self.assertFalse(receipt["promoted"])
+            self.assertIn("local_fallback_without_independent_verifier", receipt["stop_conditions_triggered"])
+            self.assertEqual(receipt["privacy"]["raw_provider_output_read"], False)
+
+    def test_cli_verify_fallback_json_surface(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            original = prepare_provider_loop(root, "codex", "review fallback")
+            completed = subprocess.CompletedProcess(args=["codex"], returncode=7, stdout="", stderr="access denied")
+            with patch("hivemind.harness.resolve_provider_binary", return_value="codex"):
+                with patch("hivemind.provider_passthrough.subprocess.run", return_value=completed):
+                    tick_provider_loop(root, worker_id=original["worker_id"], execute=True)
+            fallback = prepare_provider_loop(root, "claude", "review fallback", run_id=original["run_id"])
+            self._mark_worker_completed(root, fallback["path"], "completed")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "hivemind.hive",
+                    "--root",
+                    root.as_posix(),
+                    "provider-loop",
+                    "verify-fallback",
+                    "--run-id",
+                    original["run_id"],
+                    "--original-worker",
+                    original["worker_id"],
+                    "--fallback-worker",
+                    fallback["worker_id"],
+                    "--json",
+                ],
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+            payload = json.loads(completed.stdout)
+            self.assertEqual(payload["schema_version"], "hive.provider_fallback_verification.v1")
+            self.assertEqual(payload["status"], "passed")
+            self.assertTrue(payload["promoted"])
+
     def test_cli_prepare_and_status_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -184,6 +271,14 @@ class ProviderLoopTest(unittest.TestCase):
 
             self.assertEqual(json.loads(prepared.stdout)["provider"], "codex")
             self.assertEqual(json.loads(status.stdout)["count"], 1)
+
+    def _mark_worker_completed(self, root: Path, worker_ref: str, last_status: str) -> None:
+        path = root / worker_ref
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["status"] = "active"
+        payload["last_status"] = last_status
+        payload["last_result_path"] = "synthetic/fallback_result.json"
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

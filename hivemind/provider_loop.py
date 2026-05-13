@@ -15,6 +15,7 @@ from .utils import now_iso, stable_id
 
 
 SCHEMA_VERSION = "hive.provider_loop.v1"
+FALLBACK_VERIFICATION_SCHEMA_VERSION = "hive.provider_fallback_verification.v1"
 PROVIDERS = {"claude", "codex", "gemini", "local"}
 FAILURE_CATEGORIES = {
     "rate_limit",
@@ -54,6 +55,10 @@ def stop_receipt_path(paths: h.RunPaths, worker_id: str) -> Path:
     return loops_dir(paths) / f"{worker_id}.stop.json"
 
 
+def fallback_verification_path(paths: h.RunPaths, original_worker_id: str, fallback_worker_id: str) -> Path:
+    return loops_dir(paths) / f"{original_worker_id}.{fallback_worker_id}.fallback_verification.json"
+
+
 def _write(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -82,6 +87,15 @@ def _latest_worker_path(root: Path, run_id: str | None = None) -> Path:
     candidates = [path for path in candidates if not path.name.endswith(".stop.json")]
     if not candidates:
         raise FileNotFoundError("no provider loop worker found")
+    return candidates[-1]
+
+
+def _worker_path_by_id(root: Path, worker_id: str, run_id: str | None = None) -> Path:
+    if run_id:
+        return worker_path(_load_paths(root, run_id), worker_id)
+    candidates = sorted((root / h.RUNS_DIR).glob(f"*/provider_loops/{worker_id}.json"))
+    if not candidates:
+        raise FileNotFoundError(f"provider loop worker not found: {worker_id}")
     return candidates[-1]
 
 
@@ -329,6 +343,79 @@ def provider_loop_status(root: Path, *, run_id: str | None = None) -> dict[str, 
         "count": len(workers),
         "next_action": "prepare" if not workers else "tick_or_stop",
     }
+
+
+def verify_provider_fallback(
+    root: Path,
+    *,
+    original_worker_id: str,
+    fallback_worker_id: str,
+    run_id: str | None = None,
+    verifier_provider: str | None = None,
+) -> dict[str, Any]:
+    original_path = _worker_path_by_id(root, original_worker_id, run_id)
+    original = _read(original_path)
+    paths = _load_paths(root, str(original["run_id"]))
+    fallback_path = _worker_path_by_id(root, fallback_worker_id, str(original["run_id"]))
+    fallback = _read(fallback_path)
+    original_provider = str(original.get("provider") or "")
+    fallback_provider = str(fallback.get("provider") or "")
+    fallback_status = str(fallback.get("last_status") or fallback.get("status") or "").lower()
+    verifier_provider = (verifier_provider or "").strip() or None
+
+    stop_conditions: list[str] = []
+    if original.get("status") != "degraded":
+        stop_conditions.append("original_worker_not_degraded")
+    if not isinstance(original.get("role_capsule"), dict):
+        stop_conditions.append("missing_role_capsule")
+    if fallback_provider == original_provider:
+        stop_conditions.append("same_provider_fallback")
+    if fallback_provider not in set(original.get("fallback_candidates") or []):
+        stop_conditions.append("fallback_provider_not_recommended")
+    if fallback_status not in {"completed", "passed", "done"}:
+        stop_conditions.append("fallback_worker_not_completed")
+    if fallback_provider == "local" and verifier_provider not in {"claude", "codex", "gemini"}:
+        stop_conditions.append("local_fallback_without_independent_verifier")
+    if verifier_provider == "local":
+        stop_conditions.append("local_fallback_without_independent_verifier")
+
+    promoted = not stop_conditions
+    status = "passed" if promoted else "held"
+    receipt = {
+        "schema_version": FALLBACK_VERIFICATION_SCHEMA_VERSION,
+        "status": status,
+        "promoted": promoted,
+        "verified_at": now_iso(),
+        "run_id": paths.run_id,
+        "original_worker_id": original_worker_id,
+        "fallback_worker_id": fallback_worker_id,
+        "original_provider": original_provider,
+        "fallback_provider": fallback_provider,
+        "fallback_status": fallback_status,
+        "verifier_provider": verifier_provider,
+        "role_capsule_ref": _rel(root, original_path),
+        "fallback_worker_ref": _rel(root, fallback_path),
+        "stop_conditions_triggered": stop_conditions,
+        "privacy": {
+            "raw_provider_output_read": False,
+            "stdout_included": False,
+            "stderr_included": False,
+        },
+        "next_action": "promote_fallback_result" if promoted else "hold_for_independent_verifier",
+    }
+    receipt_path = fallback_verification_path(paths, original_worker_id, fallback_worker_id)
+    _write(receipt_path, receipt)
+    h.append_event(
+        paths,
+        "provider_fallback_verified",
+        {
+            "original_worker_id": original_worker_id,
+            "fallback_worker_id": fallback_worker_id,
+            "status": status,
+            "receipt": _rel(root, receipt_path),
+        },
+    )
+    return {**receipt, "path": _rel(root, receipt_path)}
 
 
 def stop_provider_loop(root: Path, *, worker_id: str | None = None, run_id: str | None = None) -> dict[str, Any]:

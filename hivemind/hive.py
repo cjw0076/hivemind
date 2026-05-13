@@ -120,7 +120,7 @@ from .evaluation import build_evaluation_report, format_evaluation_report
 from .handoff_import import import_handoff
 from .semantic_verifier import build_semantic_verification, format_semantic_verification
 from .source_reads import format_source_read_summary, record_source_read, summarize_source_reads
-from .provider_loop import prepare_provider_loop, provider_loop_status, stop_provider_loop, tick_provider_loop
+from .provider_loop import prepare_provider_loop, provider_loop_status, stop_provider_loop, tick_provider_loop, verify_provider_fallback
 from .supervisor import (
     format_supervisor_status,
     format_supervisor_tail,
@@ -624,6 +624,12 @@ def _main(argv: list[str] | None = None) -> None:
     provider_loop_status_cmd = provider_loop_sub.add_parser("status", help="list provider loop workers")
     provider_loop_status_cmd.add_argument("--run-id")
     provider_loop_status_cmd.add_argument("--json", action="store_true")
+    provider_loop_verify = provider_loop_sub.add_parser("verify-fallback", help="verify whether a fallback provider loop worker can be promoted")
+    provider_loop_verify.add_argument("--original-worker", required=True)
+    provider_loop_verify.add_argument("--fallback-worker", required=True)
+    provider_loop_verify.add_argument("--run-id")
+    provider_loop_verify.add_argument("--verifier-provider", choices=["claude", "codex", "gemini", "local"])
+    provider_loop_verify.add_argument("--json", action="store_true")
     provider_loop_stop = provider_loop_sub.add_parser("stop", help="stop a provider loop worker")
     provider_loop_stop.add_argument("--worker")
     provider_loop_stop.add_argument("--run-id")
@@ -1496,6 +1502,14 @@ def _main(argv: list[str] | None = None) -> None:
             report = tick_provider_loop(root, worker_id=args.worker, run_id=args.run_id, execute=args.execute, timeout=args.timeout)
         elif args.provider_loop_cmd == "status":
             report = provider_loop_status(root, run_id=args.run_id)
+        elif args.provider_loop_cmd == "verify-fallback":
+            report = verify_provider_fallback(
+                root,
+                original_worker_id=args.original_worker,
+                fallback_worker_id=args.fallback_worker,
+                run_id=args.run_id,
+                verifier_provider=args.verifier_provider,
+            )
         elif args.provider_loop_cmd == "stop":
             report = stop_provider_loop(root, worker_id=args.worker, run_id=args.run_id)
         else:

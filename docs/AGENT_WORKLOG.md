@@ -710,3 +710,20 @@
   tests/test_local_worker_routing.py -v` passed 15/15.
 - Next: MyWorld should collect ASC-0081 route/watcher receipts and keep local
   LLM final acceptance behind a separate verifier gate.
+
+## 2026-05-13 11:35 KST - Codex - ASC-0094 Provider Fallback Verifier
+
+- Context: MyWorld ASC-0094 dispatched Hive to add a deterministic verifier
+  that decides when fallback provider output can be promoted from attempt to
+  completed work.
+- Ownership: Codex changed `hivemind/provider_loop.py`, `hivemind/hive.py`,
+  and `tests/test_provider_loop.py`.
+- Decision: Added `hive.provider_fallback_verification.v1` receipts and
+  `hive provider-loop verify-fallback`. Promotion now requires a degraded
+  original worker, role capsule, recommended different fallback provider, and
+  completed fallback status. Local fallback remains held unless an independent
+  verifier provider is supplied.
+- Evidence: `python -m py_compile hivemind/provider_loop.py hivemind/hive.py`
+  passed; `python -m pytest tests/test_provider_loop.py -v` passed 13/13.
+- Next: MyWorld should collect ASC-0094 and, later, define a semantic
+  verifier/distillation layer for checking actual fallback output quality.
