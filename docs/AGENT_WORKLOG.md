@@ -849,3 +849,24 @@
   conditions.
 - Next: MyWorld should use this as the preflight boundary after CapabilityOS
   high-freedom routes and before Hive provider execution.
+
+## 2026-05-14 13:26 KST - Codex - Hive AIOS Packet Runner
+
+- Context: Founder asked why Hive Mind cannot wake provider CLIs and directly
+  work. The immediate gap was that MyWorld child watcher consumed Hive inbox
+  packets, while Hive provider-loop was not itself an inbox consumer.
+- Ownership: Codex changed `hivemind/aios_packet_runner.py`,
+  `hivemind/hive.py`, and `tests/test_aios_packet_runner.py`.
+- Decision: Added `hive aios-packet --packet ... --myworld-root ...`, a
+  Hive-owned entry point that reads an AIOS dispatch packet, builds a bounded
+  prompt, prepares/ticks a provider-loop worker, and can write the result to
+  the packet's outbox path. This keeps execution authority in Hive while
+  preserving provider-loop receipts.
+- Evidence: `python -m unittest tests/test_aios_packet_runner.py
+  tests/test_permission_preflight.py tests/test_provider_loop.py` passed
+  19/19. CLI smoke against the ASC-0168 Hive packet returned
+  `schema_version=hive.aios_packet_runner.v1`, `status=prepared`,
+  `authority.executor=hivemind`, and a provider-loop local tick receipt.
+- Next: MyWorld can replace the shell child watcher path for Hive packets with
+  this Hive-owned runner, then later add explicit writable provider execution
+  policy instead of relying on broad wrapper permissions.

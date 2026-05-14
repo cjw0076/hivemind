@@ -123,6 +123,7 @@ from .source_reads import format_source_read_summary, record_source_read, summar
 from .provider_loop import prepare_provider_loop, provider_loop_status, stop_provider_loop, tick_provider_loop, verify_provider_fallback
 from .provider_projection import build_provider_output_projection, format_provider_output_projection
 from .permission_preflight import build_permission_preflight_from_path, format_permission_preflight
+from .aios_packet_runner import run_aios_packet
 from .supervisor import (
     format_supervisor_status,
     format_supervisor_tail,
@@ -183,6 +184,7 @@ COMMANDS = {
     "provider-loop",
     "provider-output-projection",
     "permission-preflight",
+    "aios-packet",
     "loop",
     "verify",
     "summarize",
@@ -643,6 +645,14 @@ def _main(argv: list[str] | None = None) -> None:
     permission_preflight_cmd = sub.add_parser("permission-preflight", help="consume a CapabilityOS constraint-break route as a Hive operator checkpoint")
     permission_preflight_cmd.add_argument("--route-json", required=True)
     permission_preflight_cmd.add_argument("--json", action="store_true")
+
+    aios_packet_cmd = sub.add_parser("aios-packet", help="consume an AIOS hivemind inbox packet through Hive provider-loop")
+    aios_packet_cmd.add_argument("--packet", required=True)
+    aios_packet_cmd.add_argument("--myworld-root")
+    aios_packet_cmd.add_argument("--provider", choices=["claude", "codex", "gemini", "local"])
+    aios_packet_cmd.add_argument("--execute", action="store_true")
+    aios_packet_cmd.add_argument("--write-result", action="store_true")
+    aios_packet_cmd.add_argument("--json", action="store_true")
 
     provider_projection_cmd = sub.add_parser("provider-output-projection", help="write a raw-body-free provider output projection for one run")
     provider_projection_cmd.add_argument("--run", "--run-id", dest="run_id", help="run ID to project (default: most recent)")
@@ -1543,6 +1553,25 @@ def _main(argv: list[str] | None = None) -> None:
         else:
             print(format_permission_preflight(report))
         if report.get("status") == "blocked":
+            raise SystemExit(1)
+        return
+    if args.cmd == "aios-packet":
+        import json
+
+        myworld_root = Path(args.myworld_root).resolve() if args.myworld_root else None
+        report = run_aios_packet(
+            hive_root=root,
+            packet_path=args.packet,
+            myworld_root=myworld_root,
+            provider=args.provider,
+            execute=bool(args.execute),
+            write_result_packet=bool(args.write_result),
+        )
+        if args.json:
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(report.get("result_path") or report.get("status"))
+        if report.get("status") == "held":
             raise SystemExit(1)
         return
     if args.cmd == "provider-output-projection":
