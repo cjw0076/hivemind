@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from hivemind.aios_packet_runner import run_aios_packet
 
@@ -70,6 +71,51 @@ class AiosPacketRunnerTest(unittest.TestCase):
 
             self.assertEqual(result["status"], "held")
             self.assertIn("target_repo_not_hivemind", result["stop_conditions_triggered"])
+
+    def test_writable_provider_execution_requires_operator_grant(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            hive_root = base / "hive"
+            hive_root.mkdir()
+            packet = base / "packet.json"
+            packet.write_text(json.dumps(packet_payload()), encoding="utf-8")
+
+            result = run_aios_packet(
+                hive_root=hive_root,
+                packet_path=packet,
+                provider="codex",
+                execute=True,
+                writable_provider_execution=True,
+            )
+
+            self.assertEqual(result["status"], "held")
+            self.assertIn("operator_grant_missing", result["stop_conditions_triggered"])
+
+    def test_writable_provider_execution_uses_workspace_write_codex(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            hive_root = base / "hive"
+            hive_root.mkdir()
+            packet = base / "packet.json"
+            packet.write_text(json.dumps(packet_payload()), encoding="utf-8")
+            completed = subprocess.CompletedProcess(args=["codex", "exec"], returncode=0, stdout="done\n", stderr="")
+
+            with patch("hivemind.harness.resolve_provider_binary", return_value="codex"):
+                with patch("hivemind.provider_passthrough.subprocess.run", return_value=completed):
+                    result = run_aios_packet(
+                        hive_root=hive_root,
+                        packet_path=packet,
+                        provider="codex",
+                        execute=True,
+                        writable_provider_execution=True,
+                        operator_grant="operator approved scoped workspace-write for this AIOS packet",
+                    )
+
+            self.assertEqual(result["status"], "executed")
+            self.assertEqual(result["provider_loop_tick"]["status"], "completed")
+            command_ref = result["provider_loop_tick"]["worker"]["last_result_path"].replace("_result.yaml", "_command.txt")
+            command = (hive_root / command_ref).read_text(encoding="utf-8")
+            self.assertIn("--sandbox workspace-write", command)
 
     def test_cli_aios_packet_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

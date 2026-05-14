@@ -137,6 +137,33 @@ class ProviderPassthroughTest(unittest.TestCase):
             events = [record.get("event") for record in read_execution_ledger(root, paths.run_id)]
             self.assertIn("policy_blocked", events)
 
+    def test_workspace_write_execute_requires_explicit_grant(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "provider passthrough writable")
+            completed = subprocess.CompletedProcess(
+                args=["codex", "exec"],
+                returncode=0,
+                stdout="writable output\n",
+                stderr="",
+            )
+            with patch("hivemind.harness.resolve_provider_binary", return_value="codex"):
+                with patch("hivemind.provider_passthrough.subprocess.run", return_value=completed) as run:
+                    result_path = provider_passthrough(
+                        root,
+                        "codex",
+                        ["exec", "--cd", ".", "--sandbox", "workspace-write", "inspect"],
+                        run_id=paths.run_id,
+                        execute=True,
+                        allow_workspace_write=True,
+                    )
+
+            data = yaml.safe_load(result_path.read_text(encoding="utf-8"))
+            self.assertEqual(data["status"], "completed")
+            self.assertEqual(data["permission_mode"], "workspace_write_with_policy")
+            self.assertEqual(data["returncode"], 0)
+            self.assertEqual(run.call_args.kwargs["cwd"], root)
+
     def test_execute_blocks_destructive_shell_wrapper(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -4995,11 +4995,22 @@ def provider_passthrough(
     run_id: str | None = None,
     execute: bool = False,
     timeout: int = 600,
+    allow_workspace_write: bool = False,
+    workspace_write_grant: str | None = None,
 ) -> Path:
     """Backward-compatible wrapper for the extracted provider passthrough module."""
     from .provider_passthrough import provider_passthrough as run_provider_passthrough
 
-    return run_provider_passthrough(root, agent, native_args, run_id=run_id, execute=execute, timeout=timeout)
+    return run_provider_passthrough(
+        root,
+        agent,
+        native_args,
+        run_id=run_id,
+        execute=execute,
+        timeout=timeout,
+        allow_workspace_write=allow_workspace_write,
+        workspace_write_grant=workspace_write_grant,
+    )
 
 
 def role_permission_mode(agent: str, role: str) -> str:

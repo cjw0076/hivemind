@@ -870,3 +870,29 @@
 - Next: MyWorld can replace the shell child watcher path for Hive packets with
   this Hive-owned runner, then later add explicit writable provider execution
   policy instead of relying on broad wrapper permissions.
+
+## 2026-05-14 13:35 KST - Codex - Scoped Writable Provider Execution
+
+- Context: Founder asked to open writable provider execution after asking why
+  Hive had been read-only. The reason was deliberate safety: provider-loop was
+  first built as a receipt-generating wrapper and Codex workspace-write can
+  modify repo state broadly if not scoped.
+- Ownership: Codex changed `hivemind/provider_passthrough.py`,
+  `hivemind/provider_loop.py`, `hivemind/aios_packet_runner.py`,
+  `hivemind/harness.py`, `hivemind/hive.py`,
+  `tests/test_aios_packet_runner.py`, and
+  `tests/test_provider_passthrough.py`.
+- Decision: keep read-only as the default, but allow Codex
+  `exec --sandbox workspace-write` only when an AIOS packet execution passes
+  `--execute --writable-provider-execution --operator-grant ...`. The grant
+  casts verifier and user approval votes into the existing Hive execution
+  protocol; dangerous/full access combinations remain blocked.
+- Evidence: `python -m unittest tests/test_aios_packet_runner.py
+  tests/test_provider_passthrough.py tests/test_provider_loop.py` passed
+  26/26. CLI help exposes `--writable-provider-execution`,
+  `--operator-grant`, `--allow-workspace-write`, and
+  `--workspace-write-grant`. A no-grant smoke held with
+  `operator_grant_missing`.
+- Next: MyWorld should route Hive packets to this command and pass writable
+  grants only after CapabilityOS route + Hive permission preflight + operator
+  decision.

@@ -626,6 +626,8 @@ def _main(argv: list[str] | None = None) -> None:
     provider_loop_tick.add_argument("--worker")
     provider_loop_tick.add_argument("--run-id")
     provider_loop_tick.add_argument("--execute", action="store_true")
+    provider_loop_tick.add_argument("--allow-workspace-write", action="store_true")
+    provider_loop_tick.add_argument("--workspace-write-grant")
     provider_loop_tick.add_argument("--timeout", type=int, default=600)
     provider_loop_tick.add_argument("--json", action="store_true")
     provider_loop_status_cmd = provider_loop_sub.add_parser("status", help="list provider loop workers")
@@ -651,6 +653,8 @@ def _main(argv: list[str] | None = None) -> None:
     aios_packet_cmd.add_argument("--myworld-root")
     aios_packet_cmd.add_argument("--provider", choices=["claude", "codex", "gemini", "local"])
     aios_packet_cmd.add_argument("--execute", action="store_true")
+    aios_packet_cmd.add_argument("--writable-provider-execution", action="store_true")
+    aios_packet_cmd.add_argument("--operator-grant")
     aios_packet_cmd.add_argument("--write-result", action="store_true")
     aios_packet_cmd.add_argument("--json", action="store_true")
 
@@ -1524,7 +1528,15 @@ def _main(argv: list[str] | None = None) -> None:
         if args.provider_loop_cmd == "prepare":
             report = prepare_provider_loop(root, args.provider, args.prompt, run_id=args.run_id)
         elif args.provider_loop_cmd == "tick":
-            report = tick_provider_loop(root, worker_id=args.worker, run_id=args.run_id, execute=args.execute, timeout=args.timeout)
+            report = tick_provider_loop(
+                root,
+                worker_id=args.worker,
+                run_id=args.run_id,
+                execute=args.execute,
+                timeout=args.timeout,
+                allow_workspace_write=bool(args.allow_workspace_write),
+                workspace_write_grant=args.workspace_write_grant,
+            )
         elif args.provider_loop_cmd == "status":
             report = provider_loop_status(root, run_id=args.run_id)
         elif args.provider_loop_cmd == "verify-fallback":
@@ -1565,6 +1577,8 @@ def _main(argv: list[str] | None = None) -> None:
             myworld_root=myworld_root,
             provider=args.provider,
             execute=bool(args.execute),
+            writable_provider_execution=bool(args.writable_provider_execution),
+            operator_grant=args.operator_grant,
             write_result_packet=bool(args.write_result),
         )
         if args.json:

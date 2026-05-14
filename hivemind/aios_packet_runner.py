@@ -81,6 +81,8 @@ def run_aios_packet(
     myworld_root: Path | None = None,
     provider: str | None = None,
     execute: bool = False,
+    writable_provider_execution: bool = False,
+    operator_grant: str | None = None,
     write_result_packet: bool = False,
 ) -> dict[str, Any]:
     packet = read_packet(packet_path)
@@ -88,13 +90,26 @@ def run_aios_packet(
     if packet.get("target_repo") != "hivemind":
         stop_conditions.append("target_repo_not_hivemind")
     selected_provider = provider or str(packet.get("agent") or "local")
+    grant = str(operator_grant or "").strip()
+    if writable_provider_execution and not execute:
+        stop_conditions.append("writable_requires_execute")
+    if writable_provider_execution and selected_provider != "codex":
+        stop_conditions.append("writable_provider_only_codex_supported")
+    if writable_provider_execution and not grant:
+        stop_conditions.append("operator_grant_missing")
     prompt = packet_prompt(packet)
     prepared = None
     tick = None
     status = "held" if stop_conditions else "prepared"
     if not stop_conditions:
         prepared = prepare_provider_loop(hive_root, selected_provider, prompt)
-        tick = tick_provider_loop(hive_root, worker_id=prepared["worker_id"], execute=execute)
+        tick = tick_provider_loop(
+            hive_root,
+            worker_id=prepared["worker_id"],
+            execute=execute,
+            allow_workspace_write=writable_provider_execution,
+            workspace_write_grant=grant or None,
+        )
         status = "executed" if execute and tick.get("status") in {"completed", "done", "passed"} else "prepared"
         if tick.get("status") in {"failed", "timeout"}:
             status = "held"
@@ -109,6 +124,8 @@ def run_aios_packet(
         "target_repo": packet.get("target_repo"),
         "provider": selected_provider,
         "execute_requested": execute,
+        "writable_provider_execution": writable_provider_execution,
+        "operator_grant": grant or None,
         "provider_loop_prepared": prepared,
         "provider_loop_tick": tick,
         "stop_conditions_triggered": stop_conditions,
@@ -116,6 +133,7 @@ def run_aios_packet(
             "executor": "hivemind",
             "writes_child_source_directly": False,
             "uses_provider_loop": True,
+            "writable_provider_requires_operator_grant": True,
         },
     }
     if write_result_packet:

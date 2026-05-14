@@ -99,8 +99,10 @@ def _worker_path_by_id(root: Path, worker_id: str, run_id: str | None = None) ->
     return candidates[-1]
 
 
-def provider_native_args(provider: str, prompt: str) -> list[str]:
+def provider_native_args(provider: str, prompt: str, *, workspace_write: bool = False) -> list[str]:
     if provider == "codex":
+        if workspace_write:
+            return ["exec", "--cd", ".", "--sandbox", "workspace-write", prompt]
         return ["exec", "--cd", ".", "--sandbox", "read-only", prompt]
     if provider == "claude":
         return ["--print", prompt]
@@ -244,6 +246,8 @@ def tick_provider_loop(
     run_id: str | None = None,
     execute: bool = False,
     timeout: int = 600,
+    allow_workspace_write: bool = False,
+    workspace_write_grant: str | None = None,
 ) -> dict[str, Any]:
     path = worker_path(_load_paths(root, run_id), worker_id) if worker_id else _latest_worker_path(root, run_id)
     worker = _read(path)
@@ -258,10 +262,12 @@ def tick_provider_loop(
         result_path = provider_passthrough(
             root,
             provider,
-            provider_native_args(provider, prompt),
+            provider_native_args(provider, prompt, workspace_write=allow_workspace_write and provider == "codex"),
             run_id=paths.run_id,
             execute=execute,
             timeout=timeout,
+            allow_workspace_write=allow_workspace_write,
+            workspace_write_grant=workspace_write_grant,
         )
         result = _read_provider_result(result_path)
         last_status = str(result.get("status") or "unknown")
