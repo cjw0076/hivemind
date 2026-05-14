@@ -829,3 +829,23 @@
 - Next: MyWorld should write/keep the discovery summary, verify artifact
   presence, close ASC-0114, and open a separate lease-schema contract only
   after this debate is accepted.
+
+## 2026-05-14 13:12 KST - Codex - ASC-0168 Permission Preflight
+
+- Context: MyWorld ASC-0168 assigned Hive Mind to consume CapabilityOS
+  `capabilityos.constraint_break_route.v1` recommendations as non-executing
+  operator permission checkpoints.
+- Ownership: Codex changed `hivemind/permission_preflight.py`,
+  `hivemind/hive.py`, `tests/test_permission_preflight.py`, and
+  `tests/fixtures/constraint_break_route.json`.
+- Decision: Added `hive permission-preflight --route-json ... --json`, which
+  emits `hivemind.permission_preflight.v1`, preserves permission questions,
+  fixes `executor=hivemind`, refuses immediate execution, and blocks if
+  CapabilityOS asks to execute tools.
+- Evidence: `python -m unittest tests/test_permission_preflight.py` passed
+  3/3; `python -m hivemind.hive permission-preflight --route-json
+  tests/fixtures/constraint_break_route.json --json` returned
+  `status=operator_checkpoint_required`, `executor=hivemind`, and no stop
+  conditions.
+- Next: MyWorld should use this as the preflight boundary after CapabilityOS
+  high-freedom routes and before Hive provider execution.

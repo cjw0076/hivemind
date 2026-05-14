@@ -1,0 +1,35 @@
+{
+  "blocker": "provider PIN gate",
+  "contract": "capabilityos.constraint_break_route.v1",
+  "execution_policy": {
+    "capabilityos_executes_tools": false,
+    "executor": "hivemind",
+    "requires_user_grant_before_scope_lift": true
+  },
+  "permission_questions": [
+    {
+      "default": "ask_user",
+      "permission_id": "allow_provider_fallback",
+      "question": "May Hive Mind route execution to another provider?",
+      "risk": "model_behavior_drift"
+    }
+  ],
+  "privacy_policy": {
+    "do_not_store": [
+      "pins",
+      "tokens",
+      "api_keys"
+    ]
+  },
+  "risk_notes": [
+    "requires_user_permission"
+  ],
+  "task": "AIOS provider is blocked by CLI rules",
+  "unblock_options": [
+    {
+      "executor": "hivemind",
+      "option_id": "route_to_alternate_provider",
+      "requires_permission": true
+    }
+  ]
+}
