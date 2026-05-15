@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -113,6 +115,75 @@ class SupervisorTest(unittest.TestCase):
 
             self.assertEqual(report["status"], "stale")
             self.assertEqual(report["stale_reason"], "dead_pid")
+
+    def test_stale_supervisor_writes_recovery_receipt_once(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "supervisor recovery receipt")
+            write_supervisor_state(
+                root,
+                paths.run_id,
+                {
+                    "schema_version": 1,
+                    "run_id": paths.run_id,
+                    "status": "running",
+                    "pid": 999999999,
+                    "host": "test",
+                    "rounds": 0,
+                    "max_rounds": 1,
+                    "execute": False,
+                    "log_path": "supervisor.log",
+                    "command_hash": "sha256:test",
+                },
+            )
+
+            first = supervisor_status_report(root, paths.run_id)
+            second = supervisor_status_report(root, paths.run_id)
+            receipt = first.get("last_recovery_receipt")
+            events = [record for record in read_execution_ledger(root, paths.run_id) if record.get("event") == "supervisor_recovery_recorded"]
+
+            self.assertEqual(first["status"], "stale")
+            self.assertEqual(first["recovery_status"], "recorded")
+            self.assertTrue(receipt)
+            self.assertEqual(second.get("last_recovery_receipt"), receipt)
+            self.assertTrue((root / receipt).exists())
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0]["extra"]["stale_reason"], "dead_pid")
+
+    def test_heartbeat_timeout_recovery_preserves_stale_heartbeat(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "supervisor heartbeat recovery")
+            write_supervisor_state(
+                root,
+                paths.run_id,
+                {
+                    "schema_version": 1,
+                    "run_id": paths.run_id,
+                    "status": "running",
+                    "pid": os.getpid(),
+                    "host": "test",
+                    "rounds": 0,
+                    "max_rounds": 1,
+                    "execute": False,
+                    "log_path": "supervisor.log",
+                },
+            )
+            state_path = supervisor_paths(root, paths.run_id)["state"]
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            old_epoch = time.time() - 1000
+            state["last_heartbeat_epoch"] = old_epoch
+            state["last_heartbeat_at"] = "old"
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+
+            report = supervisor_status_report(root, paths.run_id)
+            recovered_state = json.loads(state_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(report["status"], "stale")
+            self.assertEqual(report["stale_reason"], "heartbeat_timeout")
+            self.assertEqual(recovered_state["last_heartbeat_at"], "old")
+            self.assertGreaterEqual(report["heartbeat_age_seconds"], 900)
+            self.assertTrue(report.get("last_recovery_receipt"))
 
     def test_stop_supervisor_writes_receipt_and_ledger_event(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

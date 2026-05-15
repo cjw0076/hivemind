@@ -78,13 +78,14 @@ def active_step_leases(root: Path, run_id: str) -> list[dict[str, Any]]:
     return leases
 
 
-def write_supervisor_state(root: Path, run_id: str, state: dict[str, Any]) -> Path:
+def write_supervisor_state(root: Path, run_id: str, state: dict[str, Any], *, refresh_heartbeat: bool = True) -> Path:
     paths = supervisor_paths(root, run_id)
     state = dict(state)
     now_epoch = time.time()
     state["updated_at"] = now_iso()
-    state["last_heartbeat_at"] = state["updated_at"]
-    state["last_heartbeat_epoch"] = now_epoch
+    if refresh_heartbeat:
+        state["last_heartbeat_at"] = state["updated_at"]
+        state["last_heartbeat_epoch"] = now_epoch
     state["active_leases"] = active_step_leases(root, run_id)
     paths["state"].parent.mkdir(parents=True, exist_ok=True)
     atomic_write(paths["state"], json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True))
@@ -113,10 +114,12 @@ def read_supervisor_state(root: Path, run_id: str | None = None) -> dict[str, An
 
 def mark_stale_supervisor_state(state: dict[str, Any], *, stale_after: float = HEARTBEAT_STALE_SECONDS) -> dict[str, Any]:
     state = dict(state)
-    if state.get("status") != "running":
+    previous_status = state.get("status")
+    if previous_status not in {"running", "starting"}:
         return state
     if not pid_is_alive(state.get("pid")):
         state["status"] = "stale"
+        state["previous_status"] = previous_status
         state["stale_reason"] = "dead_pid"
         return state
     heartbeat_epoch = state.get("last_heartbeat_epoch")
@@ -125,8 +128,19 @@ def mark_stale_supervisor_state(state: dict[str, Any], *, stale_after: float = H
         state["heartbeat_age_seconds"] = round(age, 3)
         if age > stale_after:
             state["status"] = "stale"
+            state["previous_status"] = previous_status
             state["stale_reason"] = "heartbeat_timeout"
     return state
+
+
+def supervisor_stale_signature(state: dict[str, Any]) -> str:
+    return ":".join(
+        [
+            str(state.get("stale_reason") or "unknown"),
+            str(state.get("pid") or "-"),
+            str(state.get("last_heartbeat_epoch") or "-"),
+        ]
+    )
 
 
 def pid_is_alive(pid: Any) -> bool:
@@ -176,6 +190,76 @@ def write_stop_receipt(
     receipt["artifact"] = receipt_path.relative_to(root).as_posix()
     atomic_write(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True))
     return receipt
+
+
+def write_recovery_receipt(
+    root: Path,
+    run_id: str,
+    *,
+    state: dict[str, Any],
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    paths = supervisor_paths(root, run_id)
+    paths["receipts"].mkdir(parents=True, exist_ok=True)
+    receipt_path = paths["receipts"] / f"recovery_{int(time.time() * 1000)}.json"
+    receipt = {
+        "schema_version": 1,
+        "run_id": run_id,
+        "kind": "supervisor_recovery_receipt",
+        "detected_at": now_iso(),
+        "previous_status": state.get("previous_status") or "running",
+        "final_status": state.get("status") or "stale",
+        "stale_reason": state.get("stale_reason") or "unknown",
+        "pid": state.get("pid"),
+        "host": state.get("host"),
+        "heartbeat_age_seconds": state.get("heartbeat_age_seconds"),
+        "last_heartbeat_at": state.get("last_heartbeat_at"),
+        "timeout_seconds": timeout_seconds,
+        "command_hash": state.get("command_hash"),
+        "active_leases": active_step_leases(root, run_id),
+    }
+    atomic_write(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True))
+    receipt["artifact"] = receipt_path.relative_to(root).as_posix()
+    atomic_write(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True))
+    return receipt
+
+
+def recover_stale_supervisor_state(
+    root: Path,
+    run_id: str,
+    state: dict[str, Any],
+    *,
+    stale_after: float = HEARTBEAT_STALE_SECONDS,
+) -> dict[str, Any]:
+    state = mark_stale_supervisor_state(state, stale_after=stale_after)
+    if state.get("status") != "stale":
+        return state
+    signature = supervisor_stale_signature(state)
+    if state.get("last_recovery_signature") == signature and state.get("last_recovery_receipt"):
+        return state
+    receipt = write_recovery_receipt(root, run_id, state=state, timeout_seconds=stale_after)
+    state["recovery_status"] = "recorded"
+    state["last_recovery_signature"] = signature
+    state["last_recovery_receipt"] = receipt.get("artifact")
+    state["recovered_at"] = receipt.get("detected_at")
+    write_supervisor_state(root, run_id, state, refresh_heartbeat=False)
+    append_supervisor_log(root, run_id, f"recovery recorded status=stale reason={state.get('stale_reason')} receipt={receipt.get('artifact')}")
+    append_execution_ledger(
+        root,
+        run_id,
+        "supervisor_recovery_recorded",
+        actor="supervisor",
+        status="stale",
+        artifact=str(receipt.get("artifact")),
+        artifact_hash_mode="content",
+        extra={
+            "stale_reason": state.get("stale_reason"),
+            "pid": state.get("pid"),
+            "heartbeat_age_seconds": state.get("heartbeat_age_seconds"),
+            "timeout_seconds": stale_after,
+        },
+    )
+    return state
 
 
 def stop_requested(root: Path, run_id: str) -> bool:
@@ -519,7 +603,7 @@ def supervisor_status_report(root: Path, run_id: str | None = None) -> dict[str,
         "issue_count": len(replay.get("issues") or []),
     }
     state["active_leases"] = active_step_leases(root, paths_obj.run_id)
-    state = mark_stale_supervisor_state(state)
+    state = recover_stale_supervisor_state(root, paths_obj.run_id, state)
     state["last_probes"] = state.get("last_probes") or probe_summaries_from_result(state.get("last_result") or {})
     if not state["last_probes"]:
         state["last_probes"] = probe_summaries_from_replay(replay)
@@ -590,6 +674,10 @@ def format_supervisor_status(report: dict[str, Any]) -> str:
     ]
     if report.get("last_heartbeat_at"):
         lines.append(f"Heartbeat: {report.get('last_heartbeat_at')} age={report.get('heartbeat_age_seconds', 0)}s")
+    if report.get("stale_reason"):
+        lines.append(f"Stale: reason={report.get('stale_reason')} recovery={report.get('recovery_status') or '-'}")
+    if report.get("last_recovery_receipt"):
+        lines.append(f"Recovery Receipt: {report.get('last_recovery_receipt')}")
     if report.get("last_stop_receipt"):
         lines.append(f"Stop Receipt: {report.get('last_stop_receipt')}")
     replay = report.get("replay") or {}

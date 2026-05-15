@@ -1522,3 +1522,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Added `hive git guard`; it checks staged files against explicit `--scope` values or files touched in the run ledger, writes `git_guard_report.json`, and blocks out-of-scope staged files unless `--approve-out-of-scope` is used.
 - Evidence: Focused tests passed 29/29. Smoke staged `README.md` and `src/app.py`, allowed `src/`, and guard returned rc=2 with `README.md` listed as out-of-scope. Full suite passed 377/377; release gate passed 19/19.
 - Next: Use this guard before commits from provider-loop or multi-agent execution.
+
+## 2026-05-16 03:02 KST - Codex
+
+- Context: Continuing the AIOS production sprint after git guard. Supervisor status could mark stale runs, but timeout/dead-PID recovery was not itself an auditable artifact.
+- Decision: Added supervisor stale recovery receipts. `hive run status` now turns dead PID or heartbeat-timeout detection into a `supervisor_recovery_receipt`, a `supervisor_recovery_recorded` ledger event, and status output with recovery receipt path. The recovery write does not refresh the stale heartbeat and is idempotent for the same stale signature.
+- Evidence: `python -m unittest tests.test_supervisor` passed 11/11; `python -m unittest tests.test_supervisor tests.test_workloop_ledger tests.test_production_hardening` passed 47/47; `python -m py_compile hivemind/supervisor.py hivemind/hive.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 379/379; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Finish the remaining supervised-run TODO slices: GPU/runtime snapshot and stronger output artifact validation.

@@ -973,3 +973,13 @@
 - Decision: Added `hive git guard` with repeatable `--scope`, JSON/text reports, ledger-touched-file inference, `git_guard_report.json`, and `--approve-out-of-scope` override. Blocked out-of-scope staged files exit with rc=2.
 - Evidence: Focused tests passed 29/29. CLI smoke staged `README.md` and `src/app.py`, allowed only `src/`, and `hive git guard --scope src/ --json` returned `verdict=blocked`, `out_of_scope_files=["README.md"]`, and rc=2. Full suite passed 377/377; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Use `hive git guard` before scoped commits from provider-loop or multi-agent work.
+
+## 2026-05-16 03:02 KST - Codex - Supervisor Timeout Recovery Receipt
+
+- Context: Continuing the AIOS production sprint after git scope guard. The next runtime gap is supervised-run heartbeat/timeout recovery: status currently marks stale processes, but the recovery path is not yet a durable receipt/ledger event.
+- Ownership: Codex owns a narrow Hive runtime slice in `hivemind/supervisor.py`, `tests/test_supervisor.py`, `docs/TODO.md`, and shared coordination logs.
+- Expected files: `hivemind/supervisor.py`, `tests/test_supervisor.py`, `docs/TODO.md`, `.ai-runs/shared/comms_log.md`.
+- Deferred: GPU/runtime snapshot and stronger output artifact validation stay in the larger supervised-run TODO until separately implemented and verified.
+- Completion: `hive run status` now records stale supervisor recovery as a durable `supervisor_recovery_receipt` and `supervisor_recovery_recorded` ledger event. Recovery is idempotent for the same stale signature and preserves the stale heartbeat timestamp instead of refreshing it during recovery.
+- Evidence: `python -m unittest tests.test_supervisor` passed 11/11; `python -m unittest tests.test_supervisor tests.test_workloop_ledger tests.test_production_hardening` passed 47/47; `python -m py_compile hivemind/supervisor.py hivemind/hive.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 379/379; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Continue the remaining supervised-run hardening: GPU/runtime snapshot and stronger output artifact validation.
