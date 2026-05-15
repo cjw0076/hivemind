@@ -14,6 +14,7 @@ from hivemind.harness import create_run
 from hivemind.plan_dag import build_dag, save_dag
 from hivemind.supervisor import (
     active_step_leases,
+    capture_runtime_snapshot,
     format_supervisor_status,
     probe_summaries_from_result,
     run_supervisor,
@@ -58,6 +59,42 @@ class SupervisorTest(unittest.TestCase):
                 self.assertEqual(report["active_leases"][0]["step_id"], "planner")
             finally:
                 lease.release()
+
+    def test_status_includes_runtime_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "supervisor runtime snapshot")
+
+            report = supervisor_status_report(root, paths.run_id)
+            snapshot = report["runtime_snapshot"]
+            rendered = format_supervisor_status(report)
+
+            self.assertEqual(snapshot["schema_version"], 1)
+            self.assertIn("python", snapshot)
+            self.assertIn("cpu", snapshot)
+            self.assertIn("memory", snapshot)
+            self.assertIn("gpu", snapshot)
+            self.assertIn("provider_clis", snapshot)
+            self.assertIn("Runtime:", rendered)
+
+    def test_write_supervisor_state_persists_runtime_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "supervisor runtime persisted")
+
+            write_supervisor_state(root, paths.run_id, {"schema_version": 1, "run_id": paths.run_id, "status": "running", "pid": os.getpid()})
+            state = json.loads(supervisor_paths(root, paths.run_id)["state"].read_text(encoding="utf-8"))
+
+            self.assertEqual(state["runtime_snapshot"]["pid"], os.getpid())
+            self.assertIn("local_runtime", state["runtime_snapshot"])
+
+    def test_capture_runtime_snapshot_handles_missing_local_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            snapshot = capture_runtime_snapshot(Path(tmp), pid=123)
+
+            self.assertEqual(snapshot["pid"], 123)
+            self.assertEqual(snapshot["local_runtime"]["status"], "missing")
+            self.assertIn("claude", snapshot["provider_clis"])
 
     def test_pingpong_scheduler_runs_one_parallel_step_per_round(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

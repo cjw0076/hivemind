@@ -227,6 +227,7 @@ Sources: `VG-03`, `VG-04`, `VG-13`, `VG-18`.
 - [x] Connect prompt intake to the DAG lifecycle read model so prompt/log and future desktop/chatbot surfaces consume the same core scheduler state.
 - [ ] Extend supervised run control with process heartbeat, timeout recovery, GPU/runtime snapshot, and stronger output artifact validation.
 - [x] Add supervisor stale recovery receipts and ledger events for dead PID / heartbeat timeout detection.
+- [x] Add supervisor runtime snapshots with CPU, memory, disk, GPU, local runtime, and provider CLI visibility.
 - [x] Add `hive git guard` / scoped commit proposal that refuses out-of-scope staged files unless explicitly approved.
 - [x] Make `hive "task"` and `hive ask` return a readable operator summary with artifact links, next command, risk, and expected artifact.
 - [x] Add Korean-first operator summaries when the input prompt is Korean.

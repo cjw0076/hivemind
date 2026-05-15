@@ -983,3 +983,13 @@
 - Completion: `hive run status` now records stale supervisor recovery as a durable `supervisor_recovery_receipt` and `supervisor_recovery_recorded` ledger event. Recovery is idempotent for the same stale signature and preserves the stale heartbeat timestamp instead of refreshing it during recovery.
 - Evidence: `python -m unittest tests.test_supervisor` passed 11/11; `python -m unittest tests.test_supervisor tests.test_workloop_ledger tests.test_production_hardening` passed 47/47; `python -m py_compile hivemind/supervisor.py hivemind/hive.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 379/379; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Continue the remaining supervised-run hardening: GPU/runtime snapshot and stronger output artifact validation.
+
+## 2026-05-16 03:10 KST - Codex - Supervisor Runtime Snapshot
+
+- Context: Continuing the supervised-run hardening TODO after stale recovery receipts. The remaining operator visibility gap is that supervisor status does not capture the runtime substrate when a run starts or is inspected.
+- Ownership: Codex owns a narrow runtime observability slice in `hivemind/supervisor.py`, `tests/test_supervisor.py`, `docs/TODO.md`, and shared coordination logs.
+- Expected files: `hivemind/supervisor.py`, `tests/test_supervisor.py`, `docs/TODO.md`, `.ai-runs/shared/comms_log.md`.
+- Deferred: Stronger output artifact validation remains a separate slice.
+- Completion: Supervisor state/status now includes a runtime snapshot with Python, CPU, RAM, disk, GPU via `nvidia-smi` when present, local runtime status, and provider CLI discovery. Text status renders a compact Runtime line.
+- Evidence: `python -m unittest tests.test_supervisor` passed 14/14; `python -m unittest tests.test_supervisor tests.test_workloop_ledger tests.test_production_hardening` passed 50/50; `python -m py_compile hivemind/supervisor.py hivemind/hive.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 382/382; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Continue to stronger output artifact validation.

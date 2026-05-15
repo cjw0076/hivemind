@@ -10,6 +10,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
+import shutil
 import signal
 import socket
 import subprocess
@@ -63,6 +65,97 @@ def current_git_commit(root: Path) -> str | None:
     return completed.stdout.strip() or None
 
 
+def _memory_snapshot() -> dict[str, Any]:
+    total = None
+    available = None
+    meminfo = Path("/proc/meminfo")
+    if meminfo.exists():
+        values: dict[str, int] = {}
+        try:
+            for line in meminfo.read_text(encoding="utf-8", errors="replace").splitlines():
+                parts = line.split()
+                if len(parts) >= 2 and parts[1].isdigit():
+                    values[parts[0].rstrip(":")] = int(parts[1]) * 1024
+        except OSError:
+            values = {}
+        total = values.get("MemTotal")
+        available = values.get("MemAvailable")
+    if total is None and hasattr(os, "sysconf"):
+        try:
+            total = int(os.sysconf("SC_PAGE_SIZE")) * int(os.sysconf("SC_PHYS_PAGES"))
+        except (OSError, ValueError):
+            total = None
+    return {"total_bytes": total, "available_bytes": available}
+
+
+def _gpu_snapshot() -> dict[str, Any]:
+    nvidia_smi = shutil.which("nvidia-smi")
+    if not nvidia_smi:
+        return {"available": False, "provider": "nvidia-smi", "gpus": []}
+    try:
+        completed = subprocess.run(
+            [
+                nvidia_smi,
+                "--query-gpu=index,name,memory.total,memory.used",
+                "--format=csv,noheader,nounits",
+            ],
+            text=True,
+            capture_output=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"available": False, "provider": "nvidia-smi", "gpus": [], "error": str(exc)}
+    if completed.returncode != 0:
+        return {"available": False, "provider": "nvidia-smi", "gpus": [], "error": completed.stderr.strip()}
+    gpus: list[dict[str, Any]] = []
+    for line in completed.stdout.splitlines():
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) < 4:
+            continue
+        gpus.append(
+            {
+                "index": int(parts[0]) if parts[0].isdigit() else parts[0],
+                "name": parts[1],
+                "memory_total_mb": int(parts[2]) if parts[2].isdigit() else None,
+                "memory_used_mb": int(parts[3]) if parts[3].isdigit() else None,
+            }
+        )
+    return {"available": bool(gpus), "provider": "nvidia-smi", "gpus": gpus}
+
+
+def _local_runtime_snapshot(root: Path) -> dict[str, Any]:
+    path = root / ".hivemind" / "local_runtime.json"
+    if not path.exists():
+        return {"status": "missing", "active_backend": None}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"status": "invalid", "active_backend": None, "error": str(exc)}
+    return {
+        "status": data.get("status") or "available",
+        "active_backend": data.get("active_backend"),
+        "backend_count": len(data.get("backends") or {}),
+    }
+
+
+def capture_runtime_snapshot(root: Path, *, pid: Any = None) -> dict[str, Any]:
+    usage = shutil.disk_usage(root)
+    return {
+        "schema_version": 1,
+        "captured_at": now_iso(),
+        "pid": pid,
+        "host": socket.gethostname(),
+        "platform": platform.platform(),
+        "python": {"version": platform.python_version(), "executable": sys.executable},
+        "cpu": {"logical_count": os.cpu_count()},
+        "memory": _memory_snapshot(),
+        "disk": {"total_bytes": usage.total, "free_bytes": usage.free},
+        "gpu": _gpu_snapshot(),
+        "local_runtime": _local_runtime_snapshot(root),
+        "provider_clis": {name: shutil.which(name) for name in ["claude", "codex", "gemini", "ollama"]},
+    }
+
+
 def active_step_leases(root: Path, run_id: str) -> list[dict[str, Any]]:
     leases_dir = root / ".runs" / run_id / STEP_LEASES_DIR
     if not leases_dir.exists():
@@ -87,6 +180,7 @@ def write_supervisor_state(root: Path, run_id: str, state: dict[str, Any], *, re
         state["last_heartbeat_at"] = state["updated_at"]
         state["last_heartbeat_epoch"] = now_epoch
     state["active_leases"] = active_step_leases(root, run_id)
+    state.setdefault("runtime_snapshot", capture_runtime_snapshot(root, pid=state.get("pid")))
     paths["state"].parent.mkdir(parents=True, exist_ok=True)
     atomic_write(paths["state"], json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True))
     return paths["state"]
@@ -604,6 +698,7 @@ def supervisor_status_report(root: Path, run_id: str | None = None) -> dict[str,
     }
     state["active_leases"] = active_step_leases(root, paths_obj.run_id)
     state = recover_stale_supervisor_state(root, paths_obj.run_id, state)
+    state.setdefault("runtime_snapshot", capture_runtime_snapshot(root, pid=state.get("pid")))
     state["last_probes"] = state.get("last_probes") or probe_summaries_from_result(state.get("last_result") or {})
     if not state["last_probes"]:
         state["last_probes"] = probe_summaries_from_replay(replay)
@@ -680,6 +775,19 @@ def format_supervisor_status(report: dict[str, Any]) -> str:
         lines.append(f"Recovery Receipt: {report.get('last_recovery_receipt')}")
     if report.get("last_stop_receipt"):
         lines.append(f"Stop Receipt: {report.get('last_stop_receipt')}")
+    runtime = report.get("runtime_snapshot") or {}
+    if runtime:
+        memory = runtime.get("memory") or {}
+        gpu = runtime.get("gpu") or {}
+        local_runtime = runtime.get("local_runtime") or {}
+        lines.append(
+            "Runtime: "
+            f"python={((runtime.get('python') or {}).get('version')) or '-'} "
+            f"cpu={((runtime.get('cpu') or {}).get('logical_count')) or '-'} "
+            f"ram_available={memory.get('available_bytes') or '-'} "
+            f"gpu_count={len(gpu.get('gpus') or [])} "
+            f"local={local_runtime.get('active_backend') or local_runtime.get('status') or '-'}"
+        )
     replay = report.get("replay") or {}
     lines.append(
         "Replay: "
