@@ -29,6 +29,7 @@ ALLOWED_EVENT_TYPES = {
     "intent_routed",
     "routing_quality_created",
     "routing_plan_created",
+    "task_feature_vector_created",
     "society_plan_created",
     "route_action_failed",
     "checks_report_created",

@@ -129,7 +129,7 @@ Source: `docs/HIVE_MIND_GAPS.md` section "Header Role Decomposition and Per-Laye
 - [x] Specify adaptive adversarial chair design: task feature vectors, step evaluations, append-only DAG mutations, referee decisions, and capability learning.
 - [ ] Persist `StepEvaluation` artifacts under `.runs/<run_id>/step_evaluations/`, not only inline `PlanStep.evaluation`.
 - [ ] Converge `PlanStep` on `evaluation_policy` and phase out ad hoc `quality_gates`, `escalation_threshold`, and `referee_policy` use.
-- [ ] Add `TaskFeatureVector` artifact and mode router for cooperative/adversarial/verification-only/red-team defaults by task shape.
+- [x] Add `TaskFeatureVector` artifact and mode router for cooperative/adversarial/verification-only/red-team defaults by task shape.
 - [ ] Add `dag_mutations.jsonl` tests for observe-only mutation proposals: retry, reviewer, verifier, referee, run_test, ask_user.
 - [x] Refresh auto-estimated reversibility on every execution attempt, preserve operator-declared values, and surface gate factors in `execute_fan_out`.
 - [ ] Calibrate reversibility thresholds from run history and false-positive review logs before raising `REVERSIBILITY_BLOCK_THRESHOLD`.

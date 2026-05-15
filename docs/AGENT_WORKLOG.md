@@ -1020,3 +1020,12 @@
 - Completion: `hive ask` now writes `routing_quality.json` alongside `routing_plan.json`. The artifact records route source, schema validity, confidence, fallback use, action coverage, risk level, score, and prompt features; `routing_plan.operator_summary` now includes this quality evidence and expected artifact path.
 - Evidence: `python -m unittest tests.test_fast_router` passed 7/7; `python -m unittest tests.test_fast_router tests.test_run_validation tests.test_production_hardening` passed 42/42; `python -m py_compile hivemind/harness.py hivemind/run_validation.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 388/388; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the routing-quality slice and continue to the next AIOS completion gap.
+
+## 2026-05-16 03:31 KST - Codex - Task Feature Vector Mode Router
+
+- Context: Continuing the adaptive chair work after routing-quality artifacts. The next gap is a durable `TaskFeatureVector` so Hive can choose cooperative/adversarial/verification-only/red-team defaults from task shape instead of operator instinct.
+- Ownership: Codex owns a narrow router/chair slice in `hivemind/harness.py`, `hivemind/run_validation.py`, `tests/test_fast_router.py`, `docs/TODO.md`, and shared coordination logs.
+- Expected files: `hivemind/harness.py`, `hivemind/run_validation.py`, `tests/test_fast_router.py`, `docs/TODO.md`, `.ai-runs/shared/comms_log.md`.
+- Completion: `hive ask` now writes `task_feature_vector.json` and links it from `routing_plan.json`. The mode router classifies task shape into `cooperative`, `adversarial`, `verification_only`, or `red_team` using prompt features, intent, provider roles, and route-quality risk.
+- Evidence: `python -m unittest tests.test_fast_router` passed 8/8; `python -m unittest tests.test_fast_router tests.test_run_validation tests.test_production_hardening` passed 43/43; `python -m py_compile hivemind/harness.py hivemind/run_validation.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 389/389; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the TaskFeatureVector mode-router slice and continue to the next AIOS completion gap.

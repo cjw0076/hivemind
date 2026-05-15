@@ -1557,3 +1557,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Added `routing_quality.json`. It records route source, schema validity, confidence, fallback use, action coverage, score, risk level, prompt features, and route-quality risks. `routing_plan.json` now links this quality artifact and operator summaries include it in expected artifacts.
 - Evidence: `python -m unittest tests.test_fast_router` passed 7/7; `python -m unittest tests.test_fast_router tests.test_run_validation tests.test_production_hardening` passed 42/42; `python -m py_compile hivemind/harness.py hivemind/run_validation.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 388/388; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the routing-quality slice and continue to the next AIOS completion gap.
+
+## 2026-05-16 03:31 KST - Codex
+
+- Context: Continuing adaptive chair work. Hive needed a durable task feature vector so mode selection does not live only in operator intuition.
+- Decision: Added `task_feature_vector.json`. It records task features, providers, roles, route-quality risk, risk score, preferred mode, and mode reason. `hive ask` links this artifact from `routing_plan.json`, and operator summaries list it as an expected artifact.
+- Evidence: `python -m unittest tests.test_fast_router` passed 8/8; `python -m unittest tests.test_fast_router tests.test_run_validation tests.test_production_hardening` passed 43/43; `python -m py_compile hivemind/harness.py hivemind/run_validation.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 389/389; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the TaskFeatureVector mode-router slice and continue to the next AIOS completion gap.

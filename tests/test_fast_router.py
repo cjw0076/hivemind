@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from hivemind.harness import (
     ask_router,
+    classify_task_feature_vector,
     format_orchestration_report,
     format_routing_plan,
     normalize_router_actions,
@@ -38,6 +39,7 @@ class FastRouterTest(unittest.TestCase):
             self.assertEqual(plan["route_source"], "heuristic_fast")
             self.assertIn("route_quality", plan)
             self.assertTrue((plan_path.parent / "routing_quality.json").exists())
+            self.assertTrue((plan_path.parent / "task_feature_vector.json").exists())
             self.assertEqual(plan["route_quality"]["verdict"], "review")
             self.assertNotIn('"type": "agent_started"', events)
 
@@ -53,6 +55,7 @@ class FastRouterTest(unittest.TestCase):
             self.assertEqual(summary["next"]["command"], f"hive flow --run-id {plan['run_id']}")
             self.assertTrue(any(item["path"].endswith("routing_plan.json") for item in summary["expected_artifacts"]))
             self.assertTrue(any(item["path"].endswith("routing_quality.json") for item in summary["expected_artifacts"]))
+            self.assertTrue(any(item["path"].endswith("task_feature_vector.json") for item in summary["expected_artifacts"]))
             self.assertIn("위험도: medium", rendered)
             self.assertIn("다음:", rendered)
 
@@ -96,6 +99,7 @@ class FastRouterTest(unittest.TestCase):
 
             self.assertEqual(plan["route_source"], "local_llm")
             self.assertEqual(plan["route_quality"]["risk_level"], "low")
+            self.assertEqual(plan["task_feature_vector"]["preferred_mode"], "cooperative")
             self.assertNotIn('"worker": "context_compressor"', events)
             self.assertFalse((plan_path.parent / "agents" / "local" / "context_result.yaml").exists())
             self.assertIn("claude/planner_result.yaml", "\n".join(plan["prepared_artifacts"]))
@@ -120,6 +124,29 @@ class FastRouterTest(unittest.TestCase):
             self.assertEqual(quality["risk_level"], "high")
             self.assertIn("router_schema_invalid", quality["risks"])
             self.assertEqual(plan["route_quality"]["artifact"], f".runs/{plan['run_id']}/routing_quality.json")
+
+    def test_task_feature_vector_mode_router(self) -> None:
+        base_quality = {"score": 0.8, "risk_level": "low", "fallback_used": False}
+
+        research = classify_task_feature_vector(
+            "논문 실험 가설을 adversarial 하게 토론해줘",
+            {"intent": "planning", "actions": [{"provider": "claude", "role": "planner"}]},
+            base_quality,
+        )
+        security = classify_task_feature_vector(
+            "public release 전에 secret permission bypass 보안 검토",
+            {"intent": "review", "actions": [{"provider": "claude", "role": "reviewer"}]},
+            base_quality,
+        )
+        review = classify_task_feature_vector(
+            "audit this run and verify evidence",
+            {"intent": "review", "actions": [{"provider": "local", "role": "review"}]},
+            base_quality,
+        )
+
+        self.assertEqual(research["preferred_mode"], "adversarial")
+        self.assertEqual(security["preferred_mode"], "red_team")
+        self.assertEqual(review["preferred_mode"], "verification_only")
 
     def test_score_route_quality_passes_valid_local_llm_route(self) -> None:
         quality = score_route_quality(

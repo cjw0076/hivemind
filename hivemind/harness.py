@@ -4140,6 +4140,10 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
         router_status=router_status,
     )
     quality_path = write_routing_quality(paths, route_quality)
+    feature_seed = dict(parsed)
+    feature_seed["actions"] = actions
+    task_features = classify_task_feature_vector(prompt, feature_seed, route_quality)
+    feature_path = write_task_feature_vector(paths, task_features)
     ensure_capabilityos_recommendation(root, paths.run_id)
 
     prepared: list[str] = []
@@ -4189,6 +4193,12 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
             "risk_level": route_quality.get("risk_level"),
             "fallback_used": route_quality.get("fallback_used"),
             "risks": route_quality.get("risks", []),
+        },
+        "task_feature_vector": {
+            "artifact": feature_path.relative_to(root).as_posix(),
+            "preferred_mode": task_features.get("preferred_mode"),
+            "risk_score": task_features.get("risk_score"),
+            "mode_reason": task_features.get("mode_reason"),
         },
     }
     plan["operator_summary"] = build_operator_summary_from_plan(plan)
@@ -4658,6 +4668,7 @@ def build_operator_summary_from_plan(plan: dict[str, Any], *, workflow_next: dic
     expected = [
         {"path": f".runs/{run_id}/routing_plan.json", "status": "written"},
         {"path": f".runs/{run_id}/routing_quality.json", "status": "written"},
+        {"path": f".runs/{run_id}/task_feature_vector.json", "status": "written"},
         {"path": f".runs/{run_id}/society_plan.json", "status": "expected_after_orchestrate"},
         {"path": f".runs/{run_id}/plan_dag.json", "status": "expected_after_flow"},
     ]
@@ -4675,6 +4686,7 @@ def build_operator_summary_from_plan(plan: dict[str, Any], *, workflow_next: dic
         "next": next_action,
         "expected_artifacts": expected,
         "route_quality": plan.get("route_quality") or {},
+        "task_feature_vector": plan.get("task_feature_vector") or {},
     }
 
 
@@ -4844,6 +4856,99 @@ def write_routing_quality(paths: RunPaths, quality: dict[str, Any]) -> Path:
             "score": quality.get("score"),
             "verdict": quality.get("verdict"),
             "risk_level": quality.get("risk_level"),
+        },
+    )
+    return path
+
+
+def classify_task_feature_vector(prompt: str, plan_seed: dict[str, Any], route_quality: dict[str, Any]) -> dict[str, Any]:
+    text = prompt.lower()
+    intent = str(plan_seed.get("intent") or "unknown")
+    actions = [item for item in (plan_seed.get("actions") or []) if isinstance(item, dict)]
+    providers = sorted({str(item.get("provider") or "") for item in actions if item.get("provider")})
+    roles = sorted({str(item.get("role") or "") for item in actions if item.get("role")})
+
+    flags = {
+        "implementation": intent == "implementation" or any(token in text for token in ["implement", "fix", "build", "code", "구현", "수정", "고쳐"]),
+        "debugging": intent == "debugging" or any(token in text for token in ["debug", "error", "exception", "오류", "에러", "멈추"]),
+        "review": intent == "review" or any(token in text for token in ["review", "audit", "검토", "리뷰", "점검"]),
+        "research": any(token in text for token in ["research", "paper", "hypothesis", "experiment", "연구", "논문", "실험", "가설"]),
+        "debate": any(token in text for token in ["debate", "adversarial", "argue", "논쟁", "토론", "반박"]),
+        "security": any(token in text for token in ["security", "secret", "credential", "permission", "bypass", "danger", "보안", "권한", "위험"]),
+        "public_release": any(token in text for token in ["publish", "release", "public", "production", "배포", "공개", "출시"]),
+        "memory": intent == "memory_import" or any(token in text for token in ["memory", "메모리", "기억"]),
+        "local_only": providers == ["local"],
+        "provider_execution": any(provider in {"claude", "codex", "gemini"} for provider in providers),
+    }
+
+    risk_score = 0
+    if route_quality.get("risk_level") == "high":
+        risk_score += 3
+    elif route_quality.get("risk_level") == "medium":
+        risk_score += 1
+    if flags["security"] or flags["public_release"]:
+        risk_score += 3
+    if flags["implementation"]:
+        risk_score += 1
+    if "executor" in roles:
+        risk_score += 1
+    if flags["research"] or flags["debate"]:
+        risk_score += 1
+
+    if flags["security"] or flags["public_release"]:
+        preferred_mode = "red_team"
+    elif flags["research"] or flags["debate"]:
+        preferred_mode = "adversarial"
+    elif flags["review"] and not flags["implementation"]:
+        preferred_mode = "verification_only"
+    else:
+        preferred_mode = "cooperative"
+
+    if risk_score >= 4 and preferred_mode == "cooperative":
+        preferred_mode = "verification_only"
+
+    return {
+        "schema_version": 1,
+        "kind": "task_feature_vector",
+        "generated_at": now_iso(),
+        "intent": intent,
+        "preferred_mode": preferred_mode,
+        "risk_score": risk_score,
+        "features": flags,
+        "providers": providers,
+        "roles": roles,
+        "route_quality": {
+            "score": route_quality.get("score"),
+            "risk_level": route_quality.get("risk_level"),
+            "fallback_used": route_quality.get("fallback_used"),
+        },
+        "mode_reason": task_mode_reason(preferred_mode, flags, route_quality),
+    }
+
+
+def task_mode_reason(preferred_mode: str, flags: dict[str, bool], route_quality: dict[str, Any]) -> str:
+    if preferred_mode == "red_team":
+        return "security/public-release/danger features require adversarial challenge before acceptance"
+    if preferred_mode == "adversarial":
+        return "research or debate features benefit from structured disagreement"
+    if preferred_mode == "verification_only":
+        if route_quality.get("risk_level") == "high":
+            return "route quality is high risk; verify before execution"
+        return "review/audit task should verify evidence before proposing changes"
+    return "default cooperative execution for bounded reversible work"
+
+
+def write_task_feature_vector(paths: RunPaths, vector: dict[str, Any]) -> Path:
+    path = paths.run_dir / "task_feature_vector.json"
+    write_json(path, vector)
+    add_state_artifact(paths, "task_feature_vector", path)
+    append_event(
+        paths,
+        "task_feature_vector_created",
+        {
+            "artifact": path.relative_to(paths.root).as_posix(),
+            "preferred_mode": vector.get("preferred_mode"),
+            "risk_score": vector.get("risk_score"),
         },
     )
     return path
