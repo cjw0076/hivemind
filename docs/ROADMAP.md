@@ -46,12 +46,12 @@ Deliverables:
 
 - Stable `.runs/` folder protocol with `task.yaml`, `context_pack.md`, `handoff.yaml`, `events.jsonl`, `run_state.json`, `verification.yaml`, `memory_drafts.json`, and `final_report.md`.
 - Canonical protocol spec in `docs/RUN_ARTIFACT_PROTOCOL.md`.
-- `hive run`, `hive status`, `hive next`, `hive tui`, `hive context`, `hive handoff`, `hive invoke`, `hive verify`, `hive summarize`, `hive memory draft/list`, and `hive agents status`.
+- `hive run`, `hive status`, `hive next`, `hive live`, `hive context`, `hive handoff`, `hive invoke`, `hive verify`, `hive summarize`, `hive memory draft/list`, and `hive agents status`.
 - Provider invocation artifacts for Claude, Codex, Gemini, and local workers.
 - Provider result validation for `agents/<provider>/<role>_result.yaml`.
 - Prepare-only path for providers without a stable non-interactive execution contract.
 - Recoverable failure artifacts when a provider or local model is unavailable.
-- CLI/TUI run board that reads run files without requiring a DB and shows pipeline, agents, artifacts, and next action.
+- CLI/live run board that reads run files without requiring a DB and shows pipeline, agents, artifacts, and next action.
 - Production wrappers through `scripts/install-hive-cli.sh`, `bin/hive`, and the private npm `production` script.
 - Hive Mind activity feed through `hive_events.jsonl` and `hive hive activity`, separate from machine-oriented `events.jsonl`.
 

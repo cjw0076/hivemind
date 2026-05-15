@@ -1,7 +1,7 @@
 """Append-only workloop ledger for visible multi-agent execution.
 
 The ledger is the bridge between the user's shared-folder collaboration style
-and Hive Mind's TUI: every scheduler/step authority event becomes a durable,
+and Hive Mind's prompt/log surface: every scheduler/step authority event becomes a durable,
 tail-able JSONL record under the run directory.
 """
 

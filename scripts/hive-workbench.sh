@@ -52,11 +52,11 @@ echo "Handoff: $handoff_path"
 echo "Provider env loaded from: .hivemind/settings_profile.json"
 echo ""
 echo "Useful commands:"
-echo "  hive tui"
+echo "  hive live"
 echo "  hive status"
 echo "  hive settings shell"
 echo ""
 
-if [[ "${HIVE_OPEN_TUI:-1}" == "1" ]]; then
-  "$PYTHON" -m hivemind.hive tui
+if [[ "${HIVE_OPEN_LIVE:-1}" == "1" ]]; then
+  "$PYTHON" -m hivemind.hive live
 fi

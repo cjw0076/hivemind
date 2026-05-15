@@ -56,7 +56,7 @@ hive ask "task"             # same, explicit
 hive orchestrate "task"     # multi-agent society plan (society_plan.json)
 hive status                 # current run state
 hive board                  # run board with pipeline, agents, artifact status, next action
-hive tui                    # curses TUI (requires interactive terminal)
+hive live                   # prompt/log surface over the current run
 hive doctor                 # provider/CLI health check
 hive doctor hardware|providers|models|permissions|all
 hive agents detect|status|view|roles|policy|explain
@@ -75,7 +75,7 @@ hive workspace --layout dev|dual
 ### Tests
 ```bash
 pytest tests/ -v                          # full suite (47 tests, ~12s)
-pytest tests/test_tui_composer.py -v      # single file
+pytest tests/test_cli_entrypoint.py -v    # CLI entrypoint behavior
 pytest tests/test_run_validation.py::RunValidationTest::test_minimal_fixture_passes -v
 ```
 
@@ -86,7 +86,7 @@ pytest tests/test_run_validation.py::RunValidationTest::test_minimal_fixture_pas
 ### Source Layout (`hivemind/`)
 - `hive.py` — CLI entry point (`main()`), all subcommand dispatch, arg parsing.
 - `harness.py` — the core orchestration layer: `RunPaths`, `create_run`, `invoke_external_agent`, `invoke_local`, `orchestrate_prompt`, `ask_router`, `debate_topic`, `close_gap_loop`, all `format_*` and `*_report` functions. ~5000 LOC — the bulk of all logic.
-- `tui.py` — curses TUI with 8 views (board/events/transcript/agents/artifacts/memory/society/diff), always-visible composer, background submit thread.
+- `live.py` — prompt/log read model and MemoryOS observability projection for current runs.
 - `local_workers.py` — `WorkerSpec` definitions for intent_router, classifier, json_normalizer, memory_extractor, and other workers; `run_worker()` calls Ollama; `worker_route_table()` selects fast/default/strong model by budget.
 - `run_validation.py` — `validate_run_artifacts()` checks run folder against all schemas (task, handoff, run_state, events, verification, memory_drafts, provider_results).
 - `utils.py` — `is_valid_run_id()`, `now_iso()`, `stable_id()`.
@@ -115,7 +115,7 @@ artifacts/                       # gap-closure artifacts (gap_closure.json index
 
 ### Key Invariants
 - `run_id` must match `^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`; `RunPaths.__post_init__` enforces this. Path traversal is rejected at every public entry point.
-- `control.lock` enforces single-controller: TUI acquires on open, heartbeats every 30s, releases on exit. Second controller is blocked until lock expires (>60s stale).
+- `control.lock` is a legacy controller artifact retained for stale-run compatibility; public operation now uses `hive live`, `hive inspect`, and ledger/proof receipts.
 - Provider result schema requires `schema_version`, `provider`, `role`, `status` plus expanded fields; `validate_run_artifacts()` checks all.
 - `hive "prompt"` always calls `orchestrate_prompt()`, not `ask_router()` directly.
 

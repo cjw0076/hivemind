@@ -80,7 +80,6 @@ def quickstart_demo(root: Path, task: str = DEFAULT_QUICKSTART_TASK, *, delay: f
             f"hive inspect {run_id}",
             f"hive live --run-id {run_id}",
             f"hive live --run-id {run_id} --memoryos --json",
-            f"hive tui --run-id {run_id}",
         ],
     }
     out_path = paths.artifacts / "quickstart_report.json"

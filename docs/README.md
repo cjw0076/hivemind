@@ -40,7 +40,7 @@ owns the neural-map observability UI over Hive events and accepted memory.
 
 Relevant docs:
 
-- `TUI_HARNESS.md`
+- `HIVE_WORKING_METHOD.md`
 - `LEDGER_PROTOCOL.md`
 - `HIVE_WORKING_METHOD.md`
 - `THIRD_PARTY_INTEGRATIONS.md`

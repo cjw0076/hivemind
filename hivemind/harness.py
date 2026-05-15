@@ -1599,7 +1599,7 @@ def build_context_pack_for_role(root: Path, role: str, run_id: str | None = None
                 "status": state.get("status"),
             },
             "active_decisions": [
-                "Hive Mind owns orchestration, provider adapters, TUI, and run artifacts.",
+                "Hive Mind owns orchestration, provider adapters, prompt/log runtime, and run artifacts.",
                 "MemoryOS owns accepted memory graph and review/approval.",
                 "CapabilityOS owns capability/workflow recommendations.",
             ],
@@ -1700,8 +1700,8 @@ def run_audit_report(root: Path, run_id: str | None = None) -> dict[str, Any]:
     }
 
 
-def demo_live_run(root: Path, task: str = "Watch Hive Mind agents coordinate in the TUI", run_id: str | None = None, delay: float = 0.45) -> dict[str, Any]:
-    """Create or animate a safe demo run so the TUI shows agents moving.
+def demo_live_run(root: Path, task: str = "Watch Hive Mind agents coordinate", run_id: str | None = None, delay: float = 0.45) -> dict[str, Any]:
+    """Create or animate a safe demo run so live/inspect surfaces show agents moving.
 
     This intentionally does not execute external provider CLIs or local LLM
     backends. It writes normal Hive artifacts with short delays so the board,
@@ -1712,7 +1712,7 @@ def demo_live_run(root: Path, task: str = "Watch Hive Mind agents coordinate in 
     paths = create_run(root, task, project="Hive Mind", task_type="demo") if run_id is None else load_run(root, run_id)[0]
     paths, state = load_run(root, paths.run_id)
     append_event(paths, "demo_started", {"task": state.get("user_request"), "delay": delay})
-    append_hive_activity(paths, "hive-mind", "demo_started", "Live TUI coordination demo started", {"delay": delay})
+    append_hive_activity(paths, "hive-mind", "demo_started", "Live coordination demo started", {"delay": delay})
     update_state(paths, phase="route", status="demo_running", latest_event="Demo started.")
     _demo_pause(delay)
 
@@ -1763,7 +1763,7 @@ def demo_live_run(root: Path, task: str = "Watch Hive Mind agents coordinate in 
     summary_path = build_summary(root, paths.run_id)
     update_state(paths, phase="close", status="demo_complete", latest_event="Demo complete.")
     append_event(paths, "demo_completed", {"verification": verification_path.relative_to(root).as_posix()})
-    append_hive_activity(paths, "hive-mind", "demo_completed", "Live TUI coordination demo completed", {"run_id": paths.run_id})
+    append_hive_activity(paths, "hive-mind", "demo_completed", "Live coordination demo completed", {"run_id": paths.run_id})
 
     return {
         "schema_version": 1,
@@ -1778,8 +1778,8 @@ def demo_live_run(root: Path, task: str = "Watch Hive Mind agents coordinate in 
             "final_report": summary_path.relative_to(root).as_posix(),
         },
         "next": {
-            "command": f"hive tui --run-id {paths.run_id}",
-            "reason": "open the completed demo run in the Hive Mind TUI",
+            "command": f"hive live --run-id {paths.run_id}",
+            "reason": "open the completed demo run in the Hive prompt/log surface",
         },
     }
 
@@ -1815,7 +1815,7 @@ def _demo_local_context(root: Path, paths: RunPaths, delay: float) -> None:
         "escalation_reason": "",
         "output": {
             "summary": "Demo context pack prepared for Claude/Codex/Gemini coordination.",
-            "key_files": ["hivemind/tui.py", "hivemind/harness.py", "hivemind/plan_dag.py"],
+            "key_files": ["hivemind/live.py", "hivemind/harness.py", "hivemind/plan_dag.py"],
         },
     }
     write_json(out_path, result)
@@ -2852,8 +2852,8 @@ def workspace_layout_report(layout: str = "dev") -> dict[str, Any]:
         "dev": [
             "hive board",
             "hive events --follow",
-            "hive transcript --tui",
-            "hive diff --tui",
+            "hive transcript",
+            "hive diff",
         ],
         "dual": [
             "hive board",
@@ -5579,7 +5579,7 @@ def default_project_readme() -> str:
         "```bash\n"
         "hive doctor\n"
         "hive run \"your task\"\n"
-        "hive tui\n"
+        "hive live\n"
         "```\n"
     )
 

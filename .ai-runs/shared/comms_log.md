@@ -1501,3 +1501,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Removed `hive tui` from the public parser and made bare TTY `hive` enter `hive live` instead of curses. Kept legacy terminal view helpers as internal/debug surfaces for now because deleting `hivemind/tui.py` touches a broader historical test/doc surface.
 - Evidence: `hive --help` no longer lists a `tui` subcommand; `python -m hivemind.hive tui` exits rc=2; `python -m hivemind.hive --root <tmp> live --json` exits rc=0 with `status=no_run`; focused tests passed 25/25; full suite passed 420/420; production gate passed 19/19.
 - Next: Hard-delete TUI modules/tests/docs only under a separate cleanup contract if MemoryOS neural-map UI is ready to replace all legacy terminal views.
+
+## 2026-05-15 19:38 KST - Codex
+
+- Context: Continued the TUI retirement because scripts and legacy view commands still had executable paths into curses after `hive tui` was removed from the parser.
+- Decision: Deleted `hivemind/tui.py`, `hivemind/tui_explore.py`, and TUI-only tests. Replaced remaining runtime calls with text/live outputs and changed quickstart/workbench/product-eval guidance to `hive live`.
+- Evidence: `python -m unittest discover -s tests -p 'test_*.py'` passed 371/371; `bash scripts/public-release-check.sh` passed 19/19; `python -m hivemind.hive tui` exits rc=2; quickstart smoke now recommends `hive inspect` and `hive live` only.
+- Next: Keep old TUI design docs as archived history unless a docs cleanup contract explicitly removes or migrates them.

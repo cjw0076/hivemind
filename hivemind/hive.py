@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -111,7 +112,6 @@ from .protocol import (
     vote_path,
     save_intent,
 )
-from .tui import print_status, run_tui
 from .workloop import format_execution_ledger, format_ledger_replay, read_execution_ledger, replay_execution_ledger
 from .live import build_live_report, build_memoryos_observability_report, format_live_report, start_live_prompt
 from .inspect_run import build_inspect_report, format_inspect_report
@@ -283,7 +283,7 @@ def _main(argv: list[str] | None = None) -> None:
 
     init_cmd = sub.add_parser("init", help="initialize Hive Mind onboarding state")
     init_cmd.add_argument("--json", action="store_true")
-    init_cmd.add_argument("--no-tui", action="store_true", help="non-interactive init; accepted for installer compatibility")
+    init_cmd.add_argument("--no-tui", action="store_true", help=argparse.SUPPRESS)
     init_cmd.add_argument("--skills", choices=["yes", "no"], default="no", help="prepare skill config placeholders")
     init_cmd.add_argument("--mcp", choices=["yes", "no"], default="no", help="prepare MCP config placeholders")
     doctor_cmd = sub.add_parser("doctor", help="check Hive Mind runtime health")
@@ -531,7 +531,6 @@ def _main(argv: list[str] | None = None) -> None:
     transcript_cmd = sub.add_parser("transcript", help="show transcript or open the legacy transcript terminal view")
     transcript_cmd.add_argument("--run-id")
     transcript_cmd.add_argument("--tail", type=int, default=120)
-    transcript_cmd.add_argument("--tui", action="store_true")
 
     artifacts_cmd = sub.add_parser("artifacts", help="open the legacy artifacts terminal view")
     artifacts_cmd.add_argument("--run-id")
@@ -762,7 +761,6 @@ def _main(argv: list[str] | None = None) -> None:
     diff_cmd = sub.add_parser("diff", help="write/show git diff report for current run")
     diff_cmd.add_argument("--run-id")
     diff_cmd.add_argument("--json", action="store_true")
-    diff_cmd.add_argument("--tui", action="store_true")
     review_diff_cmd = sub.add_parser("review-diff", help="capture git diff and run local review")
     review_diff_cmd.add_argument("--run-id")
     commit_summary_cmd = sub.add_parser("commit-summary", help="write proposed commit summary without committing")
@@ -836,7 +834,7 @@ def _main(argv: list[str] | None = None) -> None:
             print(format_agents_status(result))
         return
     if args.cmd == "agents" and args.agents_cmd == "view":
-        run_tui(root, run_id=args.run_id, view="agents", control=False)
+        print(format_agents_status(detect_agents(root, write=True)))
         return
     if args.cmd == "agents" and args.agents_cmd == "roles":
         report = agent_roles_report()
@@ -1212,17 +1210,30 @@ def _main(argv: list[str] | None = None) -> None:
             return
     if args.cmd == "status":
         if args.json:
-            print_status(root, run_id=args.run_id, json_output=True)
+            import json as _json
+
+            print(_json.dumps(run_board(root, args.run_id), ensure_ascii=False, indent=2, sort_keys=True))
         else:
             print(format_run_board(run_board(root, args.run_id)))
         return
     if args.cmd == "board":
-        run_tui(root, run_id=args.run_id, view="board", control=not args.observer)
+        print(format_run_board(run_board(root, args.run_id)))
         return
     if args.cmd == "events":
         if args.follow:
-            run_tui(root, run_id=args.run_id, view="events", control=False)
-            return
+            try:
+                while True:
+                    paths, _ = load_run(root, args.run_id)
+                    events = read_hive_activity(paths, limit=args.tail) or read_events(paths, limit=args.tail)
+                    for event in events:
+                        if "summary" in event:
+                            print(f"{event.get('ts')} {event.get('actor')} {event.get('action')} {event.get('summary')}")
+                        else:
+                            artifact = f" {event.get('artifact')}" if event.get("artifact") else ""
+                            print(f"{event.get('ts')} {event.get('type')}{artifact}")
+                    time.sleep(1.0)
+            except KeyboardInterrupt:
+                return
         paths, _ = load_run(root, args.run_id)
         events = read_hive_activity(paths, limit=args.tail) or read_events(paths, limit=args.tail)
         if args.json:
@@ -1238,13 +1249,10 @@ def _main(argv: list[str] | None = None) -> None:
                     print(f"{event.get('ts')} {event.get('type')}{artifact}")
         return
     if args.cmd == "transcript":
-        if args.tui:
-            run_tui(root, run_id=args.run_id, view="transcript", control=False)
-        else:
-            print(read_transcript(root, args.run_id, tail=args.tail), end="")
+        print(read_transcript(root, args.run_id, tail=args.tail), end="")
         return
     if args.cmd == "artifacts":
-        run_tui(root, run_id=args.run_id, view="artifacts", control=False)
+        print(format_artifacts_view(run_board(root, args.run_id)))
         return
     if args.cmd == "next":
         import json as _json
@@ -1315,8 +1323,12 @@ def _main(argv: list[str] | None = None) -> None:
                 print(format_ledger_replay(report))
             return
         if args.follow:
-            run_tui(root, run_id=args.run_id, view="ledger", control=False)
-            return
+            try:
+                while True:
+                    print(format_execution_ledger(read_execution_ledger(root, args.run_id, limit=args.tail)))
+                    time.sleep(1.0)
+            except KeyboardInterrupt:
+                return
         records = read_execution_ledger(root, args.run_id, limit=args.tail)
         if args.json:
             import json
@@ -1727,7 +1739,7 @@ def _main(argv: list[str] | None = None) -> None:
             print(format_memory_drafts(report))
         return
     if args.cmd == "memory" and args.memory_cmd == "view":
-        run_tui(root, run_id=args.run_id, view="memory", control=False)
+        print(format_memory_drafts(memory_drafts_report(root, args.run_id)))
         return
     if args.cmd == "completion":
         print_completion(args.shell)
@@ -1757,9 +1769,6 @@ def _main(argv: list[str] | None = None) -> None:
         run_chat(root)
         return
     if args.cmd == "diff":
-        if args.tui:
-            run_tui(root, run_id=args.run_id, view="diff", control=False)
-            return
         report = git_diff_report(root, args.run_id)
         if args.json:
             import json
@@ -1787,7 +1796,7 @@ def _main(argv: list[str] | None = None) -> None:
         print(format_hive_activity(root, args.run_id, limit=args.tail))
         return
     if args.cmd == "society":
-        run_tui(root, run_id=args.run_id, view="society", control=False)
+        print(format_society_view(root, args.run_id))
         return
     if args.cmd == "audit":
         report = run_audit_report(root, args.run_id)
@@ -2082,6 +2091,47 @@ def print_chat_help() -> None:
             ]
         )
     )
+
+
+def format_artifacts_view(board: dict[str, object]) -> str:
+    lines = [f"Hive Artifacts: {board.get('run_id')}", ""]
+    artifacts = board.get("artifacts") if isinstance(board.get("artifacts"), list) else []
+    if not artifacts:
+        lines.append("No artifacts recorded yet.")
+        return "\n".join(lines)
+    for item in artifacts:
+        if not isinstance(item, dict):
+            continue
+        lines.append(
+            f"- {item.get('name')}: {item.get('status')} "
+            f"freshness={item.get('freshness')} producer={item.get('producer')}"
+        )
+        if item.get("path"):
+            lines.append(f"  path: {item.get('path')}")
+    return "\n".join(lines)
+
+
+def format_society_view(root: Path, run_id: str | None = None) -> str:
+    paths, _ = load_run(root, run_id)
+    society_path = paths.run_dir / "society_plan.json"
+    lines = [f"Hive Society: {paths.run_id}", ""]
+    if not society_path.exists():
+        lines.append("No society_plan.json yet. Next: hive orchestrate \"your task\"")
+        return "\n".join(lines)
+    try:
+        data = json.loads(society_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return "\n".join([*lines, f"Invalid society_plan.json: {exc}"])
+    members = data.get("members") if isinstance(data, dict) else []
+    if not members:
+        lines.append("No society members recorded.")
+        return "\n".join(lines)
+    for member in members:
+        if not isinstance(member, dict):
+            continue
+        name = member.get("id") or member.get("agent") or member.get("name") or "agent"
+        lines.append(f"- {name}: role={member.get('role')} status={member.get('status')}")
+    return "\n".join(lines)
 
 
 def handle_chat_task(root: Path, prompt: str) -> None:

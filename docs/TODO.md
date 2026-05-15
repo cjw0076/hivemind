@@ -32,7 +32,7 @@ Sources: `VG-03`, `VG-04`, `VG-05`, `VG-13`.
 - [x] Add event taxonomy and validation for `.runs/*/events.jsonl`.
 - [x] Normalize provider invocation artifacts for Claude, Codex, Gemini, and local workers.
 - [x] Add local worker route table with schema validation, confidence, and escalation fields.
-- [x] Make `hive tui` show current run health, provider availability, latest event, failures, and missing artifacts.
+- [x] Make `hive status` / `hive live` show current run health, provider availability, latest event, failures, and missing artifacts.
 - [x] Add parser warnings instead of failing entire imports on one malformed record.
 - [x] Persist production settings profile during onboarding so provider paths, local model inventory, and shell exports are tracked.
 - [x] Add prompt-first `hive ask` local intent routing that decomposes work into Claude/Codex/Gemini/local artifacts.
@@ -51,9 +51,9 @@ Sources: `VG-03`, `VG-04`, `VG-05`, `VG-06`, `VG-13`.
 
 Work order: finish the `hive` operator loop before deeper MemoryOS/CapabilityOS integration.
 
-- [x] Add multi-view Hive Console routes for board, events, transcript, agents, artifacts, memory, society, and diff.
+- [x] Add terminal route commands for board, events, transcript, agents, artifacts, memory, society, and diff.
 - [x] Add observer/controller separation with a durable `.runs/<run_id>/control.lock`.
-- [x] Add artifact freshness, producer, phase class, and validation metadata to run-board/TUI status.
+- [x] Add artifact freshness, producer, phase class, and validation metadata to run-board/live status.
 - [x] Remove current `mos` naming from the Hive Mind CLI boundary so MemoryOS remains a sibling project.
 - [x] Add doctor scopes: `hive doctor hardware|providers|models|permissions|all`.
 - [x] Add hardware profile output: CPU, RAM, GPU/VRAM, disk, Python, Node, Docker, local adapter status, provider CLI paths, network, and key ports.
@@ -104,7 +104,7 @@ Sources: `VG-03`, `VG-04`, `VG-06`, `VG-13`.
 - [x] Surface `disagreements.json` in `hive inspect` and upgrade inspect verdict to `escalated` for high/medium disagreement topology.
 - [ ] Upgrade task decomposition beyond keyword heuristics with a schema-validated router, provider fallback, and route-quality scoring.
 - [ ] Add convergence scoring: evidence strength, reversibility, risk, and user-preference fit.
-- [ ] Add TUI view for active debate rounds and participant readiness.
+- [ ] Add `hive live`/`hive inspect` surface for active debate rounds and participant readiness.
 - [ ] Add MemoryOS draft extraction from debate convergence only after human review.
 - [ ] Add debate mode flags per round: cooperative, adversarial, and verification-only.
 - [ ] Add binding `PreCommitTable` artifacts with agent signatures and result-to-disposition matching.
@@ -133,7 +133,7 @@ Source: `docs/HIVE_MIND_GAPS.md` section "Header Role Decomposition and Per-Laye
 - [ ] Add `dag_mutations.jsonl` tests for observe-only mutation proposals: retry, reviewer, verifier, referee, run_test, ask_user.
 - [x] Refresh auto-estimated reversibility on every execution attempt, preserve operator-declared values, and surface gate factors in `execute_fan_out`.
 - [ ] Calibrate reversibility thresholds from run history and false-positive review logs before raising `REVERSIBILITY_BLOCK_THRESHOLD`.
-- [x] Add per-run `execution_ledger.jsonl` so DAG scheduler/step authority, permission mode, bypass mode, touched files, and artifacts are visible to CLI/TUI.
+- [x] Add per-run `execution_ledger.jsonl` so DAG scheduler/step authority, permission mode, bypass mode, touched files, and artifacts are visible to CLI/live surfaces.
 - [x] Specify ledger protocol over `execution_ledger.jsonl`: `ExecutionIntent`, `ExecutionVote`, `ExecutionDecision`, `ExecutionProof`, quorum, bypass class, lease, verifier close, and replay rules.
 - [x] Implement protocol artifact schemas and helpers for `execution_intents/`, `execution_votes/`, `execution_decisions/`, and `execution_proofs/`.
 - [x] Add `hive protocol intent/check/vote/decide/proof` as dry-run-first CLI commands.
@@ -141,10 +141,10 @@ Source: `docs/HIVE_MIND_GAPS.md` section "Header Role Decomposition and Per-Laye
 - [x] Add `hive ledger replay` to reconstruct step authority state and detect hash/artifact drift.
 - [ ] Extend ledger replay with artifact content hashes and command/prompt hash drift.
 - [x] Add ledger `artifact_sha256` tracking and replay-time `artifact_hash_drift` detection for recorded artifacts.
-- [x] Extend TUI ledger view with current authority, waiting votes, active intent, replay issues, and verifier/proof state.
-- [ ] Extend TUI protocol drilldown with per-intent conditions, artifact paths, and active lease details.
+- [x] Extend ledger/live view with current authority, waiting votes, active intent, replay issues, and verifier/proof state.
+- [ ] Extend live/inspect protocol drilldown with per-intent conditions, artifact paths, and active lease details.
 - [x] Design `ProbeStep` criterion schema before implementation: typed criterion, evaluator, expected artifact field, timeout, and failure disposition.
-- [x] Surface `ProbeStep` action, confidence, and criteria count in ledger replay, TUI ledger cockpit, and supervised run status.
+- [x] Surface `ProbeStep` action, confidence, and criteria count in ledger replay, live summaries, and supervised run status.
 - [ ] Add bounded parallel fan-out/fan-in runner for safe runnable steps, with durable resume and barrier joins.
 - [ ] Add evaluation-aware barrier joins: close only when dependency status and evaluation policy are satisfied.
 - [ ] Add `RefereeDecision` artifact and `referee` step type; prefer required next tests over winner selection.
@@ -199,14 +199,14 @@ Sources: `VG-03`, `VG-04`, `VG-13`, `VG-18`.
 - [x] Add `hive settings detect/shell` and `scripts/hive-workbench.sh` for context editing plus fast provider artifact preparation.
 - [x] Add `hive provider <claude|codex|gemini> -- <native args>` passthrough so native CLI features stay available behind Hive artifacts, ledger intents, policy decisions, stdout/stderr capture, and proof records.
 - [x] Add `hive provider-loop prepare|tick|status|stop` so Claude monitor plans, Codex one-shot ticks, and local worker ticks share bounded run artifacts and stop receipts.
-- [x] Add TUI prompt routing controls: `n` for new prompt and `a` for auto-routing the current run.
+- [x] Retired legacy TUI prompt routing controls after promoting `hive live` as the default prompt/log surface.
 - [x] Add `hive run -q --json` and shell completion script generation for bash/zsh/fish.
 - [x] Add interactive slash-command shell for `hive` inspired by OpenClaude/Open Codex.
-- [x] Add UTF-8/Hangul-capable TUI composer with cursor movement, Ctrl+C cancel, Ctrl+V paste, Ctrl+D quit, and provider-style line editing.
-- [x] Make TUI prompt submission non-blocking so slow local/provider routing cannot freeze the console.
-- [x] Make TUI current-run lock handling dynamic so new prompt runs do not break controller heartbeat.
+- [x] Support UTF-8/Hangul prompt entry through CLI/live prompt paths; legacy composer retired.
+- [x] Make prompt submission non-blocking so slow local/provider routing cannot freeze the operator surface.
+- [x] Make current-run lock handling dynamic so new prompt runs do not break controller heartbeat.
 - [x] Treat dead controller-lock PIDs as stale before TTL so killed TUI sessions do not block restart.
-- [x] Use fast heuristic routing for normal TUI prompts so local LLM router latency does not make the console feel stuck.
+- [x] Use fast heuristic routing for normal prompt/log prompts so local LLM router latency does not make the console feel stuck.
 - [x] Add `.hivemind/checks/*.md` markdown-as-agent-check policy files inspired by Continue.
 - [x] Add git-first diff/check/commit summary loop inspired by Aider.
 - [x] Make `hive diff` include ledger health, record count, artifact hash drift count, and ledger-touched files.
@@ -216,11 +216,11 @@ Sources: `VG-03`, `VG-04`, `VG-13`, `VG-18`.
 - [x] Ground `hive next` in disagreement topology, DAG state, provider failures, and pipeline fallback.
 - [x] Add option-only `hive loop` self-judgment/autopilot surface: dry-run by default, `--execute` plus per-action `--allow`, no provider CLI auto-execution, no arbitrary shell, no memory commit.
 - [x] Make `hive loop` validation-safe and failure-aware: auto-loop events are accepted by run validation, failed local workers stop the loop, and failed agent state fails verification.
-- [x] Make `hive tui` interactive with prompt input, slash command input, and dashboard layout.
-- [x] Add always-visible TUI `hive>` composer so prompt entry is discoverable.
-- [x] Add `hive demo live` and TUI `/demo` to animate multi-agent coordination through real run artifacts without executing provider CLIs.
-- [x] Make bare `hive` open the Hive Console/TUI on interactive terminals while keeping `hive tui` as the explicit mode.
-- [x] Add `hive ledger` and TUI ledger view for real-time workloop visibility.
+- [x] Retire `hive tui`; keep prompt input and slash commands in CLI/chat/live paths.
+- [x] Add prompt-first `hive live` / shorthand task entry so prompt entry is discoverable.
+- [x] Add `hive demo live` to animate multi-agent coordination through real run artifacts without executing provider CLIs.
+- [x] Make bare `hive` open the prompt/log live surface on interactive terminals and remove `hive tui` from the public parser.
+- [x] Add `hive ledger` and live/inspect ledger summaries for real-time workloop visibility.
 - [x] Add `hive_events.jsonl` and `hive hive activity` so human activity shows role assignment, not only artifact creation.
 - [x] Harden provider result validation for all prepared/executed adapters.
 - [x] Add supervised run control: `hive run start/status/tail/stop` with PID, host, log path, command hash, commit, replay health, and active lease reporting.
@@ -230,7 +230,7 @@ Sources: `VG-03`, `VG-04`, `VG-13`, `VG-18`.
 - [ ] Make `hive "task"` and `hive ask` return a readable operator summary with artifact links, next command, risk, and expected artifact.
 - [ ] Add Korean-first operator summaries when the input prompt is Korean.
 - [x] Move primary UX toward prompt/log AIOS mode: hide run-folder paths by default, show live log, decisions, blocked gates, risks, and outcomes first.
-- [x] Add a `hive live` / default prompt-log surface that follows ledger decisions without requiring users to browse TUI panels or filesystem artifacts.
+- [x] Add a `hive live` / default prompt-log surface that follows ledger decisions without requiring users to browse legacy terminal panels or filesystem artifacts.
 - [ ] Make bare interactive `hive` default to prompt/log live mode once supervisor/protocol replay is stable enough.
 - [x] Export `hive live` / ledger / protocol state as a stable MemoryOS-consumable read model for neural-map observability.
 - [x] Add `HiveLiveEventV1` fields to `hive live --memoryos` events: `event_id`, `event_type`, `run_id`, `timestamp`, `agent_id`, and `payload`.

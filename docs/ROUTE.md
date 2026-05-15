@@ -14,7 +14,7 @@ Read these first for current implementation work:
 6. `LOWERCASE_SOURCE_GRAPH.md` - graph map for lowercase source-vault docs.
 7. `ROADMAP.md` - phase order.
 8. `TODO.md` - active work queue.
-9. `TUI_HARNESS.md` - current `hive` CLI/TUI harness.
+9. `HIVE_WORKING_METHOD.md` - current prompt/log AIOS working protocol.
 10. `PROVIDER_HARNESS_GUIDE.md` - Claude/Codex/Gemini/local/provider usage.
 11. `LEDGER_PROTOCOL.md` - execution authority protocol over the shared run ledger.
 
@@ -48,7 +48,7 @@ Use these for product planning and UX direction:
 - `final.md` - Human-AI-Agent Operating Stack.
 - `HIVE_WORKING_METHOD.md` - working-method skill protocol and hidden product thread.
 - `hive_mind2.md` - hardening source for the production `hive` operator loop.
-- `tui.md` - wrapper CLI/TUI and artifact blackboard direction.
+- `tui.md` - archived source note for the old terminal cockpit direction.
 - `ui_future.md` - future chatbot/agent harness and visual product framing.
 - `image.png` - visual board reference.
 - `capabilityOS.md` - CapabilityOS concept and capability graph.

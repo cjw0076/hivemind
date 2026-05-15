@@ -64,7 +64,7 @@ better as a coordination substrate and evidence ledger.
 The operator UX is usable for alpha:
 
 - `hive "task"` and `hive ask` create useful artifacts;
-- `hive tui` has prompt entry and multi-view status;
+- `hive live` has prompt/log status without a terminal dashboard;
 - `hive next`, `hive status`, `hive agents status`, and `hive memory list` give
   a workable command-line loop;
 - `hive loop` now gives an option-only chair loop for repetitive run hygiene.

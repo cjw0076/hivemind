@@ -106,15 +106,15 @@ Long-term, this becomes an AIOS-style operator layer rather than an app. The
 user should not have to browse directories, inspect run folders, or manage
 artifact paths during normal work. The system should accept prompts, execute the
 appropriate chaired workflow, and expose only the live log, decisions, blocked
-questions, risk gates, and final outcomes. Terminal/TUI, desktop, and file views
-are transitional control/debug surfaces over the same operating layer.
+questions, risk gates, and final outcomes. Terminal commands, desktop, and file
+views are control/debug surfaces over the same operating layer.
 
 When Hive Mind is attached to MemoryOS, Hive should provide prompt intake plus a
 stable read model/event stream. MemoryOS should render the user's main
 observability surface as a neural map: agent turns, authority gates, memory
 nodes, claims, disagreements, evidence, and task flow become graph events rather
-than file paths or terminal panels. `hive tui` remains useful as an operator
-console and debugging harness, but it is not the product north star.
+than file paths or terminal panels. Hive's public surface is now `hive live`,
+`hive inspect`, and AIOS contract artifacts rather than a curses TUI.
 
 Roles:
 

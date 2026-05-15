@@ -952,3 +952,10 @@
 - Completion 2026-05-15 19:27 KST: Removed `hive tui` from the public parser, changed bare TTY `hive` to the `live` prompt/log surface, added an idle `hive live --json` state for workspaces with no current run, and updated public README/docs wording away from CLI/TUI as the primary product surface.
 - Evidence: `python -m unittest tests.test_cli_entrypoint tests.test_aios_runtime` passed 25/25; `python -m unittest discover -s tests -p 'test_*.py'` passed 420/420; `bash scripts/public-release-check.sh` passed 19/19; `python -m hivemind.hive tui` exits rc=2 as an invalid command while `python -m hivemind.hive --root <tmp> live --json` exits rc=0 with `status=no_run`.
 - Next: If the operator wants a hard delete, split a separate cleanup contract to remove `hivemind/tui.py`, TUI-specific tests, and historical TUI docs rather than mixing that with the AIOS runtime surface change.
+
+## 2026-05-15 19:38 KST - Codex - Hard Remove Legacy TUI Runtime
+
+- Context: Continued the AIOS runtime cleanup after public `hive tui` removal. The remaining risk was that workbench scripts, quickstart commands, and legacy view commands still routed into the deleted public surface.
+- Decision: Removed the curses TUI implementation and TUI-specific tests. Repointed `board`, `events --follow`, `ledger --follow`, `artifacts`, `agents view`, `memory view`, `diff`, and `society` to text/live-compatible output. Updated workbench, quickstart, product-eval prompts, and current docs to treat `hive live` / `hive inspect` as the operational surface.
+- Evidence: `python -m py_compile hivemind/hive.py hivemind/live.py hivemind/harness.py hivemind/quickstart.py hivemind/workloop.py` passed; focused tests passed 22/22; quickstart smoke emits only `hive inspect` / `hive live` commands; `python -m hivemind.hive tui` exits rc=2; full suite passed 371/371; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Historical source docs such as `docs/TUI_HARNESS.md` and old worklog entries remain as archived project history. Future UI work should target MemoryOS neural-map observability and HiveLiveEventV1 rather than reviving curses.

@@ -24,7 +24,7 @@ from typing import Any
 TASK_MATRIX = [
     {
         "name": "implementation_en",
-        "prompt": "Fix the TUI cursor bug and add a regression test",
+        "prompt": "Fix the live log cursor bug and add a regression test",
         "expected_intent": "implementation",
         "required_actions": [("claude", "planner"), ("codex", "executor")],
     },
@@ -36,7 +36,7 @@ TASK_MATRIX = [
     },
     {
         "name": "debugging_ko",
-        "prompt": "왜 hive tui가 멈추는지 로그 보고 원인 찾아",
+        "prompt": "왜 hive live 로그가 멈추는지 로그 보고 원인 찾아",
         "expected_intent": "debugging",
         "required_actions": [("claude", "planner"), ("local", "review")],
     },
