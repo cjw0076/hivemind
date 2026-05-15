@@ -4131,6 +4131,15 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
         f"Intent `{parsed.get('intent', 'unknown')}` via {route_source}; {len(actions)} member actions proposed.",
         {"intent": parsed.get("intent", "unknown"), "route_source": route_source, "actions": actions},
     )
+    route_quality = score_route_quality(
+        prompt=prompt,
+        parsed=parsed,
+        validation=validation,
+        route_source=route_source,
+        actions=actions,
+        router_status=router_status,
+    )
+    quality_path = write_routing_quality(paths, route_quality)
     ensure_capabilityos_recommendation(root, paths.run_id)
 
     prepared: list[str] = []
@@ -4173,6 +4182,14 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
         "prepared_artifacts": prepared,
         "risks": parsed.get("risks", []),
         "open_questions": parsed.get("open_questions", []),
+        "route_quality": {
+            "artifact": quality_path.relative_to(root).as_posix(),
+            "score": route_quality.get("score"),
+            "verdict": route_quality.get("verdict"),
+            "risk_level": route_quality.get("risk_level"),
+            "fallback_used": route_quality.get("fallback_used"),
+            "risks": route_quality.get("risks", []),
+        },
     }
     plan["operator_summary"] = build_operator_summary_from_plan(plan)
     write_json(plan_path, plan)
@@ -4625,16 +4642,22 @@ def build_operator_summary_from_plan(plan: dict[str, Any], *, workflow_next: dic
     run_id = str(plan.get("run_id") or "")
     actions = [item for item in (plan.get("actions") or []) if isinstance(item, dict)]
     risks = list(plan.get("risks") or [])
+    route_quality = plan.get("route_quality") if isinstance(plan.get("route_quality"), dict) else {}
     route_source = str(plan.get("route_source") or "")
     if route_source != "local_llm":
         risks.append(f"route_quality: {route_source} should be verified before high-risk execution")
+    for risk in route_quality.get("risks") or []:
+        risks.append(f"route_quality: {risk}")
     risk_level = "low"
     if risks:
         risk_level = "medium"
     if any(str(item).lower().startswith(("danger", "high", "irreversible")) for item in risks):
         risk_level = "high"
+    if route_quality.get("risk_level") == "high":
+        risk_level = "high"
     expected = [
         {"path": f".runs/{run_id}/routing_plan.json", "status": "written"},
+        {"path": f".runs/{run_id}/routing_quality.json", "status": "written"},
         {"path": f".runs/{run_id}/society_plan.json", "status": "expected_after_orchestrate"},
         {"path": f".runs/{run_id}/plan_dag.json", "status": "expected_after_flow"},
     ]
@@ -4651,6 +4674,7 @@ def build_operator_summary_from_plan(plan: dict[str, Any], *, workflow_next: dic
         "risks": risks,
         "next": next_action,
         "expected_artifacts": expected,
+        "route_quality": plan.get("route_quality") or {},
     }
 
 
@@ -4724,6 +4748,105 @@ def normalize_router_actions(raw_actions: Any) -> list[dict[str, Any]]:
             seen.add(key)
             deduped.append(action)
     return deduped[:6]
+
+
+def score_route_quality(
+    *,
+    prompt: str,
+    parsed: dict[str, Any],
+    validation: dict[str, Any],
+    route_source: str,
+    actions: list[dict[str, Any]],
+    router_status: str,
+) -> dict[str, Any]:
+    confidence = validation.get("confidence")
+    try:
+        confidence_value = float(confidence) if confidence is not None else 0.0
+    except (TypeError, ValueError):
+        confidence_value = 0.0
+    confidence_value = max(0.0, min(1.0, confidence_value))
+
+    required_keys = {"intent", "summary", "actions", "confidence", "should_escalate"}
+    missing_keys = sorted(key for key in required_keys if key not in parsed)
+    action_pairs = {(str(item.get("provider")), str(item.get("role"))) for item in actions}
+    risks: list[str] = []
+    score = confidence_value
+
+    schema_valid = bool(validation.get("valid")) and not missing_keys
+    if not schema_valid:
+        score -= 0.25
+        risks.append("router_schema_invalid")
+    if route_source != "local_llm":
+        risks.append(f"route_source={route_source}")
+    if router_status == "fallback" or "fallback" in route_source:
+        score -= 0.2
+        risks.append("fallback_used")
+    if validation.get("should_escalate"):
+        risks.append("router_escalation_requested")
+    if not actions:
+        score -= 0.4
+        risks.append("no_actions")
+    if parsed.get("intent") == "implementation" and ("codex", "executor") not in action_pairs:
+        score -= 0.2
+        risks.append("implementation_without_codex_executor")
+    if parsed.get("intent") in {"debugging", "review"} and not any(provider in {"claude", "gemini"} for provider, _role in action_pairs):
+        score -= 0.15
+        risks.append("review_intent_without_frontier_reviewer")
+
+    score = round(max(0.0, min(1.0, score)), 3)
+    if score >= 0.75 and not risks:
+        verdict = "pass"
+        risk_level = "low"
+    elif score >= 0.45:
+        verdict = "review"
+        risk_level = "medium"
+    else:
+        verdict = "escalate"
+        risk_level = "high"
+
+    return {
+        "schema_version": 1,
+        "kind": "routing_quality",
+        "generated_at": now_iso(),
+        "route_source": route_source,
+        "router_status": router_status,
+        "intent": parsed.get("intent", "unknown"),
+        "score": score,
+        "verdict": verdict,
+        "risk_level": risk_level,
+        "schema_valid": schema_valid,
+        "missing_keys": missing_keys,
+        "validation_issues": list(validation.get("issues") or []),
+        "confidence": confidence_value,
+        "should_escalate": bool(validation.get("should_escalate")),
+        "escalation_reason": validation.get("escalation_reason") or "",
+        "fallback_used": router_status == "fallback" or "fallback" in route_source,
+        "action_count": len(actions),
+        "action_coverage": [{"provider": item.get("provider"), "role": item.get("role")} for item in actions],
+        "risks": risks,
+        "prompt_features": {
+            "length": len(prompt),
+            "has_hangul": contains_hangul(prompt),
+            "has_code_terms": any(token in prompt.lower() for token in ["code", "cli", "api", "test", "bug", "fix", "구현", "수정", "테스트"]),
+        },
+    }
+
+
+def write_routing_quality(paths: RunPaths, quality: dict[str, Any]) -> Path:
+    path = paths.run_dir / "routing_quality.json"
+    write_json(path, quality)
+    add_state_artifact(paths, "routing_quality", path)
+    append_event(
+        paths,
+        "routing_quality_created",
+        {
+            "artifact": path.relative_to(paths.root).as_posix(),
+            "score": quality.get("score"),
+            "verdict": quality.get("verdict"),
+            "risk_level": quality.get("risk_level"),
+        },
+    )
+    return path
 
 
 def heuristic_route_prompt(prompt: str) -> dict[str, Any]:

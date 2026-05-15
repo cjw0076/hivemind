@@ -27,6 +27,7 @@ ALLOWED_EVENT_TYPES = {
     "memory_drafts_created",
     "context_edited",
     "intent_routed",
+    "routing_quality_created",
     "routing_plan_created",
     "society_plan_created",
     "route_action_failed",

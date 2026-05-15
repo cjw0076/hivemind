@@ -102,7 +102,7 @@ Sources: `VG-03`, `VG-04`, `VG-06`, `VG-13`.
 - [x] Promote safe local workers into bounded task processors for simple local tasks through DAG/ledger execution with explicit `--execute-local`.
 - [ ] Add disagreement extraction from executed provider outputs into a structured `disagreements.json`.
 - [x] Surface `disagreements.json` in `hive inspect` and upgrade inspect verdict to `escalated` for high/medium disagreement topology.
-- [ ] Upgrade task decomposition beyond keyword heuristics with a schema-validated router, provider fallback, and route-quality scoring.
+- [x] Upgrade task decomposition beyond keyword heuristics with a schema-validated router, provider fallback, and route-quality scoring.
 - [ ] Add convergence scoring: evidence strength, reversibility, risk, and user-preference fit.
 - [ ] Add `hive live`/`hive inspect` surface for active debate rounds and participant readiness.
 - [ ] Add MemoryOS draft extraction from debate convergence only after human review.

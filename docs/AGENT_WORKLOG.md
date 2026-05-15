@@ -1011,3 +1011,12 @@
 - Completion: MemoryOS context reports are now explicit `memoryos_context_receipt` artifacts with `bridge_optional=true`, `should_abort_hive=false`, `degraded`, and `failure_class`. The harness persists both `memory_context.json` and `memory_context_receipt.json` for available, disabled, missing, and failed MemoryOS paths.
 - Evidence: `python -m unittest tests.test_production_hardening` passed 26/26; `python -m unittest tests.test_production_hardening tests.test_inspect tests.test_live` passed 46/46; `python -m py_compile hivemind/memory_bridge.py hivemind/harness.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 386/386; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the nonblocking MemoryOS receipt closeout and move to the next production gap.
+
+## 2026-05-16 03:26 KST - Codex - Routing Quality Artifact
+
+- Context: Continuing the AIOS completion sprint after H-P0 runtime hardening. The next operator quality gap is task decomposition: router output exists, but route quality is not a durable artifact with schema/fallback/confidence evidence.
+- Ownership: Codex owns a narrow router-quality slice in `hivemind/harness.py`, `hivemind/run_validation.py`, `tests/test_fast_router.py`, `docs/TODO.md`, and shared coordination logs.
+- Expected files: `hivemind/harness.py`, `hivemind/run_validation.py`, `tests/test_fast_router.py`, `docs/TODO.md`, `.ai-runs/shared/comms_log.md`.
+- Completion: `hive ask` now writes `routing_quality.json` alongside `routing_plan.json`. The artifact records route source, schema validity, confidence, fallback use, action coverage, risk level, score, and prompt features; `routing_plan.operator_summary` now includes this quality evidence and expected artifact path.
+- Evidence: `python -m unittest tests.test_fast_router` passed 7/7; `python -m unittest tests.test_fast_router tests.test_run_validation tests.test_production_hardening` passed 42/42; `python -m py_compile hivemind/harness.py hivemind/run_validation.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 388/388; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the routing-quality slice and continue to the next AIOS completion gap.

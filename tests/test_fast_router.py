@@ -4,7 +4,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from hivemind.harness import ask_router, format_routing_plan, normalize_router_actions, orchestrate_prompt, format_orchestration_report
+from hivemind.harness import (
+    ask_router,
+    format_orchestration_report,
+    format_routing_plan,
+    normalize_router_actions,
+    orchestrate_prompt,
+    score_route_quality,
+)
 
 
 class FastRouterTest(unittest.TestCase):
@@ -29,6 +36,9 @@ class FastRouterTest(unittest.TestCase):
             events = (plan_path.parent / "events.jsonl").read_text(encoding="utf-8")
 
             self.assertEqual(plan["route_source"], "heuristic_fast")
+            self.assertIn("route_quality", plan)
+            self.assertTrue((plan_path.parent / "routing_quality.json").exists())
+            self.assertEqual(plan["route_quality"]["verdict"], "review")
             self.assertNotIn('"type": "agent_started"', events)
 
     def test_routing_plan_includes_operator_summary(self) -> None:
@@ -42,6 +52,7 @@ class FastRouterTest(unittest.TestCase):
             self.assertEqual(summary["risk_level"], "medium")
             self.assertEqual(summary["next"]["command"], f"hive flow --run-id {plan['run_id']}")
             self.assertTrue(any(item["path"].endswith("routing_plan.json") for item in summary["expected_artifacts"]))
+            self.assertTrue(any(item["path"].endswith("routing_quality.json") for item in summary["expected_artifacts"]))
             self.assertIn("위험도: medium", rendered)
             self.assertIn("다음:", rendered)
 
@@ -84,9 +95,51 @@ class FastRouterTest(unittest.TestCase):
             events = (plan_path.parent / "events.jsonl").read_text(encoding="utf-8")
 
             self.assertEqual(plan["route_source"], "local_llm")
+            self.assertEqual(plan["route_quality"]["risk_level"], "low")
             self.assertNotIn('"worker": "context_compressor"', events)
             self.assertFalse((plan_path.parent / "agents" / "local" / "context_result.yaml").exists())
             self.assertIn("claude/planner_result.yaml", "\n".join(plan["prepared_artifacts"]))
+
+    def test_invalid_local_router_output_records_fallback_quality(self) -> None:
+        worker_output = {
+            "runtime": "ollama",
+            "model": "qwen3:1.7b",
+            "raw": "{}",
+            "parsed": {},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch("hivemind.harness.run_worker", return_value=worker_output):
+                plan_path = ask_router(root, "fix failing cli test", complexity="default")
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            quality = json.loads((plan_path.parent / "routing_quality.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(plan["route_source"], "invalid_local_fallback")
+            self.assertTrue(quality["fallback_used"])
+            self.assertFalse(quality["schema_valid"])
+            self.assertEqual(quality["risk_level"], "high")
+            self.assertIn("router_schema_invalid", quality["risks"])
+            self.assertEqual(plan["route_quality"]["artifact"], f".runs/{plan['run_id']}/routing_quality.json")
+
+    def test_score_route_quality_passes_valid_local_llm_route(self) -> None:
+        quality = score_route_quality(
+            prompt="plan this task",
+            parsed={
+                "intent": "planning",
+                "summary": "Plan task",
+                "actions": [{"provider": "claude", "role": "planner"}],
+                "confidence": 0.9,
+                "should_escalate": False,
+            },
+            validation={"valid": True, "issues": [], "confidence": 0.9, "should_escalate": False, "escalation_reason": ""},
+            route_source="local_llm",
+            actions=[{"provider": "claude", "role": "planner", "reason": "plan", "execute": False}],
+            router_status="completed",
+        )
+
+        self.assertEqual(quality["verdict"], "pass")
+        self.assertEqual(quality["risk_level"], "low")
+        self.assertFalse(quality["risks"])
 
 
 if __name__ == "__main__":
