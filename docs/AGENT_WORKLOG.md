@@ -1029,3 +1029,12 @@
 - Completion: `hive ask` now writes `task_feature_vector.json` and links it from `routing_plan.json`. The mode router classifies task shape into `cooperative`, `adversarial`, `verification_only`, or `red_team` using prompt features, intent, provider roles, and route-quality risk.
 - Evidence: `python -m unittest tests.test_fast_router` passed 8/8; `python -m unittest tests.test_fast_router tests.test_run_validation tests.test_production_hardening` passed 43/43; `python -m py_compile hivemind/harness.py hivemind/run_validation.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 389/389; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the TaskFeatureVector mode-router slice and continue to the next AIOS completion gap.
+
+## 2026-05-16 03:36 KST - Codex - Convergence Score Artifact
+
+- Context: Continuing adaptive chair routing. After route-quality and task-feature artifacts, Hive still needs a compact convergence score across evidence strength, reversibility, risk, and user-preference fit.
+- Ownership: Codex owns a narrow prompt-entry scoring slice in `hivemind/harness.py`, `hivemind/run_validation.py`, `tests/test_fast_router.py`, `docs/TODO.md`, and shared coordination logs.
+- Expected files: `hivemind/harness.py`, `hivemind/run_validation.py`, `tests/test_fast_router.py`, `docs/TODO.md`, `.ai-runs/shared/comms_log.md`.
+- Completion: `hive ask` now writes `convergence_score.json` and links it from `routing_plan.json`. The score combines route evidence strength, estimated reversibility, risk fit, and user-preference fit, then recommends execute/review/hold.
+- Evidence: `python -m unittest tests.test_fast_router` passed 9/9; `python -m unittest tests.test_fast_router tests.test_run_validation tests.test_production_hardening` passed 44/44; `python -m py_compile hivemind/harness.py hivemind/run_validation.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 390/390; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the convergence-score slice and continue to the next AIOS completion gap.

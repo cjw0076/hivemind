@@ -4144,6 +4144,8 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
     feature_seed["actions"] = actions
     task_features = classify_task_feature_vector(prompt, feature_seed, route_quality)
     feature_path = write_task_feature_vector(paths, task_features)
+    convergence = score_convergence_readiness(prompt=prompt, route_quality=route_quality, task_features=task_features)
+    convergence_path = write_convergence_score(paths, convergence)
     ensure_capabilityos_recommendation(root, paths.run_id)
 
     prepared: list[str] = []
@@ -4199,6 +4201,12 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
             "preferred_mode": task_features.get("preferred_mode"),
             "risk_score": task_features.get("risk_score"),
             "mode_reason": task_features.get("mode_reason"),
+        },
+        "convergence_score": {
+            "artifact": convergence_path.relative_to(root).as_posix(),
+            "score": convergence.get("score"),
+            "verdict": convergence.get("verdict"),
+            "recommended_next": convergence.get("recommended_next"),
         },
     }
     plan["operator_summary"] = build_operator_summary_from_plan(plan)
@@ -4669,6 +4677,7 @@ def build_operator_summary_from_plan(plan: dict[str, Any], *, workflow_next: dic
         {"path": f".runs/{run_id}/routing_plan.json", "status": "written"},
         {"path": f".runs/{run_id}/routing_quality.json", "status": "written"},
         {"path": f".runs/{run_id}/task_feature_vector.json", "status": "written"},
+        {"path": f".runs/{run_id}/convergence_score.json", "status": "written"},
         {"path": f".runs/{run_id}/society_plan.json", "status": "expected_after_orchestrate"},
         {"path": f".runs/{run_id}/plan_dag.json", "status": "expected_after_flow"},
     ]
@@ -4687,6 +4696,7 @@ def build_operator_summary_from_plan(plan: dict[str, Any], *, workflow_next: dic
         "expected_artifacts": expected,
         "route_quality": plan.get("route_quality") or {},
         "task_feature_vector": plan.get("task_feature_vector") or {},
+        "convergence_score": plan.get("convergence_score") or {},
     }
 
 
@@ -4949,6 +4959,97 @@ def write_task_feature_vector(paths: RunPaths, vector: dict[str, Any]) -> Path:
             "artifact": path.relative_to(paths.root).as_posix(),
             "preferred_mode": vector.get("preferred_mode"),
             "risk_score": vector.get("risk_score"),
+        },
+    )
+    return path
+
+
+def score_convergence_readiness(*, prompt: str, route_quality: dict[str, Any], task_features: dict[str, Any]) -> dict[str, Any]:
+    features = task_features.get("features") if isinstance(task_features.get("features"), dict) else {}
+    mode = str(task_features.get("preferred_mode") or "cooperative")
+    route_score = float(route_quality.get("score") or 0.0)
+    route_risk = str(route_quality.get("risk_level") or "unknown")
+
+    evidence_strength = route_score
+    if route_quality.get("fallback_used"):
+        evidence_strength = min(evidence_strength, 0.55)
+    if route_quality.get("schema_valid") is False:
+        evidence_strength = min(evidence_strength, 0.35)
+
+    reversibility = 0.85
+    if features.get("implementation"):
+        reversibility -= 0.2
+    if features.get("provider_execution"):
+        reversibility -= 0.1
+    if features.get("security") or features.get("public_release"):
+        reversibility -= 0.25
+    if features.get("local_only") and not features.get("implementation"):
+        reversibility += 0.1
+    reversibility = max(0.0, min(1.0, round(reversibility, 3)))
+
+    risk_map = {"low": 0.85, "medium": 0.55, "high": 0.25}
+    risk_fit = risk_map.get(route_risk, 0.45)
+    task_risk = int(task_features.get("risk_score") or 0)
+    if task_risk >= 4:
+        risk_fit = min(risk_fit, 0.3)
+    elif task_risk >= 2:
+        risk_fit = min(risk_fit, 0.55)
+
+    lowered = prompt.lower()
+    user_preference_fit = 0.55
+    if any(token in lowered for token in ["ux", "ui", "taste", "product", "사용자", "감각", "좋은", "편한", "경험"]):
+        user_preference_fit = 0.75
+    if features.get("public_release"):
+        user_preference_fit = min(user_preference_fit, 0.6)
+    if mode in {"adversarial", "red_team"} and user_preference_fit < 0.7:
+        user_preference_fit += 0.05
+
+    score = round((evidence_strength * 0.35) + (reversibility * 0.25) + (risk_fit * 0.25) + (user_preference_fit * 0.15), 3)
+    if score >= 0.72:
+        verdict = "ready"
+        recommended_next = "execute_or_prepare"
+    elif score >= 0.45:
+        verdict = "review"
+        recommended_next = "review_route_before_execution"
+    else:
+        verdict = "hold"
+        recommended_next = "ask_user_or_add_referee"
+
+    return {
+        "schema_version": 1,
+        "kind": "convergence_score",
+        "generated_at": now_iso(),
+        "score": score,
+        "verdict": verdict,
+        "recommended_next": recommended_next,
+        "preferred_mode": mode,
+        "dimensions": {
+            "evidence_strength": round(evidence_strength, 3),
+            "reversibility": reversibility,
+            "risk_fit": round(risk_fit, 3),
+            "user_preference_fit": round(user_preference_fit, 3),
+        },
+        "inputs": {
+            "route_quality_score": route_quality.get("score"),
+            "route_quality_risk": route_risk,
+            "route_fallback_used": route_quality.get("fallback_used"),
+            "task_risk_score": task_risk,
+        },
+    }
+
+
+def write_convergence_score(paths: RunPaths, convergence: dict[str, Any]) -> Path:
+    path = paths.run_dir / "convergence_score.json"
+    write_json(path, convergence)
+    add_state_artifact(paths, "convergence_score", path)
+    append_event(
+        paths,
+        "convergence_score_created",
+        {
+            "artifact": path.relative_to(paths.root).as_posix(),
+            "score": convergence.get("score"),
+            "verdict": convergence.get("verdict"),
+            "recommended_next": convergence.get("recommended_next"),
         },
     )
     return path

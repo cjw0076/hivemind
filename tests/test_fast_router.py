@@ -11,6 +11,7 @@ from hivemind.harness import (
     format_routing_plan,
     normalize_router_actions,
     orchestrate_prompt,
+    score_convergence_readiness,
     score_route_quality,
 )
 
@@ -40,6 +41,7 @@ class FastRouterTest(unittest.TestCase):
             self.assertIn("route_quality", plan)
             self.assertTrue((plan_path.parent / "routing_quality.json").exists())
             self.assertTrue((plan_path.parent / "task_feature_vector.json").exists())
+            self.assertTrue((plan_path.parent / "convergence_score.json").exists())
             self.assertEqual(plan["route_quality"]["verdict"], "review")
             self.assertNotIn('"type": "agent_started"', events)
 
@@ -56,6 +58,7 @@ class FastRouterTest(unittest.TestCase):
             self.assertTrue(any(item["path"].endswith("routing_plan.json") for item in summary["expected_artifacts"]))
             self.assertTrue(any(item["path"].endswith("routing_quality.json") for item in summary["expected_artifacts"]))
             self.assertTrue(any(item["path"].endswith("task_feature_vector.json") for item in summary["expected_artifacts"]))
+            self.assertTrue(any(item["path"].endswith("convergence_score.json") for item in summary["expected_artifacts"]))
             self.assertIn("위험도: medium", rendered)
             self.assertIn("다음:", rendered)
 
@@ -100,6 +103,7 @@ class FastRouterTest(unittest.TestCase):
             self.assertEqual(plan["route_source"], "local_llm")
             self.assertEqual(plan["route_quality"]["risk_level"], "low")
             self.assertEqual(plan["task_feature_vector"]["preferred_mode"], "cooperative")
+            self.assertIn(plan["convergence_score"]["verdict"], {"ready", "review"})
             self.assertNotIn('"worker": "context_compressor"', events)
             self.assertFalse((plan_path.parent / "agents" / "local" / "context_result.yaml").exists())
             self.assertIn("claude/planner_result.yaml", "\n".join(plan["prepared_artifacts"]))
@@ -124,6 +128,24 @@ class FastRouterTest(unittest.TestCase):
             self.assertEqual(quality["risk_level"], "high")
             self.assertIn("router_schema_invalid", quality["risks"])
             self.assertEqual(plan["route_quality"]["artifact"], f".runs/{plan['run_id']}/routing_quality.json")
+
+    def test_convergence_score_penalizes_high_risk_public_release(self) -> None:
+        route_quality = {"score": 0.9, "risk_level": "high", "fallback_used": False, "schema_valid": True}
+        task_features = classify_task_feature_vector(
+            "public release 전에 permission bypass 보안 검토",
+            {"intent": "review", "actions": [{"provider": "claude", "role": "reviewer"}]},
+            route_quality,
+        )
+
+        score = score_convergence_readiness(
+            prompt="public release 전에 permission bypass 보안 검토",
+            route_quality=route_quality,
+            task_features=task_features,
+        )
+
+        self.assertEqual(score["preferred_mode"], "red_team")
+        self.assertIn(score["verdict"], {"hold", "review"})
+        self.assertLess(score["dimensions"]["risk_fit"], 0.5)
 
     def test_task_feature_vector_mode_router(self) -> None:
         base_quality = {"score": 0.8, "risk_level": "low", "fallback_used": False}
