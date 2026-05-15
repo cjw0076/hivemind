@@ -164,6 +164,95 @@ class ProviderPassthroughTest(unittest.TestCase):
             self.assertEqual(data["returncode"], 0)
             self.assertEqual(run.call_args.kwargs["cwd"], root)
 
+    def test_codex_dangerous_full_access_flag_is_blocked_without_grant(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "provider passthrough codex danger")
+
+            result_path = provider_passthrough(
+                root,
+                "codex",
+                ["exec", "--cd", ".", "--dangerously-bypass-approvals-and-sandbox", "inspect"],
+                run_id=paths.run_id,
+                execute=True,
+            )
+
+            data = yaml.safe_load(result_path.read_text(encoding="utf-8"))
+            self.assertEqual(data["status"], "failed")
+            self.assertEqual(data["provider_mode"], "policy_blocked")
+            self.assertEqual(data["permission_mode"], "danger_full_access_with_policy")
+            self.assertIn("dangerous full-access", data["reason"])
+
+    def test_codex_dangerous_full_access_allow_flag_still_requires_grant_reason(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "provider passthrough codex danger no grant reason")
+
+            result_path = provider_passthrough(
+                root,
+                "codex",
+                ["exec", "--cd", ".", "--dangerously-bypass-approvals-and-sandbox", "inspect"],
+                run_id=paths.run_id,
+                execute=True,
+                allow_dangerous_full_access=True,
+            )
+
+            data = yaml.safe_load(result_path.read_text(encoding="utf-8"))
+            self.assertEqual(data["status"], "failed")
+            self.assertEqual(data["provider_mode"], "policy_blocked")
+            self.assertIn("operator grant", data["reason"])
+
+    def test_codex_dangerous_full_access_grant_must_name_the_risk(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "provider passthrough codex danger vague grant")
+
+            result_path = provider_passthrough(
+                root,
+                "codex",
+                ["exec", "--cd", ".", "--dangerously-bypass-approvals-and-sandbox", "inspect"],
+                run_id=paths.run_id,
+                execute=True,
+                allow_dangerous_full_access=True,
+                dangerous_grant="operator says yes",
+            )
+
+            data = yaml.safe_load(result_path.read_text(encoding="utf-8"))
+            self.assertEqual(data["status"], "failed")
+            self.assertEqual(data["provider_mode"], "policy_blocked")
+            self.assertIn("dangerous full-access", data["reason"])
+
+    def test_codex_dangerous_full_access_execute_requires_explicit_grant(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "provider passthrough codex danger grant")
+            completed = subprocess.CompletedProcess(
+                args=["codex", "exec"],
+                returncode=0,
+                stdout="danger output\n",
+                stderr="",
+            )
+            with patch("hivemind.harness.resolve_provider_binary", return_value="codex"):
+                with patch("hivemind.provider_passthrough.subprocess.run", return_value=completed) as run:
+                    result_path = provider_passthrough(
+                        root,
+                        "codex",
+                        ["exec", "--cd", ".", "--dangerously-bypass-approvals-and-sandbox", "inspect"],
+                        run_id=paths.run_id,
+                        execute=True,
+                        allow_dangerous_full_access=True,
+                        dangerous_grant="founder approved dangerous full-access for this AIOS packet",
+                    )
+
+            data = yaml.safe_load(result_path.read_text(encoding="utf-8"))
+            self.assertEqual(data["status"], "completed")
+            self.assertEqual(data["permission_mode"], "danger_full_access_with_policy")
+            self.assertEqual(data["risk_level"], "high")
+            self.assertEqual(data["returncode"], 0)
+            command = (root / data["command_path"]).read_text(encoding="utf-8")
+            self.assertIn("--dangerously-bypass-approvals-and-sandbox", command)
+            self.assertEqual(run.call_args.kwargs["cwd"], root)
+
     def test_execute_blocks_destructive_shell_wrapper(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

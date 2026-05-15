@@ -99,10 +99,12 @@ def _worker_path_by_id(root: Path, worker_id: str, run_id: str | None = None) ->
     return candidates[-1]
 
 
-def provider_native_args(provider: str, prompt: str, *, workspace_write: bool = False) -> list[str]:
+def provider_native_args(provider: str, prompt: str, *, workspace_write: bool = False, danger_full_access: bool = False) -> list[str]:
     if provider == "codex":
         if workspace_write:
             return ["exec", "--cd", ".", "--sandbox", "workspace-write", prompt]
+        if danger_full_access:
+            return ["exec", "--cd", ".", "--dangerously-bypass-approvals-and-sandbox", prompt]
         return ["exec", "--cd", ".", "--sandbox", "read-only", prompt]
     if provider == "claude":
         return ["--print", prompt]
@@ -248,6 +250,8 @@ def tick_provider_loop(
     timeout: int = 600,
     allow_workspace_write: bool = False,
     workspace_write_grant: str | None = None,
+    allow_dangerous_full_access: bool = False,
+    dangerous_grant: str | None = None,
 ) -> dict[str, Any]:
     path = worker_path(_load_paths(root, run_id), worker_id) if worker_id else _latest_worker_path(root, run_id)
     worker = _read(path)
@@ -262,12 +266,19 @@ def tick_provider_loop(
         result_path = provider_passthrough(
             root,
             provider,
-            provider_native_args(provider, prompt, workspace_write=allow_workspace_write and provider == "codex"),
+            provider_native_args(
+                provider,
+                prompt,
+                workspace_write=allow_workspace_write and provider == "codex",
+                danger_full_access=allow_dangerous_full_access and provider == "codex",
+            ),
             run_id=paths.run_id,
             execute=execute,
             timeout=timeout,
             allow_workspace_write=allow_workspace_write,
             workspace_write_grant=workspace_write_grant,
+            allow_dangerous_full_access=allow_dangerous_full_access,
+            dangerous_grant=dangerous_grant,
         )
         result = _read_provider_result(result_path)
         last_status = str(result.get("status") or "unknown")

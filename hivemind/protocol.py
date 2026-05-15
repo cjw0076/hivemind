@@ -456,6 +456,13 @@ def decide_intent(root: Path, run_id: str, intent_id: str, *, decided_by: str = 
         decision = "needs_referee"
     elif missing:
         decision = "needs_vote"
+    elif (
+        policy == "irreversible"
+        and vote_map.get("policy-gate") == "ask_user"
+        and vote_map.get("user") in APPROVING_VOTES
+    ):
+        decision = "approved_with_conditions"
+        conditions.append("irreversible execution approved by user/operator")
     elif all(vote_map.get(voter) in APPROVING_VOTES for voter in required):
         if policy == "prepare_only":
             decision = "prepare_only"

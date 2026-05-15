@@ -14,7 +14,7 @@ mkdir -p "$OUT_DIR"
 PASS=0
 FAIL=0
 WARNINGS=()
-TOTAL=17
+TOTAL=19
 
 ok()   { echo "  PASS  $*"; ((PASS++)) || true; }
 fail() { echo "  FAIL  $*"; ((FAIL++)) || true; }
@@ -263,6 +263,37 @@ if [ "$OVERCLAIMS" -eq 0 ]; then
     ok "README: no production overclaims detected"
 else
     warn "README may contain overclaims ($OVERCLAIMS lines) — review before release"
+fi
+
+# ── 18. AIOS three-OS contract smoke ─────────────────────────────────────────
+echo "[ 18/$TOTAL ] AIOS three-OS contract smoke"
+if python -m hivemind.hive aios "public alpha aios contract smoke" --json > "$OUT_DIR/aios-contract-smoke.json" 2>&1; then
+    AIOS_STATUS=$(python3 -c "import json; d=json.load(open('$OUT_DIR/aios-contract-smoke.json')); print(d.get('status','?'))" 2>/dev/null || echo "?")
+    AIOS_SIGNERS=$(python3 -c "import json; d=json.load(open('$OUT_DIR/aios-contract-smoke.json')); print(len(d.get('signed_by') or []))" 2>/dev/null || echo "0")
+    AIOS_EXECUTION=$(python3 -c "import json; d=json.load(open('$OUT_DIR/aios-contract-smoke.json')); print('yes' if isinstance(d.get('execution'), dict) else 'no')" 2>/dev/null || echo "no")
+    if [ "$AIOS_STATUS" = "ready" ] && [ "$AIOS_SIGNERS" -ge 3 ] && [ "$AIOS_EXECUTION" = "yes" ]; then
+        ok "aios contract status=$AIOS_STATUS signers=$AIOS_SIGNERS execution=advanced"
+    else
+        fail "aios contract did not converge status=$AIOS_STATUS signers=$AIOS_SIGNERS execution=$AIOS_EXECUTION"
+    fi
+else
+    fail "hive aios failed — see $OUT_DIR/aios-contract-smoke.json"
+fi
+
+# ── 19. AIOS evolution loop + big-brain feedback packet ──────────────────────
+echo "[ 19/$TOTAL ] AIOS evolution loop and big-brain feedback packet"
+if python -m hivemind.hive aios "evolution smoke goal for release gate" --evolve --max-iterations 1 --json > "$OUT_DIR/aios-evolution-smoke.json" 2>&1; then
+    EVO_ITERS=$(python3 -c "import json; d=json.load(open('$OUT_DIR/aios-evolution-smoke.json')); print(d.get('iterations',-1))" 2>/dev/null || echo "-1")
+    EVO_STOP=$(python3 -c "import json; d=json.load(open('$OUT_DIR/aios-evolution-smoke.json')); print(d.get('stop_reason','?'))" 2>/dev/null || echo "?")
+    EVO_RUN=$(python3 -c "import json; d=json.load(open('$OUT_DIR/aios-evolution-smoke.json')); print(d.get('final_run_id') or '')" 2>/dev/null || echo "")
+    FEEDBACK_HIT=$(ls -1 ../.aios/outbox/myworld/aios-feedback-${EVO_RUN}-gen00.hivemind.report.json 2>/dev/null | head -1 || echo "")
+    if [ "$EVO_ITERS" -ge 1 ] && [ -n "$FEEDBACK_HIT" ]; then
+        ok "aios evolution iterations=$EVO_ITERS stop=$EVO_STOP feedback_packet=$FEEDBACK_HIT"
+    else
+        fail "aios evolution did not produce a feedback packet (iters=$EVO_ITERS stop=$EVO_STOP run=$EVO_RUN)"
+    fi
+else
+    fail "hive aios --evolve failed — see $OUT_DIR/aios-evolution-smoke.json"
 fi
 
 # ── Result ────────────────────────────────────────────────────────────────────

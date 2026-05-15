@@ -1245,6 +1245,18 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - next: for any task spanning Hive/MemoryOS/CapabilityOS, draft or reference an AIOS smart contract and stop at operator checkpoint when scope/permission/artifact obligations are unclear.
 - status: done
 
+## 2026-05-15 15:06 KST — Codex
+
+- repo: hivemind + myworld
+- role: implementation
+- goal: continue the AIOS Hive completion path by making rare Codex dangerous full-access execution explicit, permissioned, and ledgered instead of a hidden manual bypass.
+- changed: Hive provider passthrough, provider-loop, AIOS packet runner, protocol quorum, CLI flags, focused tests, Hive worklog, and MyWorld ASC-0171 contract/ledger.
+- evidence: focused tests passed 29/29; full Hive suite passed 391 tests; `scripts/public-release-check.sh` passed 17/17 with zero warnings.
+- decision: dangerous full-access remains blocked by default. The route opens only for Codex with `--execute`, explicit dangerous flag, grant text naming `dangerous full-access`, irreversible authority, user/operator approval, and provider proof receipts.
+- risk: high-risk mode by design; MyWorld dispatch must not pass this grant without CapabilityOS route evidence, Hive preflight, and operator checkpoint.
+- next: commit Hive implementation; leave broad MyWorld dirty state untouched except the documented ASC files.
+- status: done
+
 ## 2026-05-11 22:09 KST - Codex
 
 - Context: ASC-0005 dispatched `codex@hivemind` to add a non-blocking CapabilityOS recommendation bridge.
@@ -1415,3 +1427,68 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Treat the orphan work as salvageable and return a successful rescued result packet to myworld.
 - Evidence: TUI py_compile passed; `tests/test_tui*.py` passed 49/49; `hive tui --help` exposes `--explore`; myworld `test_aios_*` passed 275/275; `git diff --check` passed.
 - Next: Commit the Hive repo rescue slice so MyWorld monitor no longer blocks on orphan dirty work.
+
+---
+
+## 2026-05-15 15:03 KST — Claude — AIOS contract runtime stage 1
+
+- repo: hivemind
+- role: implementation
+- goal: HiveMind을 AIOS runtime으로 완성하는 첫 단계 — 세 OS 합의 contract artifact 생성.
+- changed: `hivemind/aios_runtime.py` (new), `hivemind/hive.py` (new `aios` subcommand, import wiring), `tests/test_aios_runtime.py` (new, 4 tests).
+- evidence:
+  - `hive aios "<goal>"` produces `.runs/<run_id>/aios_contract.json` with HiveMind/MemoryOS/CapabilityOS proposals, signers, conflicts, and operator_checkpoint flag.
+  - Real sibling setup: signed_by=[hivemind, memoryos, capabilityos], 5 capability recommendations, 44 memory context items, conflicts=[], status=ready.
+  - Isolated setup (no siblings): operator_checkpoint=True, rc=2, conflicts include memoryos_unavailable + capabilityos_unavailable. HiveMind alone signs.
+  - Tests: **391/391 PASS** (added 4 new tests). Gate: **17/17 PASS**.
+- decision: AIOS contract uses an artifact-first, sign-and-checkpoint shape rather than a live consensus protocol. Conflict severities (low/medium/high) drive the operator_checkpoint flag. This is the smallest meaningful three-OS consensus surface — execution still proceeds through HiveMind's existing society plan.
+- risk: stage 1 only writes the contract; execution does not yet branch on contract status (e.g. block on operator_checkpoint). Future stages should gate workflow advance on contract sign and add structured disagreement resolution.
+- next: stage 2 — execution gating + operator resume UX. Stage 3 — richer conflict detection (provider/capability mismatch, scope conflicts).
+- status: done
+
+---
+
+## 2026-05-15 15:14 KST — Claude — AIOS contract runtime stage 2+3 complete
+
+- repo: hivemind
+- role: implementation
+- goal: HiveMind을 AIOS로 완성 — execution gating + operator resume + richer conflict detection.
+- changed:
+  - `hivemind/aios_runtime.py` — SCHEMA_VERSION→2, force/resume support, _has_blocking_conflict gate, provider_route_mismatch detection, execution report on advance.
+  - `hivemind/harness.py` — `orchestrate_prompt(advance_workflow=True)` parameter so the contract can gate `flow_advance` rather than auto-running it.
+  - `hivemind/hive.py` — `hive aios <goal>` now supports `--resume <run-id>`, `--force`, `--execute-local`.
+  - `tests/test_aios_runtime.py` — 11 tests covering checkpoint, force override, resume, conflict-detection unit cases.
+  - `scripts/public-release-check.sh` — TOTAL=18; new check 18 verifies AIOS contract converges (signers≥3, execution=advanced).
+- evidence:
+  - Three-OS consensus (siblings present): signed_by=[hivemind,memoryos,capabilityos], conflicts=[], execution.status=waiting_for_local_workers, scheduler=plan_dag, rc=0.
+  - Isolated checkpoint (no siblings): operator_checkpoint=True, execution=None, conflicts=[memoryos_unavailable(low), capabilityos_unavailable(medium)], rc=2.
+  - `hive aios --resume <run-id> --force` re-enters proposal phase, sets force_resumed=True, status=ready, advances workflow.
+  - provider_route_mismatch conflict surfaces when HiveMind's society plan and CapabilityOS hints don't intersect.
+  - Tests: **398/398 PASS**. Gate: **18/18 PASS**.
+- decision: HiveMind is now an AIOS runtime — it does not just execute, it negotiates the execution. The contract artifact is the durable "this is what the three OSes agreed to" record; operator_checkpoint is the named exit; `--resume --force` is the override path. Execution branches on consensus, not on prompt arrival.
+- risk: provider_route_mismatch heuristic uses string matching against capability descriptions; future versions should use a structured provider field. Force-resume currently records the override but does not require an operator signature artifact.
+- next: optional follow-ups — structured operator-signature artifact for force-resume, capabilityos provider field cleanup, contract version migration story when SCHEMA_VERSION advances.
+- status: done
+
+---
+
+## 2026-05-15 15:52 KST — Claude — AIOS evolution loop with big-brain feedback channel
+
+- repo: hivemind
+- role: implementation
+- goal: HiveMind이 다른 OS와 소통하며 각자가 느끼는 불편함/필요(friction)를 추출해 myworld AIOS(big brain)에 전송, 완료 신호 받을 때까지 진화하는 loop을 완성.
+- changed:
+  - `hivemind/aios_feedback.py` — new. extract_friction(per-OS), aggregate_needs, write_feedback_packet(→ ../.aios/outbox/myworld/), is_complete (operator-written .hivemind/aios_completion.json signal).
+  - `hivemind/aios_runtime.py` — SCHEMA_VERSION→3. build_aios_contract now extracts friction, writes feedback packet, records generation/prior_feedback. Added evolve_aios_contract(goal, max_iterations) loop and _compose_iteration_goal that injects prior friction into next iteration.
+  - `hivemind/hive.py` — `hive aios <goal> --evolve [--max-iterations N]`.
+  - `tests/test_aios_feedback.py` (new, 11 tests), `tests/test_aios_runtime.py` (+7 evolution tests = 19 tests in this file).
+  - `scripts/public-release-check.sh` — TOTAL=19. Check 19 runs `hive aios --evolve` and verifies the feedback packet is written to outbox/myworld/.
+- evidence:
+  - Sibling-present run with all 3 OSes happy: signed_by=[hivemind,memoryos,capabilityos], needs=0, friction_blocking=False, feedback packet written, evolution auto-converges in 1 gen.
+  - HIVE_DISABLE_MEMORYOS=1: surfaces memoryos/memoryos_unavailable (low), capabilityos/providers_not_routed (low), hivemind/provider_route_mismatch (medium). Feedback packet at ../.aios/outbox/myworld/aios-feedback-<run_id>-gen<N>.hivemind.report.json. Evolution loops until friction is non-blocking or completion signal arrives.
+  - Completion signal: writing {"all_goals": true} to .hivemind/aios_completion.json stops evolution at iter 0. {"goal_patterns": [regex]} supports per-goal completion.
+  - Tests: **417/417 PASS** (added 18 new tests). Gate: **19/19 PASS**.
+- decision: The "big brain" is myworld's AIOS control plane (.aios/outbox/myworld/ inbox). HiveMind no longer just consults MemoryOS/CapabilityOS — it actively surfaces what they cannot do, forwards needs upward, and stays in an evolution loop until the operator (big brain) writes the completion file. This closes the loop the user described: "OS들이 느끼는 불편함과 필요를 AIOS에 보내. 그가 완료라고 할 때까지 계속 진화."
+- risk: evolution is bounded by max_iterations (default 3, hard cap 8) for safety. Auto-convergence on zero-blocking-friction may prematurely declare success when the underlying capability gap is just unrepresented. Long-term: the big brain (myworld codex/operator) should consume these feedback packets and produce contracts that close the named gaps.
+- next: optional follow-ups — myworld-side consumer that reads outbox/myworld/aios-feedback-*.json and drafts ASC-NNNN contracts; richer friction taxonomies (privacy, capability-coverage); evolution telemetry dashboard.
+- status: done

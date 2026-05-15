@@ -26,6 +26,8 @@ def provider_passthrough(
     timeout: int = 600,
     allow_workspace_write: bool = False,
     workspace_write_grant: str | None = None,
+    allow_dangerous_full_access: bool = False,
+    dangerous_grant: str | None = None,
 ) -> Path:
     """Record or execute a native provider CLI command without abstracting its flags."""
     from . import harness as h
@@ -51,9 +53,23 @@ def provider_passthrough(
     command_text = " ".join(shlex.quote(part) for part in command)
     command_path.write_text(command_text + "\n", encoding="utf-8")
     permission_mode = passthrough_permission_mode(agent, native_args)
-    danger = passthrough_danger_reason(agent, native_args) or (
-        passthrough_execute_allowlist_reason(agent, native_args, allow_workspace_write=allow_workspace_write) if execute else None
+    danger = passthrough_danger_reason(agent, native_args, allow_dangerous_full_access=allow_dangerous_full_access) or (
+        passthrough_execute_allowlist_reason(
+            agent,
+            native_args,
+            allow_workspace_write=allow_workspace_write,
+            allow_dangerous_full_access=allow_dangerous_full_access,
+        )
+        if execute
+        else None
     )
+    if (
+        execute
+        and permission_mode == "danger_full_access_with_policy"
+        and allow_dangerous_full_access
+        and not explicit_dangerous_grant(dangerous_grant)
+    ):
+        danger = "blocked Codex dangerous full-access without explicit operator grant reason naming dangerous full-access"
     intent = build_provider_passthrough_intent(
         root,
         paths.run_id,
@@ -62,7 +78,7 @@ def provider_passthrough(
         command,
         execute=execute,
         permission_mode=permission_mode,
-        risk_level="high" if danger else ("low" if permission_mode == "read_only" else "medium"),
+        risk_level="high" if danger or permission_mode == "danger_full_access_with_policy" else ("low" if permission_mode == "read_only" else "medium"),
         timeout=timeout,
     )
     save_intent(root, intent)
@@ -141,18 +157,30 @@ def provider_passthrough(
         return result_path
 
     check_intent(root, paths.run_id, intent.intent_id)
-    if execute and allow_workspace_write and permission_mode == "workspace_write_with_policy":
-        grant_reason = workspace_write_grant or "explicit workspace-write grant supplied by caller"
+    if execute and permission_mode in {"workspace_write_with_policy", "danger_full_access_with_policy"}:
+        grant_reason = (
+            dangerous_grant
+            if permission_mode == "danger_full_access_with_policy"
+            else workspace_write_grant
+        ) or f"explicit {permission_mode} grant supplied by caller"
+        required_conditions = ["capture execution proof", "review changed files before closeout"]
+        if permission_mode == "danger_full_access_with_policy":
+            required_conditions.extend(
+                [
+                    "do not store secrets or provider credentials",
+                    "operator may stop or revert follow-up manually",
+                ]
+            )
         cast_vote(
             root,
             paths.run_id,
             intent.intent_id,
             voter_role="verifier",
             vote="approve_with_conditions",
-            confidence=0.82,
+            confidence=0.74 if permission_mode == "danger_full_access_with_policy" else 0.82,
             risk_level=intent.risk_level,
-            reasons=["workspace-write requested through scoped AIOS provider policy", grant_reason],
-            required_conditions=["capture execution proof", "review changed files before closeout"],
+            reasons=[f"{permission_mode} requested through explicit AIOS provider policy", grant_reason],
+            required_conditions=required_conditions,
         )
         cast_vote(
             root,
@@ -334,11 +362,15 @@ def next_passthrough_index(provider_dir: Path) -> int:
 def passthrough_permission_mode(agent: str, native_args: list[str]) -> str:
     lowered = [arg.lower() for arg in native_args]
     if agent == "codex":
+        if "--dangerously-bypass-approvals-and-sandbox" in lowered:
+            return "danger_full_access_with_policy"
         sandbox = option_value(lowered, "--sandbox")
         if sandbox == "read-only":
             return "read_only"
-        if sandbox in {"workspace-write", "danger-full-access", "full", "open"}:
+        if sandbox == "workspace-write":
             return "workspace_write_with_policy"
+        if sandbox in {"danger-full-access", "full", "open"}:
+            return "danger_full_access_with_policy"
     if agent == "claude" and option_value(lowered, "--permission-mode") in {"plan", "default"}:
         return "read_only"
     if agent == "gemini" and option_value(lowered, "--approval-mode") in {"plan", "default"}:
@@ -355,15 +387,19 @@ def option_value(args: list[str], option: str) -> str | None:
     return args[index + 1]
 
 
-def passthrough_danger_reason(agent: str, native_args: list[str]) -> str | None:
+def passthrough_danger_reason(agent: str, native_args: list[str], *, allow_dangerous_full_access: bool = False) -> str | None:
     lowered = [arg.lower() for arg in native_args]
     if agent == "claude" and "--dangerously-skip-permissions" in lowered:
         return "blocked dangerous Claude bypass flag: --dangerously-skip-permissions"
     if agent == "gemini" and any(flag in lowered for flag in {"--yolo", "--skip-trust", "--trust-all", "--trusted"}):
         return "blocked Gemini trust/approval bypass flag"
     if agent == "codex":
+        if "--dangerously-bypass-approvals-and-sandbox" in lowered and not allow_dangerous_full_access:
+            return "blocked Codex dangerous full-access flag without explicit AIOS dangerous grant: --dangerously-bypass-approvals-and-sandbox"
         sandbox = option_value(lowered, "--sandbox")
         approval = option_value(lowered, "--ask-for-approval") or option_value(lowered, "--approval")
+        if sandbox in {"danger-full-access", "full", "open"} and not allow_dangerous_full_access:
+            return f"blocked Codex full-access sandbox without explicit AIOS dangerous grant: sandbox={sandbox}"
         if sandbox in {"workspace-write", "danger-full-access", "full", "open"} and approval == "never":
             return f"blocked Codex unsafe sandbox/approval combination: sandbox={sandbox} approval={approval}"
     if native_args and Path(native_args[0]).name in {"sh", "bash", "zsh", "fish"}:
@@ -374,7 +410,18 @@ def passthrough_danger_reason(agent: str, native_args: list[str]) -> str | None:
     return None
 
 
-def passthrough_execute_allowlist_reason(agent: str, native_args: list[str], *, allow_workspace_write: bool = False) -> str | None:
+def explicit_dangerous_grant(grant: str | None) -> bool:
+    lowered = str(grant or "").lower()
+    return "dangerous" in lowered and ("full-access" in lowered or "full access" in lowered)
+
+
+def passthrough_execute_allowlist_reason(
+    agent: str,
+    native_args: list[str],
+    *,
+    allow_workspace_write: bool = False,
+    allow_dangerous_full_access: bool = False,
+) -> str | None:
     """Return a block reason unless native args match a safe execute profile."""
     lowered = [arg.lower() for arg in native_args]
     command_name = Path(lowered[0]).name if lowered else ""
@@ -384,7 +431,11 @@ def passthrough_execute_allowlist_reason(agent: str, native_args: list[str], *, 
             return None
         if allow_workspace_write and command_name == "exec" and sandbox == "workspace-write":
             return None
-        return "blocked provider passthrough execute outside Codex allowlist: require `exec --sandbox read-only` or explicit workspace-write grant"
+        if allow_dangerous_full_access and command_name == "exec" and "--dangerously-bypass-approvals-and-sandbox" in lowered:
+            return None
+        if allow_dangerous_full_access and command_name == "exec" and sandbox == "danger-full-access":
+            return None
+        return "blocked provider passthrough execute outside Codex allowlist: require `exec --sandbox read-only`, explicit workspace-write grant, or explicit dangerous full-access grant"
     if agent == "claude":
         permission_mode = option_value(lowered, "--permission-mode")
         if ("-p" in lowered or "--print" in lowered) and permission_mode in {"plan", "default"}:
@@ -415,7 +466,15 @@ def build_provider_passthrough_intent(
     intents_dir = root / ".runs" / run_id / "execution_intents"
     attempt = len(list(intents_dir.glob(f"intent_{run_id}_provider_{agent}_native_*.json"))) + 1 if intents_dir.exists() else 1
     command_hash = stable_id("command", *command)
-    authority_class = "read_only" if execute and permission_mode == "read_only" else ("provider_bypass_reversible" if execute else "prepare_only")
+    if not execute:
+        authority_class = "prepare_only"
+    elif permission_mode == "read_only":
+        authority_class = "read_only"
+    elif permission_mode == "danger_full_access_with_policy":
+        authority_class = "provider_bypass_irreversible"
+    else:
+        authority_class = "provider_bypass_reversible"
+    reversibility = 1.0 if permission_mode == "read_only" else (0.2 if permission_mode == "danger_full_access_with_policy" else 0.6)
     return ExecutionIntent(
         schema_version=1,
         intent_id=f"intent_{run_id}_provider_{agent}_native_{attempt:02d}",
@@ -435,7 +494,7 @@ def build_provider_passthrough_intent(
         cwd=root.as_posix(),
         permission_mode=permission_mode,
         bypass_mode="execute" if execute else "prepare",
-        reversibility=1.0 if permission_mode == "read_only" else 0.6,
+        reversibility=reversibility,
         reversibility_source="estimated",
         reversibility_factors=["native_provider_passthrough", f"permission_mode={permission_mode}"],
         expected_artifacts=[relative_artifact(root, command_path)],

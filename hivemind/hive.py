@@ -124,6 +124,13 @@ from .provider_loop import prepare_provider_loop, provider_loop_status, stop_pro
 from .provider_projection import build_provider_output_projection, format_provider_output_projection
 from .permission_preflight import build_permission_preflight_from_path, format_permission_preflight
 from .aios_packet_runner import run_aios_packet
+from .aios_runtime import (
+    build_aios_contract,
+    evolve_aios_contract,
+    format_aios_contract,
+    format_aios_evolution,
+    resume_aios_contract,
+)
 from .supervisor import (
     format_supervisor_status,
     format_supervisor_tail,
@@ -185,6 +192,7 @@ COMMANDS = {
     "provider-output-projection",
     "permission-preflight",
     "aios-packet",
+    "aios",
     "loop",
     "verify",
     "summarize",
@@ -628,6 +636,12 @@ def _main(argv: list[str] | None = None) -> None:
     provider_loop_tick.add_argument("--execute", action="store_true")
     provider_loop_tick.add_argument("--allow-workspace-write", action="store_true")
     provider_loop_tick.add_argument("--workspace-write-grant")
+    provider_loop_tick.add_argument(
+        "--allow-dangerous-full-access",
+        action="store_true",
+        help="allow Codex dangerous full-access only with --dangerous-grant",
+    )
+    provider_loop_tick.add_argument("--dangerous-grant")
     provider_loop_tick.add_argument("--timeout", type=int, default=600)
     provider_loop_tick.add_argument("--json", action="store_true")
     provider_loop_status_cmd = provider_loop_sub.add_parser("status", help="list provider loop workers")
@@ -654,9 +668,51 @@ def _main(argv: list[str] | None = None) -> None:
     aios_packet_cmd.add_argument("--provider", choices=["claude", "codex", "gemini", "local"])
     aios_packet_cmd.add_argument("--execute", action="store_true")
     aios_packet_cmd.add_argument("--writable-provider-execution", action="store_true")
+    aios_packet_cmd.add_argument(
+        "--dangerous-full-access",
+        action="store_true",
+        help="allow Codex dangerous full-access only with --operator-grant",
+    )
     aios_packet_cmd.add_argument("--operator-grant")
     aios_packet_cmd.add_argument("--write-result", action="store_true")
     aios_packet_cmd.add_argument("--json", action="store_true")
+
+    aios_cmd = sub.add_parser(
+        "aios",
+        help="three-OS consensus: HiveMind/MemoryOS/CapabilityOS propose, sign, and gate execution for one goal",
+    )
+    aios_cmd.add_argument(
+        "goal",
+        nargs="?",
+        help="the user goal to negotiate across the three OS layers (omit when using --resume)",
+    )
+    aios_cmd.add_argument(
+        "--resume",
+        dest="resume_run_id",
+        default=None,
+        metavar="RUN_ID",
+        help="resume an existing AIOS contract by run id after operator review",
+    )
+    aios_cmd.add_argument("--run-id", dest="run_id", default=None, help="attach to an existing run instead of creating one")
+    aios_cmd.add_argument("--complexity", default="default", choices=["fast", "default", "deep"])
+    aios_cmd.add_argument("--execute-local", action="store_true", help="advance local execution when the contract clears")
+    aios_cmd.add_argument(
+        "--force",
+        action="store_true",
+        help="override blocking conflicts and advance workflow anyway (records force_resumed=True)",
+    )
+    aios_cmd.add_argument(
+        "--evolve",
+        action="store_true",
+        help="evolve the contract over multiple iterations until the big brain signals completion",
+    )
+    aios_cmd.add_argument(
+        "--max-iterations",
+        type=int,
+        default=3,
+        help="cap on evolution iterations (default: 3, max: 8)",
+    )
+    aios_cmd.add_argument("--json", action="store_true")
 
     provider_projection_cmd = sub.add_parser("provider-output-projection", help="write a raw-body-free provider output projection for one run")
     provider_projection_cmd.add_argument("--run", "--run-id", dest="run_id", help="run ID to project (default: most recent)")
@@ -1536,6 +1592,8 @@ def _main(argv: list[str] | None = None) -> None:
                 timeout=args.timeout,
                 allow_workspace_write=bool(args.allow_workspace_write),
                 workspace_write_grant=args.workspace_write_grant,
+                allow_dangerous_full_access=bool(args.allow_dangerous_full_access),
+                dangerous_grant=args.dangerous_grant,
             )
         elif args.provider_loop_cmd == "status":
             report = provider_loop_status(root, run_id=args.run_id)
@@ -1578,6 +1636,7 @@ def _main(argv: list[str] | None = None) -> None:
             provider=args.provider,
             execute=bool(args.execute),
             writable_provider_execution=bool(args.writable_provider_execution),
+            dangerous_full_access=bool(args.dangerous_full_access),
             operator_grant=args.operator_grant,
             write_result_packet=bool(args.write_result),
         )
@@ -1587,6 +1646,57 @@ def _main(argv: list[str] | None = None) -> None:
             print(report.get("result_path") or report.get("status"))
         if report.get("status") == "held":
             raise SystemExit(1)
+        return
+    if args.cmd == "aios":
+        import json as _json
+
+        resume_id = getattr(args, "resume_run_id", None)
+        evolve_mode = bool(getattr(args, "evolve", False))
+        if evolve_mode:
+            if resume_id:
+                raise SystemExit("hive: --evolve cannot be combined with --resume")
+            if not args.goal:
+                raise SystemExit("hive: aios --evolve requires a <goal> argument")
+            summary = evolve_aios_contract(
+                root,
+                args.goal,
+                max_iterations=int(getattr(args, "max_iterations", 3)),
+                complexity=args.complexity,
+                execute_local=bool(getattr(args, "execute_local", False)),
+                force=bool(getattr(args, "force", False)),
+            )
+            if args.json:
+                print(_json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+            else:
+                print(format_aios_evolution(summary))
+            return
+        if resume_id:
+            if args.goal:
+                raise SystemExit("hive: --resume cannot be combined with a goal argument")
+            contract = resume_aios_contract(
+                root,
+                resume_id,
+                complexity=args.complexity,
+                execute_local=bool(getattr(args, "execute_local", False)),
+                force=bool(getattr(args, "force", False)),
+            )
+        else:
+            if not args.goal:
+                raise SystemExit("hive: aios <goal> is required (use --resume <run-id> to resume)")
+            contract = build_aios_contract(
+                root,
+                args.goal,
+                run_id=args.run_id,
+                complexity=args.complexity,
+                execute_local=bool(getattr(args, "execute_local", False)),
+                force=bool(getattr(args, "force", False)),
+            )
+        if args.json:
+            print(_json.dumps(contract, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_aios_contract(contract))
+        if contract.get("operator_checkpoint"):
+            raise SystemExit(2)
         return
     if args.cmd == "provider-output-projection":
         import json

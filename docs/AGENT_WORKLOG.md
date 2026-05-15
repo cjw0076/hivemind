@@ -1,5 +1,30 @@
 # Agent Worklog
 
+## 2026-05-15 KST - Codex - ASC-0174 observer-vs-executor debate completed
+
+- Context: MyWorld ASC-0174 requested a 6+ round Hive deliberation on whether
+  AIOS should primarily adopt management-plane / observer-first framing or
+  retain execution authority as core.
+- Semantic handshake: ASC-0174 terms confirmed: AIOS smart contract, dispatch
+  packet, hive execution, stop condition, verification gate, semantic
+  handshake. Ambiguous terms: none.
+- Ownership: Codex touched only
+  `hivemind/.runs/observer_vs_executor_debate/**` and this worklog in the
+  hivemind repo. MyWorld discovery summary is recorded at
+  `docs/discoveries/2026-05-15-hive-observer-vs-executor-debate-result.md`.
+- Decision: final convergence verdict is
+  `proceed_authority_routed_management_plane`. AIOS should own the system
+  calls of long-running agentic work while product repos retain their own
+  record authority unless they delegate hooks.
+- Evidence: 6 rounds, 18 proposer/critic/extender voice artifacts,
+  per-round synthesis files, and `final_state.md` exist under
+  `.runs/observer_vs_executor_debate/`. Verification confirmed 18 voice files
+  with minimum word count 741.
+- Next: MyWorld should collect ASC-0174, keep the discovery summary, and open
+  implementation work for authority/system-call labels, MemoryOS negative
+  evidence, CapabilityOS bad-tool routing, GenesisOS discomfort gates, and
+  Hive execution envelopes.
+
 ## 2026-05-14 KST - Codex - ASC-0124 proposer start
 
 - Context: Assigned as Worker Proposer for ASC-0124 to create only the six proposer voice artifacts for the ecosystem-substrate debate.
@@ -896,3 +921,24 @@
 - Next: MyWorld should route Hive packets to this command and pass writable
   grants only after CapabilityOS route + Hive permission preflight + operator
   decision.
+
+## 2026-05-15 15:01 KST - Codex - ASC-0171 Dangerous Provider Route
+
+- Context: Active AIOS work needs Hive to expose a visible, auditable route for
+  rare Codex full-access execution rather than forcing manual bypass outside the
+  contract layer.
+- Ownership: Codex is stabilizing uncommitted changes in
+  `hivemind/provider_passthrough.py`, `hivemind/provider_loop.py`,
+  `hivemind/aios_packet_runner.py`, `hivemind/protocol.py`,
+  `hivemind/harness.py`, `hivemind/hive.py`, and focused tests.
+- Decision: Dangerous full-access remains blocked by default. The only open
+  route requires `--execute`, an explicit dangerous flag, Codex provider, and an
+  operator grant that names `dangerous full-access`. The execution intent is
+  recorded as irreversible provider bypass and must close through user/operator
+  approval plus proof receipts.
+- Evidence: Focused test gate passed 29 tests across AIOS packet runner,
+  provider passthrough, and protocol after adding explicit grant-language and
+  irreversible quorum coverage. Full suite passed 391 tests. Public release
+  gate passed 17/17 with zero warnings.
+- Next: MyWorld dispatch should only pass this route after CapabilityOS route
+  evidence, Hive permission preflight, and operator checkpoint.

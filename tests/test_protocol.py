@@ -89,6 +89,23 @@ class LedgerProtocolTest(unittest.TestCase):
         self.assertEqual(intent.authority_class, "provider_bypass_irreversible")
         self.assertEqual(decision.decision, "ask_user")
 
+    def test_irreversible_intent_can_close_with_user_approval(self) -> None:
+        tmp, root, paths, dag = self._root_run_dag()
+        self.addCleanup(tmp.cleanup)
+
+        step = dag.by_id("executor")
+        step.reversibility = 0.1
+        step.reversibility_source = "declared"
+        intent = build_execution_intent(root, dag, "executor", execute=True)
+        save_intent(root, intent)
+        check_intent(root, paths.run_id, intent.intent_id)
+        cast_vote(root, paths.run_id, intent.intent_id, voter_role="user", vote="approve")
+
+        decision = decide_intent(root, paths.run_id, intent.intent_id)
+
+        self.assertEqual(decision.decision, "approved_with_conditions")
+        self.assertIn("irreversible execution approved by user/operator", decision.conditions)
+
     def test_execute_gate_blocks_provider_without_decision(self) -> None:
         tmp, root, paths, dag = self._root_run_dag()
         self.addCleanup(tmp.cleanup)

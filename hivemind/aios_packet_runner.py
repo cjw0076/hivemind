@@ -82,6 +82,7 @@ def run_aios_packet(
     provider: str | None = None,
     execute: bool = False,
     writable_provider_execution: bool = False,
+    dangerous_full_access: bool = False,
     operator_grant: str | None = None,
     write_result_packet: bool = False,
 ) -> dict[str, Any]:
@@ -93,10 +94,18 @@ def run_aios_packet(
     grant = str(operator_grant or "").strip()
     if writable_provider_execution and not execute:
         stop_conditions.append("writable_requires_execute")
+    if dangerous_full_access and not execute:
+        stop_conditions.append("dangerous_requires_execute")
+    if writable_provider_execution and dangerous_full_access:
+        stop_conditions.append("conflicting_provider_permission_modes")
     if writable_provider_execution and selected_provider != "codex":
         stop_conditions.append("writable_provider_only_codex_supported")
-    if writable_provider_execution and not grant:
+    if dangerous_full_access and selected_provider != "codex":
+        stop_conditions.append("dangerous_provider_only_codex_supported")
+    if (writable_provider_execution or dangerous_full_access) and not grant:
         stop_conditions.append("operator_grant_missing")
+    if dangerous_full_access and grant and not _explicit_dangerous_grant(grant):
+        stop_conditions.append("dangerous_operator_grant_not_explicit")
     prompt = packet_prompt(packet)
     prepared = None
     tick = None
@@ -109,6 +118,8 @@ def run_aios_packet(
             execute=execute,
             allow_workspace_write=writable_provider_execution,
             workspace_write_grant=grant or None,
+            allow_dangerous_full_access=dangerous_full_access,
+            dangerous_grant=grant or None,
         )
         status = "executed" if execute and tick.get("status") in {"completed", "done", "passed"} else "prepared"
         if tick.get("status") in {"failed", "timeout"}:
@@ -125,6 +136,7 @@ def run_aios_packet(
         "provider": selected_provider,
         "execute_requested": execute,
         "writable_provider_execution": writable_provider_execution,
+        "dangerous_full_access": dangerous_full_access,
         "operator_grant": grant or None,
         "provider_loop_prepared": prepared,
         "provider_loop_tick": tick,
@@ -134,6 +146,7 @@ def run_aios_packet(
             "writes_child_source_directly": False,
             "uses_provider_loop": True,
             "writable_provider_requires_operator_grant": True,
+            "dangerous_full_access_requires_operator_grant": True,
         },
     }
     if write_result_packet:
@@ -145,3 +158,8 @@ def run_aios_packet(
             write_result(return_path, result)
             result["result_path"] = return_path.as_posix()
     return result
+
+
+def _explicit_dangerous_grant(grant: str) -> bool:
+    lowered = grant.lower()
+    return "dangerous" in lowered and ("full-access" in lowered or "full access" in lowered)

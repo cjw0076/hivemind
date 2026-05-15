@@ -117,6 +117,71 @@ class AiosPacketRunnerTest(unittest.TestCase):
             command = (hive_root / command_ref).read_text(encoding="utf-8")
             self.assertIn("--sandbox workspace-write", command)
 
+    def test_dangerous_full_access_requires_operator_grant(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            hive_root = base / "hive"
+            hive_root.mkdir()
+            packet = base / "packet.json"
+            packet.write_text(json.dumps(packet_payload()), encoding="utf-8")
+
+            result = run_aios_packet(
+                hive_root=hive_root,
+                packet_path=packet,
+                provider="codex",
+                execute=True,
+                dangerous_full_access=True,
+            )
+
+            self.assertEqual(result["status"], "held")
+            self.assertIn("operator_grant_missing", result["stop_conditions_triggered"])
+
+    def test_dangerous_full_access_requires_explicit_grant_language(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            hive_root = base / "hive"
+            hive_root.mkdir()
+            packet = base / "packet.json"
+            packet.write_text(json.dumps(packet_payload()), encoding="utf-8")
+
+            result = run_aios_packet(
+                hive_root=hive_root,
+                packet_path=packet,
+                provider="codex",
+                execute=True,
+                dangerous_full_access=True,
+                operator_grant="ok run it",
+            )
+
+            self.assertEqual(result["status"], "held")
+            self.assertIn("dangerous_operator_grant_not_explicit", result["stop_conditions_triggered"])
+
+    def test_dangerous_full_access_uses_codex_bypass_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            hive_root = base / "hive"
+            hive_root.mkdir()
+            packet = base / "packet.json"
+            packet.write_text(json.dumps(packet_payload()), encoding="utf-8")
+            completed = subprocess.CompletedProcess(args=["codex", "exec"], returncode=0, stdout="done\n", stderr="")
+
+            with patch("hivemind.harness.resolve_provider_binary", return_value="codex"):
+                with patch("hivemind.provider_passthrough.subprocess.run", return_value=completed):
+                    result = run_aios_packet(
+                        hive_root=hive_root,
+                        packet_path=packet,
+                        provider="codex",
+                        execute=True,
+                        dangerous_full_access=True,
+                        operator_grant="founder approved dangerous full-access autonomous execution",
+                    )
+
+            self.assertEqual(result["status"], "executed")
+            self.assertEqual(result["provider_loop_tick"]["status"], "completed")
+            command_ref = result["provider_loop_tick"]["worker"]["last_result_path"].replace("_result.yaml", "_command.txt")
+            command = (hive_root / command_ref).read_text(encoding="utf-8")
+            self.assertIn("--dangerously-bypass-approvals-and-sandbox", command)
+
     def test_cli_aios_packet_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

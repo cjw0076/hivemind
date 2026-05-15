@@ -4078,8 +4078,14 @@ def orchestrate_prompt(
     complexity: str = "default",
     execute: bool = False,
     execute_local: bool = False,
+    advance_workflow: bool = True,
 ) -> dict[str, Any]:
-    """Turn a prompt into a multi-agent society plan and prepare worker/provider artifacts."""
+    """Turn a prompt into a multi-agent society plan and prepare worker/provider artifacts.
+
+    When ``advance_workflow`` is False the function stops after writing the
+    society plan and updating run state — useful for AIOS contract gating
+    where execution must wait for the three-OS consensus to sign.
+    """
     plan_path = ask_router(root, prompt, run_id=run_id, complexity=complexity)
     paths, state = load_run(root, plan_path.parent.name)
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
@@ -4133,6 +4139,16 @@ def orchestrate_prompt(
         {"members": members, "next": report.get("next")},
     )
     update_state(paths, phase="orchestration", status="ready")
+    if not advance_workflow:
+        report["workflow"] = {
+            "status": "deferred",
+            "scheduler": None,
+            "artifact": None,
+            "next": report.get("next"),
+            "actions_taken": [],
+            "reason": "advance_workflow=False (e.g. AIOS contract awaits operator sign)",
+        }
+        return report
     workflow = flow_advance(root, run_id=paths.run_id, complexity=complexity, execute_local=execute_local)
     report["workflow"] = {
         "status": workflow.get("status"),
@@ -4997,6 +5013,8 @@ def provider_passthrough(
     timeout: int = 600,
     allow_workspace_write: bool = False,
     workspace_write_grant: str | None = None,
+    allow_dangerous_full_access: bool = False,
+    dangerous_grant: str | None = None,
 ) -> Path:
     """Backward-compatible wrapper for the extracted provider passthrough module."""
     from .provider_passthrough import provider_passthrough as run_provider_passthrough
@@ -5010,6 +5028,8 @@ def provider_passthrough(
         timeout=timeout,
         allow_workspace_write=allow_workspace_write,
         workspace_write_grant=workspace_write_grant,
+        allow_dangerous_full_access=allow_dangerous_full_access,
+        dangerous_grant=dangerous_grant,
     )
 
 
