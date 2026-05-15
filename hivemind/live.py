@@ -28,7 +28,23 @@ def build_live_report(
     tail: int = 16,
     show_paths: bool = False,
 ) -> dict[str, Any]:
-    paths, state = load_run(root, run_id)
+    try:
+        paths, state = load_run(root, run_id)
+    except FileNotFoundError:
+        return {
+            "schema_version": 1,
+            "run_id": None,
+            "task": None,
+            "phase": "idle",
+            "status": "no_run",
+            "health": {"label": "IDLE", "reason": "no current run"},
+            "next": {"command": 'hive live "your task"', "reason": "create the first prompt/log run"},
+            "authority": {"state": "none"},
+            "agents": [],
+            "blocked": [],
+            "log": [],
+            "paths_hidden": not show_paths,
+        }
     board = run_board(root, paths.run_id)
     ledger = read_execution_ledger(root, paths.run_id, limit=tail)
     activity = read_hive_activity(paths, limit=tail)

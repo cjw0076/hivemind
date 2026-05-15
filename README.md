@@ -49,7 +49,7 @@ long-running autonomous planner.
 
 ## Current Modules
 
-- `hivemind/` — `hive` CLI, provider adapters, TUI, local workers, run validation.
+- `hivemind/` — `hive` CLI, provider adapters, prompt/log runtime, local workers, run validation.
 - `.runs/` — Hive Mind run blackboard and per-agent artifacts.
 - `.hivemind/` — project settings, checks, runtime profile, local logs.
 - `docs/` — shared architecture notes and Hive Mind operating docs.
@@ -66,9 +66,9 @@ hive init
 hive demo quickstart       # first value demo, no provider keys required
 hive demo memory-loop      # optional Hive -> MemoryOS -> Hive feedback demo
 hive run "your task"
+hive live "your task"
 hive inspect <run_id>
 hive goal
-hive tui                   # optional interactive console
 ```
 
 Or without installing:

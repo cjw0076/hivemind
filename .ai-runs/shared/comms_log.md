@@ -1492,3 +1492,12 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - risk: evolution is bounded by max_iterations (default 3, hard cap 8) for safety. Auto-convergence on zero-blocking-friction may prematurely declare success when the underlying capability gap is just unrepresented. Long-term: the big brain (myworld codex/operator) should consume these feedback packets and produce contracts that close the named gaps.
 - next: optional follow-ups — myworld-side consumer that reads outbox/myworld/aios-feedback-*.json and drafts ASC-NNNN contracts; richer friction taxonomies (privacy, capability-coverage); evolution telemetry dashboard.
 - status: done
+
+---
+
+## 2026-05-15 19:27 KST - Codex
+
+- Context: User asked whether `hive tui` had disappeared after deciding Hive should become an AIOS prompt/log runtime and MemoryOS should own the future observability UI.
+- Decision: Removed `hive tui` from the public parser and made bare TTY `hive` enter `hive live` instead of curses. Kept legacy terminal view helpers as internal/debug surfaces for now because deleting `hivemind/tui.py` touches a broader historical test/doc surface.
+- Evidence: `hive --help` no longer lists a `tui` subcommand; `python -m hivemind.hive tui` exits rc=2; `python -m hivemind.hive --root <tmp> live --json` exits rc=0 with `status=no_run`; focused tests passed 25/25; full suite passed 420/420; production gate passed 19/19.
+- Next: Hard-delete TUI modules/tests/docs only under a separate cleanup contract if MemoryOS neural-map UI is ready to replace all legacy terminal views.

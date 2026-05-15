@@ -942,3 +942,13 @@
   gate passed 17/17 with zero warnings.
 - Next: MyWorld dispatch should only pass this route after CapabilityOS route
   evidence, Hive permission preflight, and operator checkpoint.
+
+## 2026-05-15 19:20 KST - Codex - Remove TUI as Default User Surface
+
+- Context: User asked whether `hive tui` had disappeared after clarifying that Hive should become prompt/log/AIOS contract runtime while MemoryOS owns the future neural-map observability UI.
+- Ownership: Codex will remove `hive tui` from the public/default CLI surface and update focused tests/docs. The existing `hivemind/tui.py` implementation may remain as an internal/debug dependency for older view helpers unless a later cleanup contract deletes it fully.
+- Expected files: `hivemind/hive.py`, `tests/test_cli_entrypoint.py`, `README.md`, `docs/README.md`, and shared coordination logs.
+- Deferred: Full deletion of curses/TUI modules and historical docs references should be a separate cleanup because many old design notes still cite TUI behavior.
+- Completion 2026-05-15 19:27 KST: Removed `hive tui` from the public parser, changed bare TTY `hive` to the `live` prompt/log surface, added an idle `hive live --json` state for workspaces with no current run, and updated public README/docs wording away from CLI/TUI as the primary product surface.
+- Evidence: `python -m unittest tests.test_cli_entrypoint tests.test_aios_runtime` passed 25/25; `python -m unittest discover -s tests -p 'test_*.py'` passed 420/420; `bash scripts/public-release-check.sh` passed 19/19; `python -m hivemind.hive tui` exits rc=2 as an invalid command while `python -m hivemind.hive --root <tmp> live --json` exits rc=0 with `status=no_run`.
+- Next: If the operator wants a hard delete, split a separate cleanup contract to remove `hivemind/tui.py`, TUI-specific tests, and historical TUI docs rather than mixing that with the AIOS runtime surface change.

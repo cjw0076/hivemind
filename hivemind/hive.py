@@ -1,4 +1,4 @@
-"""`hive` command: Hive Mind CLI and TUI."""
+"""`hive` command: Hive Mind CLI and prompt/log runtime."""
 
 from __future__ import annotations
 
@@ -111,7 +111,7 @@ from .protocol import (
     vote_path,
     save_intent,
 )
-from .tui import TUI_VIEWS, print_status, run_tui
+from .tui import print_status, run_tui
 from .workloop import format_execution_ledger, format_ledger_replay, read_execution_ledger, replay_execution_ledger
 from .live import build_live_report, build_memoryos_observability_report, format_live_report, start_live_prompt
 from .inspect_run import build_inspect_report, format_inspect_report
@@ -180,6 +180,8 @@ COMMANDS = {
     "transcript",
     "artifacts",
     "society",
+    # Removed from the public parser; keep it reserved so `hive tui` fails
+    # instead of being interpreted as a natural-language prompt.
     "tui",
     "plan",
     "runs",
@@ -217,8 +219,8 @@ COMMANDS = {
 
 
 def default_entrypoint() -> list[str]:
-    """Default product entrypoint: TTY opens the console, non-TTY prints help."""
-    return ["tui"] if sys.stdin.isatty() and sys.stdout.isatty() else ["--help"]
+    """Default product entrypoint: TTY opens the prompt/log surface, non-TTY prints help."""
+    return ["live"] if sys.stdin.isatty() and sys.stdout.isatty() else ["--help"]
 
 
 def normalize_argv(argv: list[str]) -> list[str]:
@@ -294,7 +296,7 @@ def _main(argv: list[str] | None = None) -> None:
     detect_cmd.add_argument("--json", action="store_true")
     agents_status_cmd = agents_sub.add_parser("status", help="show provider registry as an agent status board")
     agents_status_cmd.add_argument("--json", action="store_true")
-    agents_view_cmd = agents_sub.add_parser("view", help="open the agents TUI view")
+    agents_view_cmd = agents_sub.add_parser("view", help="open the legacy agents terminal view")
     agents_view_cmd.add_argument("--run-id")
     agents_roles_cmd = agents_sub.add_parser("roles", help="show role registry")
     agents_roles_cmd.add_argument("--json", action="store_true")
@@ -432,10 +434,10 @@ def _main(argv: list[str] | None = None) -> None:
     debate_cmd.add_argument("--participant", action="append", choices=["claude", "gemini", "codex"], help="provider participant; repeatable")
     debate_cmd.add_argument("--execute", action="store_true", help="execute supported non-Codex providers and wait at each round barrier")
     debate_cmd.add_argument("--json", action="store_true")
-    demo_cmd = sub.add_parser("demo", help="safe live demo that animates a Hive Mind run for the TUI")
+    demo_cmd = sub.add_parser("demo", help="safe live demo that animates a Hive Mind run")
     demo_sub = demo_cmd.add_subparsers(dest="demo_cmd", required=True)
     demo_live_cmd = demo_sub.add_parser("live", help="write a live coordination demo run without provider execution")
-    demo_live_cmd.add_argument("task", nargs="?", default="Watch Hive Mind agents coordinate in the TUI")
+    demo_live_cmd.add_argument("task", nargs="?", default="Watch Hive Mind agents coordinate")
     demo_live_cmd.add_argument("--run-id", help="animate an existing run instead of creating one")
     demo_live_cmd.add_argument("--delay", type=float, default=0.45, help="seconds between demo state transitions")
     demo_live_cmd.add_argument("--json", action="store_true")
@@ -453,14 +455,14 @@ def _main(argv: list[str] | None = None) -> None:
     status_cmd.add_argument("--run-id")
     status_cmd.add_argument("--json", action="store_true")
 
-    board_cmd = sub.add_parser("board", help="open the board TUI view")
+    board_cmd = sub.add_parser("board", help="open the legacy board terminal view")
     board_cmd.add_argument("--run-id")
     board_cmd.add_argument("--observer", action="store_true", help="open read-only observer mode")
 
-    events_cmd = sub.add_parser("events", help="show run events or open the events TUI view")
+    events_cmd = sub.add_parser("events", help="show run events or open the legacy events terminal view")
     events_cmd.add_argument("--run-id")
     events_cmd.add_argument("--tail", type=int, default=60)
-    events_cmd.add_argument("--follow", action="store_true", help="open the live events TUI view")
+    events_cmd.add_argument("--follow", action="store_true", help="open the live events terminal view")
     events_cmd.add_argument("--json", action="store_true")
 
     ledger_cmd = sub.add_parser("ledger", help="show append-only execution ledger for the current run")
@@ -468,7 +470,7 @@ def _main(argv: list[str] | None = None) -> None:
     ledger_cmd.add_argument("--run-id")
     ledger_cmd.add_argument("--tail", type=int, default=60)
     ledger_cmd.add_argument("--json", action="store_true")
-    ledger_cmd.add_argument("--follow", action="store_true", help="open the live ledger TUI view")
+    ledger_cmd.add_argument("--follow", action="store_true", help="open the live ledger terminal view")
 
     live_cmd = sub.add_parser("live", help="prompt/log AIOS surface over the current run")
     live_cmd.add_argument("prompt", nargs="*", help="optional prompt; creates/routes a new run before showing live log")
@@ -526,12 +528,12 @@ def _main(argv: list[str] | None = None) -> None:
     source_read_summary_cmd.add_argument("--paths", action="store_true", help="show full source refs for debugging")
     source_read_summary_cmd.add_argument("--json", action="store_true")
 
-    transcript_cmd = sub.add_parser("transcript", help="show transcript or open transcript TUI view")
+    transcript_cmd = sub.add_parser("transcript", help="show transcript or open the legacy transcript terminal view")
     transcript_cmd.add_argument("--run-id")
     transcript_cmd.add_argument("--tail", type=int, default=120)
     transcript_cmd.add_argument("--tui", action="store_true")
 
-    artifacts_cmd = sub.add_parser("artifacts", help="open the artifacts TUI view")
+    artifacts_cmd = sub.add_parser("artifacts", help="open the legacy artifacts terminal view")
     artifacts_cmd.add_argument("--run-id")
 
     next_cmd = sub.add_parser("next", help="show next recommended command")
@@ -551,12 +553,6 @@ def _main(argv: list[str] | None = None) -> None:
     gaps_cmd = sub.add_parser("gaps", help="build gap-closure artifacts from docs/HIVE_MIND_GAPS.md")
     gaps_cmd.add_argument("--run-id")
     gaps_cmd.add_argument("--json", action="store_true")
-
-    tui_cmd = sub.add_parser("tui", help="open the run status TUI")
-    tui_cmd.add_argument("--run-id")
-    tui_cmd.add_argument("--view", choices=sorted(TUI_VIEWS), default="board")
-    tui_cmd.add_argument("--observer", action="store_true", help="read-only TUI session")
-    tui_cmd.add_argument("--explore", action="store_true", help="open unified explore view (Agents/Runs/Inspect/Events)")
 
     plan_cmd = sub.add_parser("plan", help="show routing plan or generate a task DAG")
     plan_sub = plan_cmd.add_subparsers(dest="plan_sub")
@@ -746,7 +742,7 @@ def _main(argv: list[str] | None = None) -> None:
     memory_list_cmd = memory_sub.add_parser("list", help="list memory drafts for the current run")
     memory_list_cmd.add_argument("--run-id")
     memory_list_cmd.add_argument("--json", action="store_true")
-    memory_view_cmd = memory_sub.add_parser("view", help="open the memory draft TUI view")
+    memory_view_cmd = memory_sub.add_parser("view", help="open the legacy memory draft terminal view")
     memory_view_cmd.add_argument("--run-id")
 
     completion_cmd = sub.add_parser("completion", help="print shell completion script")
@@ -781,7 +777,7 @@ def _main(argv: list[str] | None = None) -> None:
     hive_activity_cmd = hive_sub.add_parser("activity", help="show human-readable hive activity feed")
     hive_activity_cmd.add_argument("--run-id")
     hive_activity_cmd.add_argument("--tail", type=int, default=30)
-    society_cmd = sub.add_parser("society", help="open the society TUI view")
+    society_cmd = sub.add_parser("society", help="open the legacy society terminal view")
     society_cmd.add_argument("--run-id")
 
     audit_cmd = sub.add_parser("audit", help="audit current run artifacts, provider results, and policy")
@@ -1307,10 +1303,6 @@ def _main(argv: list[str] | None = None) -> None:
             print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
         else:
             print(format_gap_closure_report(report))
-        return
-    if args.cmd == "tui":
-        view = "explore" if args.explore else args.view
-        run_tui(root, run_id=args.run_id, view=view, control=not args.observer)
         return
     if args.cmd == "ledger":
         if args.ledger_action == "replay":
@@ -2049,8 +2041,8 @@ def run_chat(root: Path) -> None:
             main(["--root", root.as_posix(), "diff"])
             print_chat_run_update(root)
             continue
-        if line == "/tui":
-            main(["--root", root.as_posix(), "tui"])
+        if line == "/live":
+            main(["--root", root.as_posix(), "live"])
             continue
         if line.startswith("/invoke "):
             parts = line.split()
@@ -2085,7 +2077,7 @@ def print_chat_help() -> None:
                 "  /summary       update final report",
                 "  /check         run policy checks",
                 "  /diff          capture git diff",
-                "  /tui           open status TUI",
+                "  /live          show prompt/log surface",
                 "  /quit          exit",
             ]
         )
