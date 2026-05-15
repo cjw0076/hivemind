@@ -142,6 +142,10 @@ class ProductionHardeningTest(unittest.TestCase):
             self.assertEqual(state["memoryos_context"]["trace_id"], "trace_123")
             self.assertEqual(state["memoryos_context"]["feedback_directives_count"], 1)
             self.assertTrue((root / report["artifact"]).exists())
+            self.assertTrue((root / report["receipt_artifact"]).exists())
+            self.assertEqual(report["kind"], "memoryos_context_receipt")
+            self.assertFalse(report["should_abort_hive"])
+            self.assertFalse(report["degraded"])
             context_text = paths.context_pack.read_text(encoding="utf-8")
             self.assertIn("MemoryOS Accepted Context", context_text)
             self.assertIn("Feedback Directives", context_text)
@@ -162,8 +166,11 @@ class ProductionHardeningTest(unittest.TestCase):
             report = ensure_memoryos_context(root, paths.run_id)
 
             self.assertEqual(report["status"], "unavailable")
+            self.assertEqual(report["failure_class"], "memoryos_cli_missing")
+            self.assertFalse(report["should_abort_hive"])
             self.assertEqual(report["accepted_memory_ids"], [])
             self.assertTrue((root / report["artifact"]).exists())
+            self.assertTrue((root / report["receipt_artifact"]).exists())
             self.assertIn("no memoryos sibling", paths.context_pack.read_text(encoding="utf-8"))
 
     def test_memoryos_context_bridge_can_be_disabled_for_release_gate(self) -> None:
@@ -181,6 +188,31 @@ class ProductionHardeningTest(unittest.TestCase):
 
             self.assertEqual(report["status"], "unavailable")
             self.assertIn("disabled", report["reason"].lower())
+            self.assertEqual(report["failure_class"], "memoryos_disabled")
+            self.assertFalse(report["should_abort_hive"])
+
+    def test_memoryos_context_bridge_failure_writes_nonblocking_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "hivemind"
+            root.mkdir()
+            memoryos_root = base / "memoryOS"
+            (memoryos_root / "memoryos").mkdir(parents=True)
+            (memoryos_root / "memoryos" / "cli.py").write_text("# stub\n", encoding="utf-8")
+            paths = create_run(root, "memoryos failure receipt", project="Hive Mind")
+
+            with patch("hivemind.memory_bridge.subprocess.run") as run:
+                run.return_value = subprocess.CompletedProcess(args=[], returncode=2, stdout="", stderr="boom")
+                report = ensure_memoryos_context(root, paths.run_id)
+
+            receipt_path = root / report["receipt_artifact"]
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(report["status"], "failed")
+            self.assertEqual(report["failure_class"], "memoryos_nonzero_exit")
+            self.assertTrue(report["degraded"])
+            self.assertFalse(report["should_abort_hive"])
+            self.assertEqual(receipt["failure_class"], "memoryos_nonzero_exit")
 
     def test_local_model_profile_writes_role_assignments(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

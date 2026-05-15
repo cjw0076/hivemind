@@ -270,7 +270,7 @@ substrates for memory/context and capability routing.
 - [x] Add `hive inspect <run>` as a path-hidden operator summary over run state, ledger, provider results, receipts, policy decisions, and next action.
 - [x] Harden supervisor heartbeat/timeout recovery and make `hive run stop/status/tail` production-safe for interrupted runs.
 - [x] Add a Hive-only production smoke script that does not require MemoryOS: init, run, local step, provider dry-run, ledger replay, inspect, stop, validation.
-- [ ] Keep MemoryOS context hook optional and non-blocking; failed/absent MemoryOS must produce a receipt, not abort Hive runtime.
+- [x] Keep MemoryOS context hook optional and non-blocking; failed/absent MemoryOS must produce a receipt, not abort Hive runtime.
 - [x] Update public-facing docs to claim only "production runtime harness v0" until MemoryOS/CapabilityOS loops are production-ready.
 - [ ] Add redacted Grok fixture from current local structure.
 - [ ] Add redacted Perplexity markdown ZIP fixture.

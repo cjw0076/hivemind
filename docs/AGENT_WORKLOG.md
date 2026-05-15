@@ -1002,3 +1002,12 @@
 - Completion: Supervisor status now validates completed/prepared DAG steps against declared `expected_output_artifacts` and recorded `step.artifact` paths. `output_artifacts_validated` now combines ledger replay health with concrete artifact existence, and text status shows an Artifacts line.
 - Evidence: `python -m unittest tests.test_supervisor` passed 17/17; `python -m unittest tests.test_supervisor tests.test_workloop_ledger tests.test_production_hardening` passed 53/53; `python -m py_compile hivemind/supervisor.py hivemind/hive.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 385/385; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the supervised-run hardening closeout and move to the next production gap.
+
+## 2026-05-16 03:20 KST - Codex - MemoryOS Nonblocking Receipt
+
+- Context: H-P0 still requires the MemoryOS context hook to stay optional and non-blocking with a durable receipt when MemoryOS is absent or fails.
+- Ownership: Codex owns a narrow bridge-contract slice in `hivemind/memory_bridge.py`, `hivemind/harness.py`, `tests/test_production_hardening.py`, `docs/TODO.md`, and shared coordination logs.
+- Expected files: `hivemind/memory_bridge.py`, `hivemind/harness.py`, `tests/test_production_hardening.py`, `docs/TODO.md`, `.ai-runs/shared/comms_log.md`.
+- Completion: MemoryOS context reports are now explicit `memoryos_context_receipt` artifacts with `bridge_optional=true`, `should_abort_hive=false`, `degraded`, and `failure_class`. The harness persists both `memory_context.json` and `memory_context_receipt.json` for available, disabled, missing, and failed MemoryOS paths.
+- Evidence: `python -m unittest tests.test_production_hardening` passed 26/26; `python -m unittest tests.test_production_hardening tests.test_inspect tests.test_live` passed 46/46; `python -m py_compile hivemind/memory_bridge.py hivemind/harness.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 386/386; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the nonblocking MemoryOS receipt closeout and move to the next production gap.

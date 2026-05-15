@@ -1543,3 +1543,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Added supervisor output artifact validation. Completed/prepared DAG steps are checked against `expected_output_artifacts` and recorded `step.artifact` paths. Supervisor status now combines replay health with artifact validation and renders an Artifacts line.
 - Evidence: `python -m unittest tests.test_supervisor` passed 17/17; `python -m unittest tests.test_supervisor tests.test_workloop_ledger tests.test_production_hardening` passed 53/53; `python -m py_compile hivemind/supervisor.py hivemind/hive.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 385/385; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the supervised-run hardening closeout and move to the next production gap.
+
+## 2026-05-16 03:20 KST - Codex
+
+- Context: H-P0 still had an optional MemoryOS bridge gap: absent/failed MemoryOS had to produce a durable nonblocking receipt rather than just a context artifact.
+- Decision: MemoryOS context bridge reports now identify as `memoryos_context_receipt`, set `bridge_optional=true` and `should_abort_hive=false`, classify degraded failures with `failure_class`, and persist a separate `artifacts/memory_context_receipt.json` next to `memory_context.json`.
+- Evidence: `python -m unittest tests.test_production_hardening` passed 26/26; `python -m unittest tests.test_production_hardening tests.test_inspect tests.test_live` passed 46/46; `python -m py_compile hivemind/memory_bridge.py hivemind/harness.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 386/386; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the nonblocking MemoryOS receipt closeout and move to the next production gap.

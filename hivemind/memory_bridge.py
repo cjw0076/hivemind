@@ -37,10 +37,15 @@ def build_memoryos_context_report(root: Path, paths: Any, state: dict[str, Any])
     ]
     artifact: dict[str, Any] = {
         "schema_version": 1,
+        "kind": "memoryos_context_receipt",
         "generated_at": now_iso(),
         "run_id": paths.run_id,
         "phase": "context_retrieval",
         "status": "unavailable",
+        "bridge_optional": True,
+        "should_abort_hive": False,
+        "degraded": True,
+        "failure_class": None,
         "memoryos_root": memoryos_root.as_posix(),
         "memoryos_source_root": memoryos_source_root.as_posix(),
         "command": command,
@@ -52,14 +57,16 @@ def build_memoryos_context_report(root: Path, paths: Any, state: dict[str, Any])
     }
     if not memoryos_cli.exists():
         artifact["reason"] = "MemoryOS CLI source not found next to Hive Mind workspace."
+        artifact["failure_class"] = "memoryos_cli_missing"
         return artifact
     if os.environ.get("HIVE_DISABLE_MEMORYOS") in {"1", "true", "yes"}:
         artifact["reason"] = "MemoryOS bridge disabled by HIVE_DISABLE_MEMORYOS."
+        artifact["failure_class"] = "memoryos_disabled"
         return artifact
     try:
         result = subprocess.run(command, cwd=memoryos_source_root, text=True, capture_output=True, timeout=30)
     except (OSError, subprocess.SubprocessError) as exc:
-        artifact.update({"status": "failed", "reason": str(exc)})
+        artifact.update({"status": "failed", "reason": str(exc), "failure_class": "memoryos_subprocess_error"})
         return artifact
     artifact.update(
         {
@@ -68,7 +75,7 @@ def build_memoryos_context_report(root: Path, paths: Any, state: dict[str, Any])
         }
     )
     if result.returncode != 0:
-        artifact.update({"status": "failed", "reason": "memoryos context build failed"})
+        artifact.update({"status": "failed", "reason": "memoryos context build failed", "failure_class": "memoryos_nonzero_exit"})
         return artifact
     try:
         pack = json.loads(result.stdout)
@@ -77,6 +84,7 @@ def build_memoryos_context_report(root: Path, paths: Any, state: dict[str, Any])
             {
                 "status": "failed",
                 "reason": "memoryos context build did not emit JSON",
+                "failure_class": "memoryos_invalid_json",
                 "stdout_excerpt": result.stdout.strip()[-4000:],
             }
         )
@@ -86,6 +94,8 @@ def build_memoryos_context_report(root: Path, paths: Any, state: dict[str, Any])
     artifact.update(
         {
             "status": "available" if selected_ids or context_items else "empty",
+            "degraded": False,
+            "failure_class": None,
             "trace_id": pack.get("trace_id"),
             "accepted_memory_ids": selected_ids,
             "accepted_memories_used": selected_ids,

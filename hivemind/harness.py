@@ -2337,10 +2337,14 @@ def run_memoryos_context_build(root: Path, paths: RunPaths, state: dict[str, Any
 
 def _persist_memoryos_context_report(root: Path, paths: RunPaths, artifact: dict[str, Any]) -> dict[str, Any]:
     path = paths.artifacts / "memory_context.json"
+    receipt_path = paths.artifacts / "memory_context_receipt.json"
     write_json(path, artifact)
     add_state_artifact(paths, "memory_context", path)
     artifact["artifact"] = path.relative_to(root).as_posix()
+    artifact["receipt_artifact"] = receipt_path.relative_to(root).as_posix()
     write_json(path, artifact)
+    write_json(receipt_path, artifact)
+    add_state_artifact(paths, "memory_context_receipt", receipt_path)
     return artifact
 
 
