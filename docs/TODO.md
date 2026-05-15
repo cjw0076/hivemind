@@ -227,11 +227,11 @@ Sources: `VG-03`, `VG-04`, `VG-13`, `VG-18`.
 - [x] Connect prompt intake to the DAG lifecycle read model so prompt/log and future desktop/chatbot surfaces consume the same core scheduler state.
 - [ ] Extend supervised run control with process heartbeat, timeout recovery, GPU/runtime snapshot, and stronger output artifact validation.
 - [ ] Add `hive git guard` / scoped commit proposal that refuses out-of-scope staged files unless explicitly approved.
-- [ ] Make `hive "task"` and `hive ask` return a readable operator summary with artifact links, next command, risk, and expected artifact.
-- [ ] Add Korean-first operator summaries when the input prompt is Korean.
+- [x] Make `hive "task"` and `hive ask` return a readable operator summary with artifact links, next command, risk, and expected artifact.
+- [x] Add Korean-first operator summaries when the input prompt is Korean.
 - [x] Move primary UX toward prompt/log AIOS mode: hide run-folder paths by default, show live log, decisions, blocked gates, risks, and outcomes first.
 - [x] Add a `hive live` / default prompt-log surface that follows ledger decisions without requiring users to browse legacy terminal panels or filesystem artifacts.
-- [ ] Make bare interactive `hive` default to prompt/log live mode once supervisor/protocol replay is stable enough.
+- [x] Make bare interactive `hive` default to prompt/log live mode once supervisor/protocol replay is stable enough.
 - [x] Export `hive live` / ledger / protocol state as a stable MemoryOS-consumable read model for neural-map observability.
 - [x] Add `HiveLiveEventV1` fields to `hive live --memoryos` events: `event_id`, `event_type`, `run_id`, `timestamp`, `agent_id`, and `payload`.
 - [x] Derive MemoryOS live event IDs from execution ledger `seq/hash` when available, with content-hash fallback for older `hive_events.jsonl` activity.

@@ -4050,21 +4050,20 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
             )
 
     plan_path = paths.run_dir / "routing_plan.json"
-    write_json(
-        plan_path,
-        {
-            "schema_version": 1,
-            "run_id": paths.run_id,
-            "prompt": prompt,
-            "intent": parsed.get("intent", "unknown"),
-            "summary": parsed.get("summary", ""),
-            "route_source": route_source,
-            "actions": actions,
-            "prepared_artifacts": prepared,
-            "risks": parsed.get("risks", []),
-            "open_questions": parsed.get("open_questions", []),
-        },
-    )
+    plan = {
+        "schema_version": 1,
+        "run_id": paths.run_id,
+        "prompt": prompt,
+        "intent": parsed.get("intent", "unknown"),
+        "summary": parsed.get("summary", ""),
+        "route_source": route_source,
+        "actions": actions,
+        "prepared_artifacts": prepared,
+        "risks": parsed.get("risks", []),
+        "open_questions": parsed.get("open_questions", []),
+    }
+    plan["operator_summary"] = build_operator_summary_from_plan(plan)
+    write_json(plan_path, plan)
     append_transcript(paths, "Edited", f"`{plan_path.relative_to(root).as_posix()}` with {len(actions)} route actions")
     append_event(paths, "routing_plan_created", {"artifact": plan_path.relative_to(root).as_posix(), "prepared": len(prepared)})
     update_state(paths, phase="routing", status="ready")
@@ -4140,6 +4139,7 @@ def orchestrate_prompt(
     )
     update_state(paths, phase="orchestration", status="ready")
     if not advance_workflow:
+        report["operator_summary"] = build_operator_summary_from_plan(plan, workflow_next=report.get("next"))
         report["workflow"] = {
             "status": "deferred",
             "scheduler": None,
@@ -4158,6 +4158,7 @@ def orchestrate_prompt(
         "actions_taken": workflow.get("actions_taken", []),
     }
     report["next"] = workflow.get("next") or report.get("next")
+    report["operator_summary"] = build_operator_summary_from_plan(plan, workflow_next=report.get("next"))
     return report
 
 
@@ -4335,13 +4336,17 @@ def add_state_artifact(paths: RunPaths, name: str, path: Path) -> None:
 
 def format_orchestration_report(report: dict[str, Any]) -> str:
     workflow = report.get("workflow") or {}
+    korean = contains_hangul(str(report.get("prompt") or report.get("summary") or ""))
+    labels = operator_labels(korean)
+    summary = report.get("operator_summary") or {}
     lines = [
         f"Hive Mind Society: {report.get('run_id')}",
-        f"Intent: {report.get('intent')} via {report.get('route_source')}",
+        f"{labels['intent']}: {report.get('intent')} via {report.get('route_source')}",
         f"Lifecycle: {workflow.get('scheduler', 'not_started')} / {workflow.get('status', 'not_started')}",
-        f"Summary: {report.get('summary')}",
+        f"{labels['summary']}: {report.get('summary')}",
+        f"{labels['risk']}: {summary.get('risk_level', 'unknown')}",
         "",
-        "Members:",
+        f"{labels['actions']}:",
     ]
     for member in report.get("members") or []:
         lines.append(
@@ -4349,10 +4354,23 @@ def format_orchestration_report(report: dict[str, Any]) -> str:
             f"[{member.get('mode')}] -> {member.get('status') or 'planned'}"
         )
         if member.get("reason"):
-            lines.append(f"  reason: {member.get('reason')}")
+            lines.append(f"  {labels['reason']}: {localize_operator_text(str(member.get('reason') or ''), korean)}")
         lines.append(f"  command: {member.get('command')}")
     next_action = report.get("next") or {}
-    lines.extend(["", "Next:", f"  {next_action.get('command')}", f"  Reason: {next_action.get('reason')}"])
+    lines.extend(["", f"{labels['next']}:", f"  {next_action.get('command')}", f"  {labels['reason']}: {localize_operator_text(str(next_action.get('reason') or ''), korean)}"])
+    expected = summary.get("expected_artifacts") or []
+    if expected:
+        lines.extend(["", f"{labels['expected_artifacts']}:"])
+        for artifact in expected[:8]:
+            if isinstance(artifact, dict):
+                lines.append(f"- {artifact.get('path')} ({artifact.get('status')})")
+            else:
+                lines.append(f"- {artifact}")
+    risks = summary.get("risks") or []
+    if risks:
+        lines.extend(["", f"{labels['risks']}:"])
+        for risk in risks:
+            lines.append(f"- {localize_operator_text(str(risk), korean)}")
     return "\n".join(lines)
 
 
@@ -4403,22 +4421,125 @@ def load_routing_plan(root: Path, run_id: str | None = None) -> dict[str, Any]:
 def format_routing_plan(plan: dict[str, Any]) -> str:
     if plan.get("status") == "missing":
         return f"Routing Plan: missing\n{plan.get('message')}\n{plan.get('path')}"
+    korean = contains_hangul(str(plan.get("prompt") or plan.get("summary") or ""))
+    labels = operator_labels(korean)
+    summary = plan.get("operator_summary") or build_operator_summary_from_plan(plan)
     lines = [
-        f"Routing Plan: {plan.get('run_id')}",
-        f"Intent: {plan.get('intent', 'unknown')}",
-        f"Source: {plan.get('route_source', 'unknown')}",
-        f"Summary: {plan.get('summary', '')}",
+        f"{labels['routing_plan']}: {plan.get('run_id')}",
+        f"{labels['intent']}: {plan.get('intent', 'unknown')}",
+        f"{labels['source']}: {plan.get('route_source', 'unknown')}",
+        f"{labels['summary']}: {plan.get('summary', '')}",
+        f"{labels['risk']}: {summary.get('risk_level', 'unknown')}",
         "",
-        "Actions:",
+        f"{labels['actions']}:",
     ]
     for item in plan.get("actions") or []:
-        lines.append(f"- {item.get('provider')}/{item.get('role')}: {item.get('reason', '')}")
+        lines.append(f"- {item.get('provider')}/{item.get('role')}: {localize_operator_text(str(item.get('reason') or ''), korean)}")
+    next_action = summary.get("next") or {}
+    if next_action:
+        lines.extend(["", f"{labels['next']}:", f"  {next_action.get('command')}", f"  {labels['reason']}: {localize_operator_text(str(next_action.get('reason') or ''), korean)}"])
     prepared = plan.get("prepared_artifacts") or []
     if prepared:
-        lines.extend(["", "Prepared Artifacts:"])
+        lines.extend(["", f"{labels['prepared_artifacts']}:"])
         for artifact in prepared:
             lines.append(f"- {artifact}")
+    expected = summary.get("expected_artifacts") or []
+    if expected:
+        lines.extend(["", f"{labels['expected_artifacts']}:"])
+        for artifact in expected:
+            if isinstance(artifact, dict):
+                lines.append(f"- {artifact.get('path')} ({artifact.get('status')})")
+            else:
+                lines.append(f"- {artifact}")
+    risks = summary.get("risks") or []
+    if risks:
+        lines.extend(["", f"{labels['risks']}:"])
+        for risk in risks:
+            lines.append(f"- {localize_operator_text(str(risk), korean)}")
     return "\n".join(lines)
+
+
+def contains_hangul(text: str) -> bool:
+    return any("\uac00" <= ch <= "\ud7a3" for ch in text)
+
+
+def operator_labels(korean: bool) -> dict[str, str]:
+    if korean:
+        return {
+            "routing_plan": "라우팅 계획",
+            "operator_summary": "작업 요약",
+            "intent": "의도",
+            "source": "라우팅 소스",
+            "summary": "요약",
+            "risk": "위험도",
+            "actions": "작업자",
+            "next": "다음",
+            "reason": "이유",
+            "prepared_artifacts": "준비된 산출물",
+            "expected_artifacts": "예상 산출물",
+            "risks": "리스크",
+        }
+    return {
+        "routing_plan": "Routing Plan",
+        "operator_summary": "Operator Summary",
+        "intent": "Intent",
+        "source": "Source",
+        "summary": "Summary",
+        "risk": "Risk",
+        "actions": "Actions",
+        "next": "Next",
+        "reason": "Reason",
+        "prepared_artifacts": "Prepared Artifacts",
+        "expected_artifacts": "Expected Artifacts",
+        "risks": "Risks",
+    }
+
+
+def localize_operator_text(text: str, korean: bool) -> str:
+    if not korean:
+        return text
+    translations = {
+        "Prepare context before provider handoff.": "provider handoff 전에 context를 준비합니다.",
+        "Clarify plan and risks.": "계획과 리스크를 먼저 명확히 합니다.",
+        "Prepare implementation artifact.": "구현용 provider 산출물을 준비합니다.",
+        "Prepare independent review.": "독립 리뷰 산출물을 준비합니다.",
+        "turn routing plan into a DAG lifecycle": "라우팅 계획을 DAG 실행 lifecycle로 전환합니다.",
+        "route_quality: heuristic_fallback should be verified before high-risk execution": "route_quality: heuristic fallback이므로 고위험 실행 전 검증이 필요합니다.",
+    }
+    return translations.get(text, text)
+
+
+def build_operator_summary_from_plan(plan: dict[str, Any], *, workflow_next: dict[str, Any] | None = None) -> dict[str, Any]:
+    run_id = str(plan.get("run_id") or "")
+    actions = [item for item in (plan.get("actions") or []) if isinstance(item, dict)]
+    risks = list(plan.get("risks") or [])
+    route_source = str(plan.get("route_source") or "")
+    if route_source != "local_llm":
+        risks.append(f"route_quality: {route_source} should be verified before high-risk execution")
+    risk_level = "low"
+    if risks:
+        risk_level = "medium"
+    if any(str(item).lower().startswith(("danger", "high", "irreversible")) for item in risks):
+        risk_level = "high"
+    expected = [
+        {"path": f".runs/{run_id}/routing_plan.json", "status": "written"},
+        {"path": f".runs/{run_id}/society_plan.json", "status": "expected_after_orchestrate"},
+        {"path": f".runs/{run_id}/plan_dag.json", "status": "expected_after_flow"},
+    ]
+    for artifact in plan.get("prepared_artifacts") or []:
+        expected.append({"path": artifact, "status": "prepared"})
+    for action in actions:
+        provider = str(action.get("provider") or "")
+        role = str(action.get("role") or "")
+        if provider == "local":
+            expected.append({"path": f".runs/{run_id}/agents/local/{role.replace('-', '_')}.json", "status": "expected_after_local_invoke"})
+    next_action = workflow_next or {"command": f"hive flow --run-id {run_id}", "reason": "turn routing plan into a DAG lifecycle"}
+    return {
+        "risk_level": risk_level,
+        "risks": risks,
+        "next": next_action,
+        "expected_artifacts": expected,
+    }
 
 
 def ensure_local_backend(root: Path) -> None:

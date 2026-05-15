@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from hivemind.harness import ask_router, normalize_router_actions
+from hivemind.harness import ask_router, format_routing_plan, normalize_router_actions, orchestrate_prompt, format_orchestration_report
 
 
 class FastRouterTest(unittest.TestCase):
@@ -30,6 +30,31 @@ class FastRouterTest(unittest.TestCase):
 
             self.assertEqual(plan["route_source"], "heuristic_fast")
             self.assertNotIn('"type": "agent_started"', events)
+
+    def test_routing_plan_includes_operator_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_path = ask_router(root, "간단한 JSON validator 만들어줘", complexity="fast")
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            summary = plan["operator_summary"]
+            rendered = format_routing_plan(plan)
+
+            self.assertEqual(summary["risk_level"], "medium")
+            self.assertEqual(summary["next"]["command"], f"hive flow --run-id {plan['run_id']}")
+            self.assertTrue(any(item["path"].endswith("routing_plan.json") for item in summary["expected_artifacts"]))
+            self.assertIn("위험도: medium", rendered)
+            self.assertIn("다음:", rendered)
+
+    def test_orchestration_report_includes_operator_summary_and_korean_labels(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = orchestrate_prompt(root, "간단한 JSON validator 만들어줘", complexity="fast")
+            rendered = format_orchestration_report(report)
+
+            self.assertIn("operator_summary", report)
+            self.assertEqual(report["operator_summary"]["risk_level"], "medium")
+            self.assertIn("위험도: medium", rendered)
+            self.assertIn("예상 산출물:", rendered)
 
     def test_local_llm_router_prepares_local_worker_without_running_it(self) -> None:
         worker_output = {

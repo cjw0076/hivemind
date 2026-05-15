@@ -1508,3 +1508,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Deleted `hivemind/tui.py`, `hivemind/tui_explore.py`, and TUI-only tests. Replaced remaining runtime calls with text/live outputs and changed quickstart/workbench/product-eval guidance to `hive live`.
 - Evidence: `python -m unittest discover -s tests -p 'test_*.py'` passed 371/371; `bash scripts/public-release-check.sh` passed 19/19; `python -m hivemind.hive tui` exits rc=2; quickstart smoke now recommends `hive inspect` and `hive live` only.
 - Next: Keep old TUI design docs as archived history unless a docs cleanup contract explicitly removes or migrates them.
+
+## 2026-05-15 19:44 KST - Codex
+
+- Context: With TUI gone, prompt entry needed to carry the operator summary that the dashboard used to imply.
+- Decision: `routing_plan.json` and orchestration reports now include an `operator_summary` with risk level, route-quality risks, next command, and expected artifacts. Korean prompts render Korean-first labels and standard reason/risk copy.
+- Evidence: Focused tests passed 30/30. CLI smoke for `hive ask "간단한 JSON validator 만들어줘"` shows `위험도`, `다음`, `예상 산출물`, and Korean route-quality risk text. Full suite passed 373/373; public release gate passed 19/19.
+- Next: Use this operator-summary envelope as the prompt/log contract for future chat, desktop, and MemoryOS neural-map surfaces.

@@ -959,3 +959,10 @@
 - Decision: Removed the curses TUI implementation and TUI-specific tests. Repointed `board`, `events --follow`, `ledger --follow`, `artifacts`, `agents view`, `memory view`, `diff`, and `society` to text/live-compatible output. Updated workbench, quickstart, product-eval prompts, and current docs to treat `hive live` / `hive inspect` as the operational surface.
 - Evidence: `python -m py_compile hivemind/hive.py hivemind/live.py hivemind/harness.py hivemind/quickstart.py hivemind/workloop.py` passed; focused tests passed 22/22; quickstart smoke emits only `hive inspect` / `hive live` commands; `python -m hivemind.hive tui` exits rc=2; full suite passed 371/371; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Historical source docs such as `docs/TUI_HARNESS.md` and old worklog entries remain as archived project history. Future UI work should target MemoryOS neural-map observability and HiveLiveEventV1 rather than reviving curses.
+
+## 2026-05-15 19:44 KST - Codex - Prompt Operator Summary
+
+- Context: After removing the TUI, the next AIOS UX gap was that `hive ask` and shorthand prompt entry still required the operator to infer next actions and risk from artifacts.
+- Decision: Added `operator_summary` to `routing_plan.json` and orchestration reports. Text output now shows risk level, next command, expected artifacts, and route-quality risk. Korean prompts render Korean-first labels and standard reason/risk phrases.
+- Evidence: Focused router/production-hardening tests passed 30/30. CLI smoke with `간단한 JSON validator 만들어줘` shows `위험도`, `다음`, `예상 산출물`, and Korean reason/risk text for both `hive ask` and `hive "task"`. Full suite passed 373/373; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Use the new operator summary as the default prompt/log contract for future chat/desktop/MemoryOS surfaces.
