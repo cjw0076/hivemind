@@ -993,3 +993,12 @@
 - Completion: Supervisor state/status now includes a runtime snapshot with Python, CPU, RAM, disk, GPU via `nvidia-smi` when present, local runtime status, and provider CLI discovery. Text status renders a compact Runtime line.
 - Evidence: `python -m unittest tests.test_supervisor` passed 14/14; `python -m unittest tests.test_supervisor tests.test_workloop_ledger tests.test_production_hardening` passed 50/50; `python -m py_compile hivemind/supervisor.py hivemind/hive.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 382/382; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Continue to stronger output artifact validation.
+
+## 2026-05-16 03:15 KST - Codex - Supervisor Output Artifact Validation
+
+- Context: Continuing the last open part of the supervised-run hardening TODO. `output_artifacts_validated` currently reflects ledger replay health, not whether completed/prepared DAG steps actually produced their declared output artifacts.
+- Ownership: Codex owns a narrow artifact-validation slice in `hivemind/supervisor.py`, `tests/test_supervisor.py`, `docs/TODO.md`, and shared coordination logs.
+- Expected files: `hivemind/supervisor.py`, `tests/test_supervisor.py`, `docs/TODO.md`, `.ai-runs/shared/comms_log.md`.
+- Completion: Supervisor status now validates completed/prepared DAG steps against declared `expected_output_artifacts` and recorded `step.artifact` paths. `output_artifacts_validated` now combines ledger replay health with concrete artifact existence, and text status shows an Artifacts line.
+- Evidence: `python -m unittest tests.test_supervisor` passed 17/17; `python -m unittest tests.test_supervisor tests.test_workloop_ledger tests.test_production_hardening` passed 53/53; `python -m py_compile hivemind/supervisor.py hivemind/hive.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 385/385; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the supervised-run hardening closeout and move to the next production gap.

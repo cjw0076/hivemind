@@ -156,6 +156,66 @@ def capture_runtime_snapshot(root: Path, *, pid: Any = None) -> dict[str, Any]:
     }
 
 
+def _resolve_output_artifact(root: Path, run_id: str, artifact_ref: str) -> tuple[Path | None, str | None]:
+    if not artifact_ref:
+        return None, "empty_ref"
+    path = Path(artifact_ref)
+    if path.is_absolute():
+        try:
+            path.relative_to(root)
+        except ValueError:
+            return path, "outside_root"
+        return path, None
+    run_path = root / ".runs" / run_id / artifact_ref
+    if run_path.exists():
+        return run_path, None
+    return root / artifact_ref, None
+
+
+def validate_supervisor_output_artifacts(root: Path, run_id: str) -> dict[str, Any]:
+    dag = load_dag(root, run_id)
+    report: dict[str, Any] = {
+        "schema_version": 1,
+        "ok": True,
+        "run_id": run_id,
+        "checked_count": 0,
+        "missing": [],
+        "invalid": [],
+    }
+    if dag is None:
+        report["reason"] = "no_dag"
+        return report
+
+    expected_statuses = {"completed", "prepared"}
+    artifact_statuses = {"completed", "prepared", "failed", "skipped"}
+    seen: set[tuple[str, str]] = set()
+
+    def check_ref(step_id: str, artifact_ref: str, *, kind: str) -> None:
+        key = (step_id, artifact_ref)
+        if key in seen:
+            return
+        seen.add(key)
+        report["checked_count"] += 1
+        path, invalid_reason = _resolve_output_artifact(root, run_id, artifact_ref)
+        if invalid_reason:
+            report["invalid"].append({"step_id": step_id, "artifact": artifact_ref, "kind": kind, "reason": invalid_reason})
+            report["ok"] = False
+            return
+        if path is None or not path.exists():
+            report["missing"].append({"step_id": step_id, "artifact": artifact_ref, "kind": kind})
+            report["ok"] = False
+
+    for step in dag.steps:
+        status = str(step.status or "")
+        if status in expected_statuses:
+            for artifact_ref in step.expected_output_artifacts:
+                check_ref(step.step_id, artifact_ref, kind="expected_output")
+        if status in artifact_statuses and step.artifact:
+            check_ref(step.step_id, step.artifact, kind="step_artifact")
+
+    return report
+
+
 def active_step_leases(root: Path, run_id: str) -> list[dict[str, Any]]:
     leases_dir = root / ".runs" / run_id / STEP_LEASES_DIR
     if not leases_dir.exists():
@@ -476,7 +536,9 @@ def run_supervisor(
     replay = replay_execution_ledger(root, run_id)
     sup_state["status"] = final_status
     sup_state["stopped_at"] = now_iso()
-    sup_state["output_artifacts_validated"] = bool(replay.get("ok"))
+    artifact_validation = validate_supervisor_output_artifacts(root, run_id)
+    sup_state["output_artifact_validation"] = artifact_validation
+    sup_state["output_artifacts_validated"] = bool(replay.get("ok")) and bool(artifact_validation.get("ok"))
     sup_state["replay"] = {
         "ok": replay.get("ok"),
         "hash_chain_ok": replay.get("hash_chain_ok"),
@@ -494,7 +556,11 @@ def run_supervisor(
         bypass_mode="execute" if execute else "prepare",
         artifact=paths["state"].relative_to(root).as_posix(),
         artifact_hash_mode="mutable",
-        extra={"rounds": sup_state.get("rounds"), "replay": sup_state.get("replay")},
+        extra={
+            "rounds": sup_state.get("rounds"),
+            "replay": sup_state.get("replay"),
+            "output_artifact_validation": artifact_validation,
+        },
     )
     return supervisor_status_report(root, run_id)
 
@@ -699,6 +765,9 @@ def supervisor_status_report(root: Path, run_id: str | None = None) -> dict[str,
     state["active_leases"] = active_step_leases(root, paths_obj.run_id)
     state = recover_stale_supervisor_state(root, paths_obj.run_id, state)
     state.setdefault("runtime_snapshot", capture_runtime_snapshot(root, pid=state.get("pid")))
+    artifact_validation = validate_supervisor_output_artifacts(root, paths_obj.run_id)
+    state["output_artifact_validation"] = artifact_validation
+    state["output_artifacts_validated"] = bool(replay.get("ok")) and bool(artifact_validation.get("ok"))
     state["last_probes"] = state.get("last_probes") or probe_summaries_from_result(state.get("last_result") or {})
     if not state["last_probes"]:
         state["last_probes"] = probe_summaries_from_replay(replay)
@@ -787,6 +856,15 @@ def format_supervisor_status(report: dict[str, Any]) -> str:
             f"ram_available={memory.get('available_bytes') or '-'} "
             f"gpu_count={len(gpu.get('gpus') or [])} "
             f"local={local_runtime.get('active_backend') or local_runtime.get('status') or '-'}"
+        )
+    artifact_validation = report.get("output_artifact_validation") or {}
+    if artifact_validation:
+        lines.append(
+            "Artifacts: "
+            f"ok={artifact_validation.get('ok')} "
+            f"checked={artifact_validation.get('checked_count', 0)} "
+            f"missing={len(artifact_validation.get('missing') or [])} "
+            f"invalid={len(artifact_validation.get('invalid') or [])}"
         )
     replay = report.get("replay") or {}
     lines.append(

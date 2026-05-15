@@ -1536,3 +1536,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Added supervisor runtime snapshots. `supervisor_state.json` and `hive run status` now expose Python, CPU, RAM, disk, GPU discovery, local runtime status, and provider CLI discovery; text status shows a compact Runtime line.
 - Evidence: `python -m unittest tests.test_supervisor` passed 14/14; `python -m unittest tests.test_supervisor tests.test_workloop_ledger tests.test_production_hardening` passed 50/50; `python -m py_compile hivemind/supervisor.py hivemind/hive.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 382/382; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Finish stronger output artifact validation.
+
+## 2026-05-16 03:15 KST - Codex
+
+- Context: Closing the last open piece of the supervised-run hardening TODO. `output_artifacts_validated` previously meant ledger replay was clean, not that declared DAG outputs existed.
+- Decision: Added supervisor output artifact validation. Completed/prepared DAG steps are checked against `expected_output_artifacts` and recorded `step.artifact` paths. Supervisor status now combines replay health with artifact validation and renders an Artifacts line.
+- Evidence: `python -m unittest tests.test_supervisor` passed 17/17; `python -m unittest tests.test_supervisor tests.test_workloop_ledger tests.test_production_hardening` passed 53/53; `python -m py_compile hivemind/supervisor.py hivemind/hive.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 385/385; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the supervised-run hardening closeout and move to the next production gap.

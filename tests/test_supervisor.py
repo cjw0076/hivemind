@@ -23,6 +23,7 @@ from hivemind.supervisor import (
     supervisor_result_is_waiting,
     supervisor_status_report,
     tail_supervisor_log,
+    validate_supervisor_output_artifacts,
     write_supervisor_state,
 )
 from hivemind.workloop import read_execution_ledger
@@ -95,6 +96,61 @@ class SupervisorTest(unittest.TestCase):
             self.assertEqual(snapshot["pid"], 123)
             self.assertEqual(snapshot["local_runtime"]["status"], "missing")
             self.assertIn("claude", snapshot["provider_clis"])
+
+    def test_output_artifact_validation_detects_missing_expected_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "supervisor output validation missing")
+            dag = build_dag(paths.run_id, "supervisor output validation missing", "implementation")
+            step = dag.by_id("intake")
+            assert step is not None
+            step.status = "completed"
+            step.expected_output_artifacts = ["missing-output.json"]
+            save_dag(root, dag)
+
+            report = validate_supervisor_output_artifacts(root, paths.run_id)
+
+            self.assertFalse(report["ok"])
+            self.assertEqual(report["missing"][0]["step_id"], "intake")
+            self.assertEqual(report["missing"][0]["kind"], "expected_output")
+
+    def test_output_artifact_validation_accepts_run_relative_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "supervisor output validation ok")
+            dag = build_dag(paths.run_id, "supervisor output validation ok", "implementation")
+            step = dag.by_id("intake")
+            assert step is not None
+            artifact_rel = "artifacts/output.json"
+            (paths.run_dir / "artifacts").mkdir(exist_ok=True)
+            (paths.run_dir / artifact_rel).write_text("{}", encoding="utf-8")
+            step.status = "completed"
+            step.expected_output_artifacts = [artifact_rel]
+            step.artifact = artifact_rel
+            save_dag(root, dag)
+
+            report = validate_supervisor_output_artifacts(root, paths.run_id)
+
+            self.assertTrue(report["ok"], report)
+            self.assertEqual(report["checked_count"], 1)
+
+    def test_supervisor_status_reports_output_artifact_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "supervisor status output validation")
+            dag = build_dag(paths.run_id, "supervisor status output validation", "implementation")
+            step = dag.by_id("intake")
+            assert step is not None
+            step.status = "completed"
+            step.expected_output_artifacts = ["missing-output.json"]
+            save_dag(root, dag)
+
+            report = supervisor_status_report(root, paths.run_id)
+            rendered = format_supervisor_status(report)
+
+            self.assertFalse(report["output_artifacts_validated"])
+            self.assertFalse(report["output_artifact_validation"]["ok"])
+            self.assertIn("Artifacts: ok=False", rendered)
 
     def test_pingpong_scheduler_runs_one_parallel_step_per_round(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
