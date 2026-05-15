@@ -966,3 +966,10 @@
 - Decision: Added `operator_summary` to `routing_plan.json` and orchestration reports. Text output now shows risk level, next command, expected artifacts, and route-quality risk. Korean prompts render Korean-first labels and standard reason/risk phrases.
 - Evidence: Focused router/production-hardening tests passed 30/30. CLI smoke with `간단한 JSON validator 만들어줘` shows `위험도`, `다음`, `예상 산출물`, and Korean reason/risk text for both `hive ask` and `hive "task"`. Full suite passed 373/373; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Use the new operator summary as the default prompt/log contract for future chat/desktop/MemoryOS surfaces.
+
+## 2026-05-15 19:49 KST - Codex - Git Scope Guard
+
+- Context: AIOS execution can stage files from multiple agents/providers, so Hive needs a guard before commit proposals that refuses scope creep unless the operator explicitly approves it.
+- Decision: Added `hive git guard` with repeatable `--scope`, JSON/text reports, ledger-touched-file inference, `git_guard_report.json`, and `--approve-out-of-scope` override. Blocked out-of-scope staged files exit with rc=2.
+- Evidence: Focused tests passed 29/29. CLI smoke staged `README.md` and `src/app.py`, allowed only `src/`, and `hive git guard --scope src/ --json` returned `verdict=blocked`, `out_of_scope_files=["README.md"]`, and rc=2. Full suite passed 377/377; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Use `hive git guard` before scoped commits from provider-loop or multi-agent work.

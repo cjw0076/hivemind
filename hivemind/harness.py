@@ -15,6 +15,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
@@ -3795,6 +3796,113 @@ def format_git_diff_report(report: dict[str, Any]) -> str:
         lines.append(f"  - {path}")
     if not ledger.get("touched_files"):
         lines.append("  - none")
+    return "\n".join(lines)
+
+
+def git_guard_report(
+    root: Path,
+    run_id: str | None = None,
+    *,
+    scopes: list[str] | None = None,
+    approve_out_of_scope: bool = False,
+) -> dict[str, Any]:
+    paths, _ = load_run(root, run_id)
+    from .workloop import replay_execution_ledger
+
+    staged = [line for line in run_git(root, ["diff", "--cached", "--name-only"])["stdout"].splitlines() if line.strip()]
+    explicit_scopes = [scope.strip() for scope in (scopes or []) if scope and scope.strip()]
+    ledger = replay_execution_ledger(root, paths.run_id)
+    ledger_scopes = sorted(
+        {
+            str(item)
+            for step in (ledger.get("steps") or {}).values()
+            for item in (step.get("files_touched") or [])
+            if item
+        }
+    )
+    allowed_scopes = explicit_scopes or ledger_scopes
+    scoped = [path for path in staged if path_matches_scope(path, allowed_scopes)]
+    out_of_scope = [path for path in staged if path not in scoped]
+    if out_of_scope and not approve_out_of_scope:
+        verdict = "blocked"
+        status = "fail"
+    elif out_of_scope and approve_out_of_scope:
+        verdict = "approved_with_override"
+        status = "warn"
+    else:
+        verdict = "pass"
+        status = "pass"
+    report = {
+        "schema_version": 1,
+        "kind": "hive_git_guard",
+        "run_id": paths.run_id,
+        "verdict": verdict,
+        "status": status,
+        "staged_files": staged,
+        "allowed_scopes": allowed_scopes,
+        "scope_source": "explicit" if explicit_scopes else "ledger_touched_files",
+        "scoped_files": scoped,
+        "out_of_scope_files": out_of_scope,
+        "approve_out_of_scope": approve_out_of_scope,
+        "can_commit": verdict in {"pass", "approved_with_override"},
+        "reason": git_guard_reason(staged, allowed_scopes, out_of_scope, approve_out_of_scope),
+    }
+    out_path = paths.run_dir / "git_guard_report.json"
+    write_json(out_path, report)
+    add_state_artifact(paths, "git_guard_report", out_path)
+    append_transcript(paths, "Ran", f"`hive git guard` -> `{out_path.relative_to(root).as_posix()}` verdict={verdict}")
+    append_event(paths, "git_guard_report_created", {"artifact": out_path.relative_to(root).as_posix(), "verdict": verdict, "out_of_scope": len(out_of_scope)})
+    return report
+
+
+def path_matches_scope(path: str, scopes: list[str]) -> bool:
+    if not scopes:
+        return False
+    normalized = path.strip().lstrip("./")
+    for scope in scopes:
+        item = scope.strip().lstrip("./")
+        if not item:
+            continue
+        if item.endswith("/"):
+            if normalized.startswith(item):
+                return True
+            continue
+        if any(ch in item for ch in "*?[]") and fnmatch(normalized, item):
+            return True
+        if normalized == item or normalized.startswith(item.rstrip("/") + "/"):
+            return True
+    return False
+
+
+def git_guard_reason(staged: list[str], scopes: list[str], out_of_scope: list[str], approved: bool) -> str:
+    if not staged:
+        return "no staged files"
+    if not scopes:
+        return "staged files exist but no allowed scope was provided or inferred from the run ledger"
+    if out_of_scope and approved:
+        return "out-of-scope staged files allowed by explicit operator override"
+    if out_of_scope:
+        return "out-of-scope staged files require --approve-out-of-scope"
+    return "all staged files are within allowed scope"
+
+
+def format_git_guard_report(report: dict[str, Any]) -> str:
+    lines = [
+        f"Git Guard: {report.get('run_id')}",
+        f"Verdict: {report.get('verdict')}  Can commit: {report.get('can_commit')}",
+        f"Reason: {report.get('reason')}",
+        "",
+        "Allowed scopes:",
+    ]
+    scopes = report.get("allowed_scopes") or []
+    lines.extend(f"- {scope}" for scope in scopes) if scopes else lines.append("- none")
+    lines.extend(["", "Staged files:"])
+    staged = report.get("staged_files") or []
+    lines.extend(f"- {path}" for path in staged) if staged else lines.append("- none")
+    out_of_scope = report.get("out_of_scope_files") or []
+    if out_of_scope:
+        lines.extend(["", "Out of scope:"])
+        lines.extend(f"- {path}" for path in out_of_scope)
     return "\n".join(lines)
 
 

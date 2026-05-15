@@ -75,10 +75,12 @@ from .harness import (
     format_checks_report,
     format_checks_run,
     format_git_diff_report,
+    format_git_guard_report,
     format_hive_activity,
     format_gap_closure_report,
     load_routing_plan,
     git_diff_report,
+    git_guard_report,
     close_gap_loop,
     review_diff,
     run_checks,
@@ -204,6 +206,7 @@ COMMANDS = {
     "shell",
     "chat",
     "diff",
+    "git",
     "review-diff",
     "commit-summary",
     "audit",
@@ -761,6 +764,13 @@ def _main(argv: list[str] | None = None) -> None:
     diff_cmd = sub.add_parser("diff", help="write/show git diff report for current run")
     diff_cmd.add_argument("--run-id")
     diff_cmd.add_argument("--json", action="store_true")
+    git_cmd = sub.add_parser("git", help="git safety helpers")
+    git_sub = git_cmd.add_subparsers(dest="git_cmd", required=True)
+    git_guard_cmd = git_sub.add_parser("guard", help="refuse out-of-scope staged files unless explicitly approved")
+    git_guard_cmd.add_argument("--run-id")
+    git_guard_cmd.add_argument("--scope", action="append", default=[], help="allowed staged file path, directory, or glob; repeatable")
+    git_guard_cmd.add_argument("--approve-out-of-scope", action="store_true", help="allow out-of-scope staged files and record override")
+    git_guard_cmd.add_argument("--json", action="store_true")
     review_diff_cmd = sub.add_parser("review-diff", help="capture git diff and run local review")
     review_diff_cmd.add_argument("--run-id")
     commit_summary_cmd = sub.add_parser("commit-summary", help="write proposed commit summary without committing")
@@ -1776,6 +1786,22 @@ def _main(argv: list[str] | None = None) -> None:
             print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
         else:
             print(format_git_diff_report(report))
+        return
+    if args.cmd == "git" and args.git_cmd == "guard":
+        report = git_guard_report(
+            root,
+            args.run_id,
+            scopes=list(args.scope or []),
+            approve_out_of_scope=bool(args.approve_out_of_scope),
+        )
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_git_guard_report(report))
+        if not report.get("can_commit"):
+            raise SystemExit(2)
         return
     if args.cmd == "review-diff":
         print(review_diff(root, args.run_id))

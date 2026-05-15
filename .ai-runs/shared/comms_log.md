@@ -1515,3 +1515,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: `routing_plan.json` and orchestration reports now include an `operator_summary` with risk level, route-quality risks, next command, and expected artifacts. Korean prompts render Korean-first labels and standard reason/risk copy.
 - Evidence: Focused tests passed 30/30. CLI smoke for `hive ask "간단한 JSON validator 만들어줘"` shows `위험도`, `다음`, `예상 산출물`, and Korean route-quality risk text. Full suite passed 373/373; public release gate passed 19/19.
 - Next: Use this operator-summary envelope as the prompt/log contract for future chat, desktop, and MemoryOS neural-map surfaces.
+
+## 2026-05-15 19:49 KST - Codex
+
+- Context: After opening controlled workspace-write/dangerous routes, Hive still needed a commit-time scope guard for staged files.
+- Decision: Added `hive git guard`; it checks staged files against explicit `--scope` values or files touched in the run ledger, writes `git_guard_report.json`, and blocks out-of-scope staged files unless `--approve-out-of-scope` is used.
+- Evidence: Focused tests passed 29/29. Smoke staged `README.md` and `src/app.py`, allowed `src/`, and guard returned rc=2 with `README.md` listed as out-of-scope. Full suite passed 377/377; release gate passed 19/19.
+- Next: Use this guard before commits from provider-loop or multi-agent execution.

@@ -226,7 +226,7 @@ Sources: `VG-03`, `VG-04`, `VG-13`, `VG-18`.
 - [x] Add supervised run control: `hive run start/status/tail/stop` with PID, host, log path, command hash, commit, replay health, and active lease reporting.
 - [x] Connect prompt intake to the DAG lifecycle read model so prompt/log and future desktop/chatbot surfaces consume the same core scheduler state.
 - [ ] Extend supervised run control with process heartbeat, timeout recovery, GPU/runtime snapshot, and stronger output artifact validation.
-- [ ] Add `hive git guard` / scoped commit proposal that refuses out-of-scope staged files unless explicitly approved.
+- [x] Add `hive git guard` / scoped commit proposal that refuses out-of-scope staged files unless explicitly approved.
 - [x] Make `hive "task"` and `hive ask` return a readable operator summary with artifact links, next command, risk, and expected artifact.
 - [x] Add Korean-first operator summaries when the input prompt is Korean.
 - [x] Move primary UX toward prompt/log AIOS mode: hide run-folder paths by default, show live log, decisions, blocked gates, risks, and outcomes first.
