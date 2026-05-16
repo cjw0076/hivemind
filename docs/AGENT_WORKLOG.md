@@ -1063,3 +1063,11 @@
 - Decision: Add a raw-body-free debate summary that reports topic, barrier, round count, participant readiness, prepared/completed/failed counts, and manual follow-up participants.
 - Evidence: `python -m unittest tests.test_live tests.test_inspect tests.test_production_hardening` passed 49/49; `python -m py_compile hivemind/debate_status.py hivemind/live.py hivemind/inspect_run.py` passed; `git diff --check` passed; CLI debate/live/inspect smoke shows `Debate` readiness and manual follow-up; full `python -m unittest discover -s tests -p 'test_*.py'` passed 394/394; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the debate visibility read model and continue AIOS completion gaps.
+
+## 2026-05-16 11:17 KST - Codex - Debate Memory Review Gate
+
+- Context: Debate convergence should be eligible for MemoryOS draft extraction, but only after explicit human/operator review. MemoryOS acceptance remains separate.
+- Ownership: Codex owns a narrow review-gated memory-draft slice in `hivemind/harness.py`, `hivemind/hive.py`, focused tests, TODO, and shared coordination logs.
+- Decision: Block generic `hive memory draft` on debate runs. Add `hive memory draft --from-debate --reviewed-by user|operator|human` to write a human-review receipt plus a draft with raw refs to debate artifacts.
+- Evidence: `python -m unittest tests.test_production_hardening` passed 29/29; CLI smoke confirmed unreviewed debate memory draft is blocked and reviewed extraction writes `source=debate_convergence`; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 60/60; `python -m py_compile hivemind/harness.py hivemind/hive.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 396/396; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the debate memory review gate and continue AIOS completion gaps.

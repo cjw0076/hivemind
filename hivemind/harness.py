@@ -5802,6 +5802,8 @@ def build_verification(root: Path, run_id: str | None = None) -> Path:
 
 def build_memory_draft(root: Path, run_id: str | None = None) -> Path:
     paths, state = load_run(root, run_id)
+    if (paths.run_dir / "debate_report.json").exists():
+        raise RuntimeError("debate memory drafts require human review: use hive memory draft --from-debate --reviewed-by user")
     draft = {
         "type": "artifact",
         "content": f"Run {paths.run_id} created structured blackboard artifacts for: {state.get('user_request')}",
@@ -5815,6 +5817,79 @@ def build_memory_draft(root: Path, run_id: str | None = None) -> Path:
     write_json(out_path, {"memory_drafts": [draft]})
     append_transcript(paths, "Edited", f"`{out_path.relative_to(root).as_posix()}` with 1 memory draft")
     append_event(paths, "memory_drafts_created", {"count": 1, "artifact": out_path.relative_to(root).as_posix()})
+    return out_path
+
+
+def build_debate_memory_draft(root: Path, run_id: str | None = None, *, reviewed_by: str, review_note: str = "") -> Path:
+    paths, state = load_run(root, run_id)
+    reviewer = reviewed_by.strip().lower()
+    if reviewer not in {"user", "operator", "human"}:
+        raise RuntimeError("debate memory draft extraction requires human review: reviewed_by must be user, operator, or human")
+    report_path = paths.run_dir / "debate_report.json"
+    convergence_path = paths.run_dir / "debate_convergence.md"
+    if not report_path.exists() or not convergence_path.exists():
+        raise RuntimeError("debate memory draft requires debate_report.json and debate_convergence.md")
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    if not isinstance(report, dict):
+        raise RuntimeError("debate_report.json is invalid")
+    artifacts = report.get("artifacts") if isinstance(report.get("artifacts"), dict) else {}
+    disagreements = artifacts.get("disagreements") or (paths.run_dir / "disagreements.json").relative_to(root).as_posix()
+    review_path = paths.run_dir / "artifacts" / "debate_memory_review.json"
+    review_path.parent.mkdir(parents=True, exist_ok=True)
+    review_receipt = {
+        "schema_version": 1,
+        "kind": "debate_memory_human_review",
+        "run_id": paths.run_id,
+        "reviewed_at": now_iso(),
+        "reviewed_by": reviewer,
+        "decision": "approved_for_memory_draft",
+        "review_note": review_note,
+        "source_artifacts": [
+            report_path.relative_to(root).as_posix(),
+            convergence_path.relative_to(root).as_posix(),
+            str(disagreements),
+        ],
+    }
+    write_json(review_path, review_receipt)
+    topic = str(report.get("topic") or state.get("user_request") or "provider debate")
+    participant_count = len(report.get("participants") or [])
+    draft = {
+        "type": "decision",
+        "content": (
+            f"Human-reviewed provider debate convergence for '{topic}'. "
+            f"{participant_count} participants completed the debate barrier; use the convergence artifact and disagreement record as draft evidence only."
+        ),
+        "origin": "mixed",
+        "project": state.get("project", "Hive Mind"),
+        "confidence": 0.75,
+        "status": "draft",
+        "raw_refs": [
+            report_path.relative_to(root).as_posix(),
+            convergence_path.relative_to(root).as_posix(),
+            review_path.relative_to(root).as_posix(),
+            str(disagreements),
+        ],
+        "reviewed_by": reviewer,
+        "review_note": review_note,
+        "source": "debate_convergence",
+        "memoryos_acceptance_required": True,
+    }
+    out_path = paths.run_dir / "memory_drafts.json"
+    write_json(out_path, {"memory_drafts": [draft]})
+    add_state_artifact(paths, "debate_memory_review", review_path)
+    add_state_artifact(paths, "memory_drafts", out_path)
+    append_transcript(paths, "Edited", f"`{out_path.relative_to(root).as_posix()}` with 1 human-reviewed debate memory draft")
+    append_event(
+        paths,
+        "memory_drafts_created",
+        {
+            "count": 1,
+            "artifact": out_path.relative_to(root).as_posix(),
+            "source": "debate_convergence",
+            "review_artifact": review_path.relative_to(root).as_posix(),
+            "reviewed_by": reviewer,
+        },
+    )
     return out_path
 
 

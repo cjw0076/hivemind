@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .harness import (
     build_memory_draft,
+    build_debate_memory_draft,
     build_summary,
     build_verification,
     auto_loop,
@@ -741,6 +742,10 @@ def _main(argv: list[str] | None = None) -> None:
     memory_sub = memory_cmd.add_subparsers(dest="memory_cmd", required=True)
     draft_cmd = memory_sub.add_parser("draft", help="create memory_drafts.json")
     draft_cmd.add_argument("--run-id")
+    draft_cmd.add_argument("--from-debate", action="store_true", help="extract a draft from debate convergence after human review")
+    draft_cmd.add_argument("--reviewed-by", help="human reviewer label: user, operator, or human")
+    draft_cmd.add_argument("--review-note", default="", help="short human review note for debate-derived drafts")
+    draft_cmd.add_argument("--json", action="store_true")
     memory_list_cmd = memory_sub.add_parser("list", help="list memory drafts for the current run")
     memory_list_cmd.add_argument("--run-id")
     memory_list_cmd.add_argument("--json", action="store_true")
@@ -1737,7 +1742,18 @@ def _main(argv: list[str] | None = None) -> None:
         print(build_summary(root, args.run_id))
         return
     if args.cmd == "memory" and args.memory_cmd == "draft":
-        print(build_memory_draft(root, args.run_id))
+        if args.from_debate:
+            if not args.reviewed_by:
+                raise SystemExit("hive: --from-debate requires --reviewed-by user|operator|human")
+            path = build_debate_memory_draft(root, args.run_id, reviewed_by=args.reviewed_by, review_note=args.review_note)
+        else:
+            path = build_memory_draft(root, args.run_id)
+        if args.json:
+            import json
+
+            print(json.dumps(memory_drafts_report(root, args.run_id), ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(path)
         return
     if args.cmd == "memory" and args.memory_cmd == "list":
         report = memory_drafts_report(root, args.run_id)

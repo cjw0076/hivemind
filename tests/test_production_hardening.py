@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +12,8 @@ from hivemind.harness import (
     RunPaths,
     agent_roles_report,
     auto_loop,
+    build_debate_memory_draft,
+    build_memory_draft,
     build_context_pack_for_role,
     close_gap_loop,
     create_run,
@@ -280,6 +283,84 @@ class ProductionHardeningTest(unittest.TestCase):
         self.assertIn("conclusion", records[0]["axes"])
         self.assertIn("risk_assessment", records[0]["axes"])
         self.assertIn("evidence", records[0]["axes"])
+
+    def test_debate_memory_draft_requires_human_review(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = debate_topic(root, "capture debate only after review", participants=["claude", "gemini"], execute=False)
+
+            with self.assertRaisesRegex(RuntimeError, "require human review"):
+                build_memory_draft(root, report["run_id"])
+            with self.assertRaisesRegex(RuntimeError, "requires human review"):
+                build_debate_memory_draft(root, report["run_id"], reviewed_by="claude")
+
+            out = build_debate_memory_draft(root, report["run_id"], reviewed_by="user", review_note="Operator approved draft extraction.")
+            data = json.loads(out.read_text(encoding="utf-8"))
+            draft = data["memory_drafts"][0]
+            self.assertEqual(draft["source"], "debate_convergence")
+            self.assertEqual(draft["reviewed_by"], "user")
+            self.assertTrue(draft["memoryos_acceptance_required"])
+            self.assertIn("debate_convergence.md", draft["raw_refs"][1])
+            review_path = root / ".runs" / report["run_id"] / "artifacts" / "debate_memory_review.json"
+            review = json.loads(review_path.read_text(encoding="utf-8"))
+            self.assertEqual(review["kind"], "debate_memory_human_review")
+            self.assertEqual(review["decision"], "approved_for_memory_draft")
+
+    def test_cli_debate_memory_draft_requires_reviewed_by(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            created = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "hivemind.hive",
+                    "--root",
+                    root.as_posix(),
+                    "debate",
+                    "memory review gate",
+                    "--participant",
+                    "claude",
+                    "--participant",
+                    "gemini",
+                    "--json",
+                ],
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+            run_id = json.loads(created.stdout)["run_id"]
+            blocked = subprocess.run(
+                [sys.executable, "-m", "hivemind.hive", "--root", root.as_posix(), "memory", "draft", "--run-id", run_id],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(blocked.returncode, 0)
+            self.assertIn("debate memory drafts require human review", blocked.stderr)
+
+            approved = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "hivemind.hive",
+                    "--root",
+                    root.as_posix(),
+                    "memory",
+                    "draft",
+                    "--run-id",
+                    run_id,
+                    "--from-debate",
+                    "--reviewed-by",
+                    "operator",
+                    "--json",
+                ],
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+            payload = json.loads(approved.stdout)
+            self.assertEqual(payload["count"], 1)
+            self.assertEqual(payload["drafts"][0]["reviewed_by"], "operator")
 
     def test_gap_closure_writes_learning_operator_loop_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
