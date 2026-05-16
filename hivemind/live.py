@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .debate_status import summarize_debate_status
 from .harness import load_run, now_iso, orchestrate_prompt, read_hive_activity, run_board, short_timestamp
 from .workloop import read_execution_ledger
 
@@ -49,6 +50,7 @@ def build_live_report(
     ledger = read_execution_ledger(root, paths.run_id, limit=tail)
     activity = read_hive_activity(paths, limit=tail)
     protocol = collect_protocol_state(paths.run_dir)
+    debate = summarize_debate_status(paths.run_dir, show_paths=show_paths)
     return {
         "schema_version": 1,
         "run_id": paths.run_id,
@@ -59,6 +61,7 @@ def build_live_report(
         "next": board.get("next") or {},
         "authority": summarize_authority(protocol, ledger),
         "agents": summarize_agents(board),
+        "debate": debate,
         "blocked": summarize_blocks(ledger, protocol),
         "log": build_log_rows(activity, ledger, tail=tail, show_paths=show_paths),
         "paths_hidden": not show_paths,
@@ -638,6 +641,16 @@ def format_live_report(report: dict[str, Any], *, show_paths: bool = False) -> s
     if agents:
         lines.extend(["", "Agents:"])
         lines.extend(f"- {agent.get('name')}: {agent.get('status')}" for agent in agents)
+    debate = report.get("debate") or {}
+    if debate.get("status") and debate.get("status") != "none":
+        lines.extend(["", "Debate:"])
+        lines.append(
+            f"- status={debate.get('status')} participants={debate.get('participant_count')} rounds={debate.get('round_count')} prepared={debate.get('prepared_output_count')} completed={debate.get('completed_output_count')}"
+        )
+        for item in (debate.get("readiness") or [])[:6]:
+            lines.append(
+                f"- {item.get('participant')}: barrier_ready={item.get('barrier_ready')} evidence_ready={item.get('evidence_ready')}"
+            )
     lines.extend(["", "Live Log:"])
     logs = report.get("log") or []
     if not logs:

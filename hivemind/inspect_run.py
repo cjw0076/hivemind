@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .debate_status import summarize_debate_status
 from .harness import load_run, run_audit_report, safe_load_yaml
 from .live import build_live_report
 from .run_receipts import collect_local_worker_results, collect_provider_results
@@ -28,6 +29,7 @@ def build_inspect_report(
     proofs = summarize_proofs(paths.run_dir, show_paths=show_paths)
     memoryos = summarize_memoryos_context(paths.run_dir, show_paths=show_paths)
     disagreements = summarize_disagreements(paths.run_dir, show_paths=show_paths)
+    debate = summarize_debate_status(paths.run_dir, show_paths=show_paths)
     recommendations = inspect_recommendations(live, ledger, audit, provider_results, local_worker_results, proofs, memoryos, disagreements)
     verdict = compute_verdict(ledger, proofs, provider_results, local_worker_results, disagreements)
     return {
@@ -54,6 +56,7 @@ def build_inspect_report(
         "local_worker_results": local_worker_results,
         "proofs": proofs,
         "memoryos_context": memoryos,
+        "debate": debate,
         "audit": {
             "status": audit.get("status"),
             "validation_verdict": (audit.get("validation") or {}).get("verdict"),
@@ -284,15 +287,26 @@ def format_inspect_report(report: dict[str, Any], *, show_paths: bool = False) -
     if not report.get("local_worker_results"):
         lines.append("  none")
     memoryos = report.get("memoryos_context") or {}
+    debate = report.get("debate") or {}
     lines.extend(
         [
             "",
             "MemoryOS Context",
             f"  status={memoryos.get('status')} trace_id={memoryos.get('trace_id')} selected={memoryos.get('selected_memory_count')}",
             "",
+            "Debate",
+            f"  status={debate.get('status', 'none')} participants={debate.get('participant_count', 0)} rounds={debate.get('round_count', 0)} prepared={debate.get('prepared_output_count', 0)} completed={debate.get('completed_output_count', 0)} failed={debate.get('failed_count', 0)}",
+            f"  topic={debate.get('topic') or '-'}",
+            "",
             "Next",
         ]
     )
+    for item in debate.get("readiness") or []:
+        lines.append(
+            f"  - {item.get('participant')}: barrier_ready={item.get('barrier_ready')} evidence_ready={item.get('evidence_ready')} statuses={item.get('round_statuses')}"
+        )
+    if debate.get("manual_followup_participants"):
+        lines.append("  manual_followup=" + ", ".join(str(item) for item in debate.get("manual_followup_participants") or []))
     next_items = (report.get("next") or {}).get("actions") or []
     if next_items:
         for index, item in enumerate(next_items, start=1):

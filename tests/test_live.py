@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from hivemind.harness import append_hive_activity, create_run
+from hivemind.harness import append_hive_activity, create_run, debate_topic
 from hivemind.live import build_live_report, build_memoryos_observability_report, format_live_report, sanitize_summary
 from hivemind.plan_dag import build_dag, save_dag
 from hivemind.protocol import build_execution_intent, check_intent, decide_intent, save_intent
@@ -219,6 +219,21 @@ class LiveSurfaceTest(unittest.TestCase):
             self.assertTrue(any(node["type"] == "authority_gate" for node in nodes))
             self.assertTrue(any(edge["type"] == "gates" for edge in edges))
             self.assertGreaterEqual(report["summary"]["authority_gate_count"], 1)
+
+    def test_live_report_summarizes_debate_readiness(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            debate = debate_topic(root, "review release readiness", participants=["claude", "gemini"], execute=False)
+
+            report = build_live_report(root, debate["run_id"])
+            output = format_live_report(report)
+
+            self.assertEqual(report["debate"]["status"], "review_ready")
+            self.assertEqual(report["debate"]["participant_count"], 2)
+            self.assertEqual(report["debate"]["prepared_output_count"], 4)
+            self.assertEqual(len(report["debate"]["readiness"]), 2)
+            self.assertIn("Debate:", output)
+            self.assertIn("barrier_ready=True", output)
 
     def test_cli_live_memoryos_json_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

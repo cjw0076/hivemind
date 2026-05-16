@@ -1055,3 +1055,11 @@
 - Decision: Keep `hive tui` reserved/invalid, keep the text-compatible commands, and update public help so the product surface is clearly `hive live` / text output rather than terminal panels.
 - Evidence: `python -m unittest tests.test_cli_entrypoint` passed 8/8; `python -m hivemind.hive --help` shows text/prompt-log commands and no `tui`; `python -m hivemind.hive tui` exits rc=2; `python -m py_compile hivemind/hive.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 392/392; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the public-help cleanup and continue AIOS completion gaps.
+
+## 2026-05-16 11:11 KST - Codex - Debate Visibility Read Model
+
+- Context: Debate/disagreement artifacts existed, but `hive live` and `hive inspect` did not expose participant readiness or prepared-vs-executed evidence state.
+- Ownership: Codex owns a narrow debate read-model slice in `hivemind/debate_status.py`, `hivemind/live.py`, `hivemind/inspect_run.py`, focused tests, TODO, and shared coordination logs.
+- Decision: Add a raw-body-free debate summary that reports topic, barrier, round count, participant readiness, prepared/completed/failed counts, and manual follow-up participants.
+- Evidence: `python -m unittest tests.test_live tests.test_inspect tests.test_production_hardening` passed 49/49; `python -m py_compile hivemind/debate_status.py hivemind/live.py hivemind/inspect_run.py` passed; `git diff --check` passed; CLI debate/live/inspect smoke shows `Debate` readiness and manual follow-up; full `python -m unittest discover -s tests -p 'test_*.py'` passed 394/394; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the debate visibility read model and continue AIOS completion gaps.

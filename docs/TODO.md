@@ -104,7 +104,7 @@ Sources: `VG-03`, `VG-04`, `VG-06`, `VG-13`.
 - [x] Surface `disagreements.json` in `hive inspect` and upgrade inspect verdict to `escalated` for high/medium disagreement topology.
 - [x] Upgrade task decomposition beyond keyword heuristics with a schema-validated router, provider fallback, and route-quality scoring.
 - [x] Add convergence scoring: evidence strength, reversibility, risk, and user-preference fit.
-- [ ] Add `hive live`/`hive inspect` surface for active debate rounds and participant readiness.
+- [x] Add `hive live`/`hive inspect` surface for active debate rounds and participant readiness.
 - [ ] Add MemoryOS draft extraction from debate convergence only after human review.
 - [ ] Add debate mode flags per round: cooperative, adversarial, and verification-only.
 - [ ] Add binding `PreCommitTable` artifacts with agent signatures and result-to-disposition matching.

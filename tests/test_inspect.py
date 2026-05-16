@@ -9,7 +9,7 @@ from pathlib import Path
 
 from unittest.mock import patch
 
-from hivemind.harness import create_run, invoke_local, provider_passthrough
+from hivemind.harness import create_run, debate_topic, invoke_local, provider_passthrough
 from hivemind.inspect_run import (
     build_inspect_report,
     compute_verdict,
@@ -191,6 +191,24 @@ class InspectRunTest(unittest.TestCase):
             self.assertIn("Verdict:", text)
             self.assertIn("CLEAN", text)
             self.assertIn("Disagreements", text)
+
+    def test_inspect_summarizes_debate_participant_readiness(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            debate = debate_topic(root, "choose the safer release gate", participants=["claude", "gemini"], execute=False)
+
+            report = build_inspect_report(root, debate["run_id"])
+            text = format_inspect_report(report)
+
+            self.assertEqual(report["debate"]["status"], "review_ready")
+            self.assertEqual(report["debate"]["participant_count"], 2)
+            self.assertEqual(report["debate"]["round_count"], 2)
+            self.assertEqual(report["debate"]["prepared_output_count"], 4)
+            self.assertEqual(report["debate"]["completed_output_count"], 0)
+            self.assertEqual(report["debate"]["manual_followup_participants"], ["claude", "gemini"])
+            self.assertTrue(all(item["barrier_ready"] for item in report["debate"]["readiness"]))
+            self.assertIn("Debate", text)
+            self.assertIn("manual_followup=claude, gemini", text)
 
     def test_cli_inspect_json_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

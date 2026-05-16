@@ -1585,3 +1585,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Keep `hive tui` invalid/reserved and update public help to describe text/prompt-log output. Add a CLI regression test so help does not advertise TUI again.
 - Evidence: `python -m unittest tests.test_cli_entrypoint` passed 8/8; `python -m hivemind.hive --help` shows text/prompt-log commands and no `tui`; `python -m hivemind.hive tui` exits rc=2; `python -m py_compile hivemind/hive.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 392/392; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the public-help cleanup and continue AIOS completion gaps.
+
+## 2026-05-16 11:11 KST - Codex
+
+- Context: Debate artifacts were inspectable only by opening `debate_report.json`; prompt/log surfaces did not tell the operator which providers were prepared, completed, or pending manual follow-up.
+- Decision: Add a shared debate read model for `hive live` and `hive inspect` with participant readiness and evidence counts, without raw provider output.
+- Evidence: `python -m unittest tests.test_live tests.test_inspect tests.test_production_hardening` passed 49/49; `python -m py_compile hivemind/debate_status.py hivemind/live.py hivemind/inspect_run.py` passed; `git diff --check` passed; CLI debate/live/inspect smoke shows `Debate` readiness and manual follow-up; full `python -m unittest discover -s tests -p 'test_*.py'` passed 394/394; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the debate visibility read model and continue AIOS completion gaps.
