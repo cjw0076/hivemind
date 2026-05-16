@@ -1578,3 +1578,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: `hive debate` now writes `disagreements.json` after round convergence. Prepared-only debate writes an empty structured artifact; executed provider outputs are compared pairwise across conclusion, risk_assessment, evidence, and approach axes.
 - Evidence: `python -m unittest tests.test_production_hardening` passed 27/27; `python -m unittest tests.test_production_hardening tests.test_inspect tests.test_live tests.test_run_validation` passed 56/56; `python -m py_compile hivemind/harness.py hivemind/run_validation.py hivemind/inspect_run.py hivemind/live.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 391/391; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the provider-output disagreement slice and continue closing AIOS/Hive completion gaps.
+
+## 2026-05-16 11:06 KST - Codex
+
+- Context: `hive tui` is already removed from the public parser, but stale public help still used legacy terminal-view language.
+- Decision: Keep `hive tui` invalid/reserved and update public help to describe text/prompt-log output. Add a CLI regression test so help does not advertise TUI again.
+- Evidence: `python -m unittest tests.test_cli_entrypoint` passed 8/8; `python -m hivemind.hive --help` shows text/prompt-log commands and no `tui`; `python -m hivemind.hive tui` exits rc=2; `python -m py_compile hivemind/hive.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 392/392; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the public-help cleanup and continue AIOS completion gaps.

@@ -1047,3 +1047,11 @@
 - Completion: `hive debate` now writes/updates `disagreements.json` after both debate rounds. Prepared-only debates produce an empty structured artifact; executed provider outputs are compared pairwise on conclusion, risk_assessment, evidence, and approach axes.
 - Evidence: `python -m unittest tests.test_production_hardening` passed 27/27; `python -m unittest tests.test_production_hardening tests.test_inspect tests.test_live tests.test_run_validation` passed 56/56; `python -m py_compile hivemind/harness.py hivemind/run_validation.py hivemind/inspect_run.py hivemind/live.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 391/391; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the provider-output disagreement slice and continue closing AIOS/Hive completion gaps.
+
+## 2026-05-16 11:06 KST - Codex - Public Help TUI Cleanup
+
+- Context: User asked whether `hive tui` had disappeared. Code already removed the public command, but parser help still described several commands as legacy terminal views.
+- Ownership: Codex owns a narrow CLI-help cleanup in `hivemind/hive.py`, `tests/test_cli_entrypoint.py`, `docs/TODO.md`, and shared coordination logs.
+- Decision: Keep `hive tui` reserved/invalid, keep the text-compatible commands, and update public help so the product surface is clearly `hive live` / text output rather than terminal panels.
+- Evidence: `python -m unittest tests.test_cli_entrypoint` passed 8/8; `python -m hivemind.hive --help` shows text/prompt-log commands and no `tui`; `python -m hivemind.hive tui` exits rc=2; `python -m py_compile hivemind/hive.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 392/392; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the public-help cleanup and continue AIOS completion gaps.

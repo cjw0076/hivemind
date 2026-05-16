@@ -217,6 +217,7 @@ Sources: `VG-03`, `VG-04`, `VG-13`, `VG-18`.
 - [x] Add option-only `hive loop` self-judgment/autopilot surface: dry-run by default, `--execute` plus per-action `--allow`, no provider CLI auto-execution, no arbitrary shell, no memory commit.
 - [x] Make `hive loop` validation-safe and failure-aware: auto-loop events are accepted by run validation, failed local workers stop the loop, and failed agent state fails verification.
 - [x] Retire `hive tui`; keep prompt input and slash commands in CLI/chat/live paths.
+- [x] Remove stale public help text that advertised legacy terminal/TUI views after `hive live` became the default surface.
 - [x] Add prompt-first `hive live` / shorthand task entry so prompt entry is discoverable.
 - [x] Add `hive demo live` to animate multi-agent coordination through real run artifacts without executing provider CLIs.
 - [x] Make bare `hive` open the prompt/log live surface on interactive terminals and remove `hive tui` from the public parser.

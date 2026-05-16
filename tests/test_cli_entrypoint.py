@@ -35,6 +35,17 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("invalid choice", result.stderr)
 
+    def test_public_help_does_not_advertise_terminal_tui(self) -> None:
+        result = subprocess.run(
+            [sys.executable, "-m", "hivemind.hive", "--help"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("legacy terminal view", result.stdout)
+        self.assertNotIn("tui", result.stdout)
+
     def test_live_surface_has_idle_state_without_current_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = subprocess.run(

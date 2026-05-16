@@ -299,7 +299,7 @@ def _main(argv: list[str] | None = None) -> None:
     detect_cmd.add_argument("--json", action="store_true")
     agents_status_cmd = agents_sub.add_parser("status", help="show provider registry as an agent status board")
     agents_status_cmd.add_argument("--json", action="store_true")
-    agents_view_cmd = agents_sub.add_parser("view", help="open the legacy agents terminal view")
+    agents_view_cmd = agents_sub.add_parser("view", help="show agent status as text output")
     agents_view_cmd.add_argument("--run-id")
     agents_roles_cmd = agents_sub.add_parser("roles", help="show role registry")
     agents_roles_cmd.add_argument("--json", action="store_true")
@@ -458,14 +458,14 @@ def _main(argv: list[str] | None = None) -> None:
     status_cmd.add_argument("--run-id")
     status_cmd.add_argument("--json", action="store_true")
 
-    board_cmd = sub.add_parser("board", help="open the legacy board terminal view")
+    board_cmd = sub.add_parser("board", help="show current run board as text output")
     board_cmd.add_argument("--run-id")
     board_cmd.add_argument("--observer", action="store_true", help="open read-only observer mode")
 
-    events_cmd = sub.add_parser("events", help="show run events or open the legacy events terminal view")
+    events_cmd = sub.add_parser("events", help="show or follow run events")
     events_cmd.add_argument("--run-id")
     events_cmd.add_argument("--tail", type=int, default=60)
-    events_cmd.add_argument("--follow", action="store_true", help="open the live events terminal view")
+    events_cmd.add_argument("--follow", action="store_true", help="follow run events in the prompt/log surface")
     events_cmd.add_argument("--json", action="store_true")
 
     ledger_cmd = sub.add_parser("ledger", help="show append-only execution ledger for the current run")
@@ -473,7 +473,7 @@ def _main(argv: list[str] | None = None) -> None:
     ledger_cmd.add_argument("--run-id")
     ledger_cmd.add_argument("--tail", type=int, default=60)
     ledger_cmd.add_argument("--json", action="store_true")
-    ledger_cmd.add_argument("--follow", action="store_true", help="open the live ledger terminal view")
+    ledger_cmd.add_argument("--follow", action="store_true", help="follow ledger records in text output")
 
     live_cmd = sub.add_parser("live", help="prompt/log AIOS surface over the current run")
     live_cmd.add_argument("prompt", nargs="*", help="optional prompt; creates/routes a new run before showing live log")
@@ -531,11 +531,11 @@ def _main(argv: list[str] | None = None) -> None:
     source_read_summary_cmd.add_argument("--paths", action="store_true", help="show full source refs for debugging")
     source_read_summary_cmd.add_argument("--json", action="store_true")
 
-    transcript_cmd = sub.add_parser("transcript", help="show transcript or open the legacy transcript terminal view")
+    transcript_cmd = sub.add_parser("transcript", help="show run transcript as text output")
     transcript_cmd.add_argument("--run-id")
     transcript_cmd.add_argument("--tail", type=int, default=120)
 
-    artifacts_cmd = sub.add_parser("artifacts", help="open the legacy artifacts terminal view")
+    artifacts_cmd = sub.add_parser("artifacts", help="show run artifacts as text output")
     artifacts_cmd.add_argument("--run-id")
 
     next_cmd = sub.add_parser("next", help="show next recommended command")
@@ -744,7 +744,7 @@ def _main(argv: list[str] | None = None) -> None:
     memory_list_cmd = memory_sub.add_parser("list", help="list memory drafts for the current run")
     memory_list_cmd.add_argument("--run-id")
     memory_list_cmd.add_argument("--json", action="store_true")
-    memory_view_cmd = memory_sub.add_parser("view", help="open the legacy memory draft terminal view")
+    memory_view_cmd = memory_sub.add_parser("view", help="show memory drafts as text output")
     memory_view_cmd.add_argument("--run-id")
 
     completion_cmd = sub.add_parser("completion", help="print shell completion script")
@@ -785,7 +785,7 @@ def _main(argv: list[str] | None = None) -> None:
     hive_activity_cmd = hive_sub.add_parser("activity", help="show human-readable hive activity feed")
     hive_activity_cmd.add_argument("--run-id")
     hive_activity_cmd.add_argument("--tail", type=int, default=30)
-    society_cmd = sub.add_parser("society", help="open the legacy society terminal view")
+    society_cmd = sub.add_parser("society", help="show society plan as text output")
     society_cmd.add_argument("--run-id")
 
     audit_cmd = sub.add_parser("audit", help="audit current run artifacts, provider results, and policy")
