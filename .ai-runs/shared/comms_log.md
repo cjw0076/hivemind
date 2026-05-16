@@ -1571,3 +1571,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Added `convergence_score.json`. It combines evidence strength, reversibility, risk fit, and user-preference fit, links from `routing_plan.json`, and feeds operator expected artifacts.
 - Evidence: `python -m unittest tests.test_fast_router` passed 9/9; `python -m unittest tests.test_fast_router tests.test_run_validation tests.test_production_hardening` passed 44/44; `python -m py_compile hivemind/harness.py hivemind/run_validation.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 390/390; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the convergence-score slice and continue to the next AIOS completion gap.
+
+## 2026-05-16 03:42 KST - Codex
+
+- Context: Debate/disagreement TODO still needed provider-output extraction rather than only DAG topology records.
+- Decision: `hive debate` now writes `disagreements.json` after round convergence. Prepared-only debate writes an empty structured artifact; executed provider outputs are compared pairwise across conclusion, risk_assessment, evidence, and approach axes.
+- Evidence: `python -m unittest tests.test_production_hardening` passed 27/27; `python -m unittest tests.test_production_hardening tests.test_inspect tests.test_live tests.test_run_validation` passed 56/56; `python -m py_compile hivemind/harness.py hivemind/run_validation.py hivemind/inspect_run.py hivemind/live.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 391/391; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the provider-output disagreement slice and continue closing AIOS/Hive completion gaps.

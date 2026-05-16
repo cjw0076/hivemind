@@ -41,6 +41,7 @@ ALLOWED_EVENT_TYPES = {
     "control_lock_released",
     "debate_round_created",
     "debate_convergence_created",
+    "provider_disagreements_extracted",
     "memory_context_built",
     "memoryos_context_retrieved",
     "capability_recommendation_retrieved",

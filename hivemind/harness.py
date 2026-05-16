@@ -4340,6 +4340,7 @@ def debate_topic(
     snapshot2 = write_debate_snapshot(root, paths, "debate_round2.md", topic, round2)
 
     convergence = write_debate_convergence(root, paths, topic, rounds)
+    disagreement_path = write_provider_output_disagreements(root, paths, topic, rounds)
     report_path = paths.run_dir / "debate_report.json"
     report = {
         "schema_version": 1,
@@ -4354,6 +4355,7 @@ def debate_topic(
             "round1": snapshot1.relative_to(root).as_posix(),
             "round2": snapshot2.relative_to(root).as_posix(),
             "convergence": convergence.relative_to(root).as_posix(),
+            "disagreements": disagreement_path.relative_to(root).as_posix(),
         },
         "next": {"command": f"hive transcript --run-id {paths.run_id}", "reason": "inspect debate and convergence artifacts"},
     }
@@ -4369,6 +4371,142 @@ def debate_topic(
     )
     update_state(paths, phase="deliberation", status="ready")
     return report
+
+
+def write_provider_output_disagreements(root: Path, paths: RunPaths, topic: str, rounds: list[dict[str, Any]]) -> Path:
+    records = extract_provider_output_disagreements(paths.run_id, topic, rounds)
+    dis_path = paths.run_dir / "disagreements.json"
+    existing: list[dict[str, Any]] = []
+    if dis_path.exists():
+        try:
+            loaded = json.loads(dis_path.read_text(encoding="utf-8"))
+            existing = loaded if isinstance(loaded, list) else []
+        except json.JSONDecodeError:
+            existing = []
+    seen = {
+        (
+            str(item.get("source")),
+            str(item.get("step_id")),
+            ",".join(str(participant) for participant in item.get("participants", [])),
+            ",".join(str(axis) for axis in item.get("axes", [])),
+        )
+        for item in existing
+        if isinstance(item, dict)
+    }
+    for record in records:
+        key = (
+            str(record.get("source")),
+            str(record.get("step_id")),
+            ",".join(str(participant) for participant in record.get("participants", [])),
+            ",".join(str(axis) for axis in record.get("axes", [])),
+        )
+        if key not in seen:
+            existing.append(record)
+            seen.add(key)
+    write_json(dis_path, existing)
+    add_state_artifact(paths, "disagreements", dis_path)
+    append_event(paths, "provider_disagreements_extracted", {"artifact": dis_path.relative_to(root).as_posix(), "count": len(records)})
+    return dis_path
+
+
+def extract_provider_output_disagreements(run_id: str, topic: str, rounds: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for round_report in rounds:
+        participants = [
+            item for item in (round_report.get("participants") or [])
+            if isinstance(item, dict) and str(item.get("output_preview") or "").strip()
+        ]
+        for left_index, left in enumerate(participants):
+            for right in participants[left_index + 1:]:
+                axes = disagreement_axes_for_outputs(str(left.get("output_preview") or ""), str(right.get("output_preview") or ""))
+                if not axes:
+                    continue
+                severity = provider_disagreement_severity(axes)
+                records.append(
+                    {
+                        "ts": now_iso(),
+                        "run_id": run_id,
+                        "source": "provider_output",
+                        "topic": topic,
+                        "step_id": str(round_report.get("role") or "debate"),
+                        "participants": [left.get("participant"), right.get("participant")],
+                        "topology_type": "split" if len(axes) == 1 else "distributed",
+                        "severity": severity,
+                        "axes": axes,
+                        "dominant_axis": axes[0] if axes else None,
+                        "disagreement_count": 1,
+                        "disagreement_targets": [str(right.get("participant") or "")],
+                        "topology_recommended_action": "referee" if severity in {"high", "medium"} else "add_review",
+                        "evidence_refs": [left.get("result_path"), right.get("result_path")],
+                    }
+                )
+    return records
+
+
+def disagreement_axes_for_outputs(left: str, right: str) -> list[str]:
+    axes: list[str] = []
+    left_text = left.lower()
+    right_text = right.lower()
+    if stance_label(left_text) and stance_label(right_text) and stance_label(left_text) != stance_label(right_text):
+        axes.append("conclusion")
+    if risk_label(left_text) and risk_label(right_text) and risk_label(left_text) != risk_label(right_text):
+        axes.append("risk_assessment")
+    if evidence_label(left_text) and evidence_label(right_text) and evidence_label(left_text) != evidence_label(right_text):
+        axes.append("evidence")
+    if approach_label(left_text) and approach_label(right_text) and approach_label(left_text) != approach_label(right_text):
+        axes.append("approach")
+    return axes
+
+
+def stance_label(text: str) -> str | None:
+    negative = ["block", "hold", "reject", "do not", "don't", "unsafe", "not ready", "막", "보류", "반대", "위험"]
+    positive = ["ship", "approve", "accept", "ready", "proceed", "safe", "찬성", "진행", "가능", "안전"]
+    if any(token in text for token in negative):
+        return "hold"
+    if any(token in text for token in positive):
+        return "proceed"
+    return None
+
+
+def risk_label(text: str) -> str | None:
+    high = ["high risk", "critical", "danger", "unsafe", "severe", "높은 위험", "치명", "위험"]
+    low = ["low risk", "safe", "minor", "acceptable risk", "낮은 위험", "안전", "허용 가능"]
+    if any(token in text for token in high):
+        return "high"
+    if any(token in text for token in low):
+        return "low"
+    return None
+
+
+def evidence_label(text: str) -> str | None:
+    weak = ["weak evidence", "no evidence", "unsupported", "missing evidence", "근거 부족", "증거 부족"]
+    strong = ["evidence", "proof", "test passed", "verified", "재현", "검증", "증거"]
+    if any(token in text for token in weak):
+        return "weak"
+    if any(token in text for token in strong):
+        return "strong"
+    return None
+
+
+def approach_label(text: str) -> str | None:
+    labels = {
+        "test": ["test", "verify", "smoke", "검증", "테스트"],
+        "implement": ["implement", "patch", "fix", "code", "구현", "수정"],
+        "review": ["review", "audit", "inspect", "검토", "리뷰"],
+        "ask_user": ["ask user", "operator", "user approval", "사용자", "승인"],
+    }
+    for label, tokens in labels.items():
+        if any(token in text for token in tokens):
+            return label
+    return None
+
+
+def provider_disagreement_severity(axes: list[str]) -> str:
+    if len(axes) >= 3:
+        return "high"
+    if "conclusion" in axes or "risk_assessment" in axes:
+        return "medium"
+    return "low"
 
 
 def run_debate_round(root: Path, paths: RunPaths, participants: list[str], role: str, execute: bool) -> dict[str, Any]:

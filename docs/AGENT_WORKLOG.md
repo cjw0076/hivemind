@@ -1038,3 +1038,12 @@
 - Completion: `hive ask` now writes `convergence_score.json` and links it from `routing_plan.json`. The score combines route evidence strength, estimated reversibility, risk fit, and user-preference fit, then recommends execute/review/hold.
 - Evidence: `python -m unittest tests.test_fast_router` passed 9/9; `python -m unittest tests.test_fast_router tests.test_run_validation tests.test_production_hardening` passed 44/44; `python -m py_compile hivemind/harness.py hivemind/run_validation.py` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 390/390; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the convergence-score slice and continue to the next AIOS completion gap.
+
+## 2026-05-16 03:42 KST - Codex - Provider Output Disagreement Extraction
+
+- Context: The remaining debate-layer gap was real `disagreements.json` extraction from provider outputs, not only DAG step topology records.
+- Ownership: Codex owns a narrow debate/disagreement slice in `hivemind/harness.py`, `hivemind/run_validation.py`, `tests/test_production_hardening.py`, `docs/TODO.md`, and shared coordination logs.
+- Expected files: `hivemind/harness.py`, `hivemind/run_validation.py`, `tests/test_production_hardening.py`, `docs/TODO.md`, `.ai-runs/shared/comms_log.md`.
+- Completion: `hive debate` now writes/updates `disagreements.json` after both debate rounds. Prepared-only debates produce an empty structured artifact; executed provider outputs are compared pairwise on conclusion, risk_assessment, evidence, and approach axes.
+- Evidence: `python -m unittest tests.test_production_hardening` passed 27/27; `python -m unittest tests.test_production_hardening tests.test_inspect tests.test_live tests.test_run_validation` passed 56/56; `python -m py_compile hivemind/harness.py hivemind/run_validation.py hivemind/inspect_run.py hivemind/live.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 391/391; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the provider-output disagreement slice and continue closing AIOS/Hive completion gaps.

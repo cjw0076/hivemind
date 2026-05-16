@@ -100,7 +100,7 @@ Sources: `VG-03`, `VG-04`, `VG-06`, `VG-13`.
 - [x] Stop routing from auto-running local worker roles; provider/local execution remains explicit after prompt preparation.
 - [x] Bridge prompt routing into lifecycle setup: `hive "task"` / `hive orchestrate` now creates `plan_dag.json` and `workflow_state.json` instead of stopping at `society_plan.json`.
 - [x] Promote safe local workers into bounded task processors for simple local tasks through DAG/ledger execution with explicit `--execute-local`.
-- [ ] Add disagreement extraction from executed provider outputs into a structured `disagreements.json`.
+- [x] Add disagreement extraction from executed provider outputs into a structured `disagreements.json`.
 - [x] Surface `disagreements.json` in `hive inspect` and upgrade inspect verdict to `escalated` for high/medium disagreement topology.
 - [x] Upgrade task decomposition beyond keyword heuristics with a schema-validated router, provider fallback, and route-quality scoring.
 - [x] Add convergence scoring: evidence strength, reversibility, risk, and user-preference fit.

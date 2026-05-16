@@ -15,6 +15,7 @@ from hivemind.harness import (
     close_gap_loop,
     create_run,
     debate_topic,
+    extract_provider_output_disagreements,
     ensure_memoryos_context,
     flow_advance,
     format_git_diff_report,
@@ -247,7 +248,38 @@ class ProductionHardeningTest(unittest.TestCase):
 
             self.assertEqual(report["barrier"], "all_participants_processed_before_convergence")
             self.assertTrue((root / ".runs" / report["run_id"] / "debate_convergence.md").exists())
+            self.assertTrue((root / ".runs" / report["run_id"] / "disagreements.json").exists())
             self.assertTrue(all(round_report["barrier"] == "complete" for round_report in report["rounds"]))
+
+    def test_provider_output_disagreement_extraction_detects_axes(self) -> None:
+        records = extract_provider_output_disagreements(
+            "run_test",
+            "ship or hold release",
+            [
+                {
+                    "role": "debate_review",
+                    "participants": [
+                        {
+                            "participant": "claude",
+                            "result_path": ".runs/run_test/agents/claude/debate_review_result.yaml",
+                            "output_preview": "Hold the release. This is high risk and weak evidence. Ask user approval before proceeding.",
+                        },
+                        {
+                            "participant": "gemini",
+                            "result_path": ".runs/run_test/agents/gemini/debate_review_result.yaml",
+                            "output_preview": "Ship it. Low risk, verified by tests, implement the patch now.",
+                        },
+                    ],
+                }
+            ],
+        )
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["source"], "provider_output")
+        self.assertEqual(records[0]["severity"], "high")
+        self.assertIn("conclusion", records[0]["axes"])
+        self.assertIn("risk_assessment", records[0]["axes"])
+        self.assertIn("evidence", records[0]["axes"])
 
     def test_gap_closure_writes_learning_operator_loop_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
