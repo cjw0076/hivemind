@@ -32,6 +32,8 @@ from hivemind.harness import (
     orchestrate_prompt,
     policy_report,
     set_agent_status,
+    write_frame_anchor,
+    write_frame_drift_check,
 )
 from hivemind.plan_dag import load_dag
 from hivemind.workloop import read_execution_ledger
@@ -258,6 +260,8 @@ class ProductionHardeningTest(unittest.TestCase):
             self.assertTrue((root / report["artifacts"]["precommit_table"]).exists())
             self.assertTrue((root / report["artifacts"]["precommit_match"]).exists())
             self.assertTrue((root / report["artifacts"]["turn_arbitration"]).exists())
+            self.assertTrue((root / report["artifacts"]["frame_anchor"]).exists())
+            self.assertTrue((root / report["artifacts"]["frame_drift"]).exists())
             self.assertTrue(all(round_report["barrier"] == "complete" for round_report in report["rounds"]))
 
     def test_debate_mode_flags_are_recorded_and_prompted(self) -> None:
@@ -318,6 +322,35 @@ class ProductionHardeningTest(unittest.TestCase):
             self.assertTrue(all(turn["status"] == "manual_followup" for turn in arbitration["turns"]))
             self.assertIn("TurnArbitration", prompt)
             self.assertIn("owner=claude", prompt)
+
+    def test_frame_anchor_drift_flags_forbidden_language(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "frame drift smoke")
+            anchor = write_frame_anchor(root, paths, "avoid overclaiming")
+            drift = write_frame_drift_check(
+                root,
+                paths,
+                [
+                    {
+                        "role": "debate_initial",
+                        "participants": [
+                            {
+                                "participant": "claude",
+                                "result_path": ".runs/run_test/agents/claude/debate_initial_result.yaml",
+                                "output_preview": "This is the first framework and solves truth. Evidence is weak; risk is high.",
+                            }
+                        ],
+                    }
+                ],
+                anchor,
+            )
+            data = json.loads(drift.read_text(encoding="utf-8"))
+
+            self.assertEqual(data["status"], "needs_review")
+            self.assertFalse(data["position_notes_accepted"])
+            self.assertEqual(data["issues"][0]["type"], "forbidden_language")
+            self.assertIn("solves truth", data["issues"][0]["hits"])
 
     def test_debate_front_blocks_new_front_until_test_closes_or_override(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

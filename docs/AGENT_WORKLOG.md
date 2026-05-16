@@ -1103,3 +1103,11 @@
 - Decision: Add `artifacts/turn_arbitration.json`, include the turn contract in provider prompt context, update it after rounds, and expose manual follow-up through `next_speaker`.
 - Evidence: `python -m unittest tests.test_production_hardening` passed 34/34; CLI smoke confirmed `TurnArbitration` artifact, `next_speaker=claude`, timeout escalation, and provider prompt context; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 65/65; `python -m py_compile hivemind/harness.py hivemind/run_validation.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 401/401; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the turn-arbitration slice and continue AIOS completion gaps.
+
+## 2026-05-16 11:43 KST - Codex - Frame Anchor Drift Checks
+
+- Context: Debate position notes could drift into forbidden overclaim language or lose the evidence-bound claim shape before the chair accepted them.
+- Ownership: Codex owns a narrow frame-anchor slice in `hivemind/harness.py`, run-validation event taxonomy, focused tests, TODO, and shared coordination logs.
+- Decision: Add `artifacts/frame_anchor.json`, inject its claim-shape/forbidden-language rule into provider prompt context, and write `artifacts/frame_drift.json` after rounds with `position_notes_accepted`.
+- Evidence: `python -m unittest tests.test_production_hardening` passed 35/35; CLI smoke confirmed `FrameAnchor` prompt context and `FrameDriftCheck` artifact; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 66/66; `python -m py_compile hivemind/harness.py hivemind/run_validation.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 402/402; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the frame-anchor drift slice and continue AIOS completion gaps.

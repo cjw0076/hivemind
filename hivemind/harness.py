@@ -4338,6 +4338,8 @@ def debate_topic(
     modes = {"debate_initial": initial_mode, "debate_review": review_mode}
     modes_path = write_debate_modes(root, paths, topic, modes)
     turn_arbitration_path = write_turn_arbitration(root, paths, topic, selected, modes)
+    frame_anchor_path = write_frame_anchor(root, paths, topic)
+    append_context_section(paths, "Frame Anchor", format_frame_anchor_context(frame_anchor_path))
     precommit_path = write_debate_precommit_table(root, paths, topic, selected, modes)
     append_context_section(paths, "Debate Turn Arbitration", format_turn_arbitration_context(turn_arbitration_path))
     append_context_section(paths, "Debate PreCommit Table", format_precommit_table_context(precommit_path))
@@ -4356,6 +4358,7 @@ def debate_topic(
     disagreement_path = write_provider_output_disagreements(root, paths, topic, rounds)
     precommit_match_path = write_debate_precommit_match(root, paths, rounds, disagreement_path)
     turn_arbitration_path = update_turn_arbitration(root, paths, rounds)
+    frame_drift_path = write_frame_drift_check(root, paths, rounds, frame_anchor_path)
     report_path = paths.run_dir / "debate_report.json"
     report = {
         "schema_version": 1,
@@ -4371,6 +4374,8 @@ def debate_topic(
             "topic": topic_path.relative_to(root).as_posix(),
             "modes": modes_path.relative_to(root).as_posix(),
             "turn_arbitration": turn_arbitration_path.relative_to(root).as_posix(),
+            "frame_anchor": frame_anchor_path.relative_to(root).as_posix(),
+            "frame_drift": frame_drift_path.relative_to(root).as_posix(),
             "precommit_table": precommit_path.relative_to(root).as_posix(),
             "precommit_match": precommit_match_path.relative_to(root).as_posix(),
             "round1": snapshot1.relative_to(root).as_posix(),
@@ -4605,6 +4610,95 @@ def format_turn_arbitration_context(path: Path) -> str:
                 f"- {turn.get('order')}. {turn.get('round')} owner={turn.get('owner')} mode={turn.get('mode')} deadline_seconds={turn.get('deadline_seconds')} timeout={turn.get('timeout_action')}"
             )
     return "\n".join(lines)
+
+
+def write_frame_anchor(root: Path, paths: RunPaths, topic: str) -> Path:
+    path = paths.run_dir / "artifacts" / "frame_anchor.json"
+    payload = {
+        "schema_version": 1,
+        "kind": "FrameAnchor",
+        "run_id": paths.run_id,
+        "topic": topic,
+        "claim_shape": ["claim", "evidence", "risk", "falsifiable_check", "next_action"],
+        "forbidden_language": ["solves truth", "first framework", "fractal boundary", "tetration", "power-tower"],
+        "position_acceptance_rule": "Position notes are accepted only when forbidden language is absent and claim shape stays evidence-bound.",
+    }
+    write_json(path, payload)
+    add_state_artifact(paths, "frame_anchor", path)
+    append_event(paths, "frame_anchor_created", {"artifact": path.relative_to(root).as_posix()})
+    return path
+
+
+def format_frame_anchor_context(path: Path) -> str:
+    data = read_json_any(path)
+    if not isinstance(data, dict):
+        return "FrameAnchor: unavailable"
+    return "\n".join(
+        [
+            f"FrameAnchor: {path.name}",
+            "Claim shape: " + ", ".join(str(item) for item in data.get("claim_shape") or []),
+            "Forbidden language: " + ", ".join(str(item) for item in data.get("forbidden_language") or []),
+            str(data.get("position_acceptance_rule") or ""),
+        ]
+    )
+
+
+def write_frame_drift_check(root: Path, paths: RunPaths, rounds: list[dict[str, Any]], frame_anchor_path: Path) -> Path:
+    anchor = read_json_any(frame_anchor_path)
+    forbidden = [str(item).lower() for item in (anchor.get("forbidden_language") if isinstance(anchor, dict) else []) or []]
+    issues: list[dict[str, Any]] = []
+    checked = 0
+    for round_report in rounds:
+        role = str(round_report.get("role") or "debate")
+        for item in round_report.get("participants") or []:
+            if not isinstance(item, dict):
+                continue
+            preview = str(item.get("output_preview") or "")
+            if not preview.strip():
+                continue
+            checked += 1
+            lowered = preview.lower()
+            hits = [phrase for phrase in forbidden if phrase and phrase in lowered]
+            if hits:
+                issues.append(
+                    {
+                        "type": "forbidden_language",
+                        "role": role,
+                        "participant": item.get("participant"),
+                        "hits": hits,
+                        "result_path": item.get("result_path"),
+                    }
+                )
+            if not evidence_bound_position(lowered):
+                issues.append(
+                    {
+                        "type": "claim_shape_drift",
+                        "role": role,
+                        "participant": item.get("participant"),
+                        "missing": ["evidence_or_risk_or_test"],
+                        "result_path": item.get("result_path"),
+                    }
+                )
+    path = paths.run_dir / "artifacts" / "frame_drift.json"
+    payload = {
+        "schema_version": 1,
+        "kind": "FrameDriftCheck",
+        "run_id": paths.run_id,
+        "anchor": frame_anchor_path.relative_to(root).as_posix(),
+        "checked_position_notes": checked,
+        "status": "needs_review" if issues else "pass",
+        "position_notes_accepted": not issues,
+        "issues": issues,
+    }
+    write_json(path, payload)
+    add_state_artifact(paths, "frame_drift", path)
+    append_event(paths, "frame_drift_checked", {"artifact": path.relative_to(root).as_posix(), "status": payload["status"], "issue_count": len(issues)})
+    return path
+
+
+def evidence_bound_position(text: str) -> bool:
+    evidence_terms = ["evidence", "proof", "test", "verified", "risk", "assumption", "근거", "증거", "검증", "위험", "가정"]
+    return any(term in text for term in evidence_terms)
 
 
 def debate_precommit_rows() -> list[dict[str, str]]:

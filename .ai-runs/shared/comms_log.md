@@ -1627,3 +1627,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Add `TurnArbitration` artifact and update it after debate rounds. Prepared-only turns now surface as manual follow-up with a `next_speaker`.
 - Evidence: `python -m unittest tests.test_production_hardening` passed 34/34; CLI smoke confirmed `TurnArbitration` artifact, `next_speaker=claude`, timeout escalation, and provider prompt context; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 65/65; `python -m py_compile hivemind/harness.py hivemind/run_validation.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 401/401; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the turn-arbitration slice and continue AIOS completion gaps.
+
+## 2026-05-16 11:43 KST - Codex
+
+- Context: Debate outputs needed a durable frame anchor so forbidden language and claim-shape drift are caught before position notes are accepted.
+- Decision: Add `FrameAnchor` and `FrameDriftCheck` artifacts. Drift checks scan executed provider previews for forbidden language and evidence-bound shape.
+- Evidence: `python -m unittest tests.test_production_hardening` passed 35/35; CLI smoke confirmed `FrameAnchor` prompt context and `FrameDriftCheck` artifact; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 66/66; `python -m py_compile hivemind/harness.py hivemind/run_validation.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 402/402; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the frame-anchor drift slice and continue AIOS completion gaps.
