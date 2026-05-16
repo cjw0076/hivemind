@@ -44,6 +44,8 @@ ALLOWED_EVENT_TYPES = {
     "debate_front_opened",
     "debate_front_closed",
     "debate_front_overridden",
+    "turn_arbitration_created",
+    "turn_arbitration_updated",
     "provider_disagreements_extracted",
     "memory_context_built",
     "memoryos_context_retrieved",

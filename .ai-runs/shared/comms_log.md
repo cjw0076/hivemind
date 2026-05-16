@@ -1620,3 +1620,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Add `FrontState` artifact, `hive debate-front close`, and `--override-front` override recording. Same-run debate opens are blocked until close or explicit override.
 - Evidence: `python -m unittest tests.test_production_hardening` passed 33/33; CLI smoke confirmed active-front block, `hive debate-front close`, and same-run reopen after cheap falsifiable test result; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 64/64; `python -m py_compile hivemind/harness.py hivemind/hive.py hivemind/run_validation.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 400/400; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the Front state-machine slice and continue AIOS completion gaps.
+
+## 2026-05-16 11:37 KST - Codex
+
+- Context: Debate turns needed owner/deadline/timeout/user-escalation structure so the chair can arbitrate turns instead of relying on hidden operator memory.
+- Decision: Add `TurnArbitration` artifact and update it after debate rounds. Prepared-only turns now surface as manual follow-up with a `next_speaker`.
+- Evidence: `python -m unittest tests.test_production_hardening` passed 34/34; CLI smoke confirmed `TurnArbitration` artifact, `next_speaker=claude`, timeout escalation, and provider prompt context; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 65/65; `python -m py_compile hivemind/harness.py hivemind/run_validation.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 401/401; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the turn-arbitration slice and continue AIOS completion gaps.

@@ -1095,3 +1095,11 @@
 - Decision: Add `artifacts/front_state.json`; block a new front in the same run while status is `awaiting_falsifiable_test`; add `hive debate-front close` and `--override-front` with explicit override history.
 - Evidence: `python -m unittest tests.test_production_hardening` passed 33/33; CLI smoke confirmed active-front block, `hive debate-front close`, and same-run reopen after cheap falsifiable test result; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 64/64; `python -m py_compile hivemind/harness.py hivemind/hive.py hivemind/run_validation.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 400/400; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the Front state-machine slice and continue AIOS completion gaps.
+
+## 2026-05-16 11:37 KST - Codex - Debate Turn Arbitration
+
+- Context: Debate rounds had participants and barriers, but no durable turn contract naming owner, deadline, next speaker, timeout action, or user escalation path.
+- Ownership: Codex owns a narrow turn-arbitration slice in `hivemind/harness.py`, run-validation event taxonomy, focused tests, TODO, and shared coordination logs.
+- Decision: Add `artifacts/turn_arbitration.json`, include the turn contract in provider prompt context, update it after rounds, and expose manual follow-up through `next_speaker`.
+- Evidence: `python -m unittest tests.test_production_hardening` passed 34/34; CLI smoke confirmed `TurnArbitration` artifact, `next_speaker=claude`, timeout escalation, and provider prompt context; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 65/65; `python -m py_compile hivemind/harness.py hivemind/run_validation.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 401/401; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the turn-arbitration slice and continue AIOS completion gaps.

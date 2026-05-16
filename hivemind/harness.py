@@ -4337,7 +4337,9 @@ def debate_topic(
     append_transcript(paths, "Debate", f"Topic recorded at `{topic_path.relative_to(root).as_posix()}`")
     modes = {"debate_initial": initial_mode, "debate_review": review_mode}
     modes_path = write_debate_modes(root, paths, topic, modes)
+    turn_arbitration_path = write_turn_arbitration(root, paths, topic, selected, modes)
     precommit_path = write_debate_precommit_table(root, paths, topic, selected, modes)
+    append_context_section(paths, "Debate Turn Arbitration", format_turn_arbitration_context(turn_arbitration_path))
     append_context_section(paths, "Debate PreCommit Table", format_precommit_table_context(precommit_path))
 
     rounds: list[dict[str, Any]] = []
@@ -4353,6 +4355,7 @@ def debate_topic(
     convergence = write_debate_convergence(root, paths, topic, rounds)
     disagreement_path = write_provider_output_disagreements(root, paths, topic, rounds)
     precommit_match_path = write_debate_precommit_match(root, paths, rounds, disagreement_path)
+    turn_arbitration_path = update_turn_arbitration(root, paths, rounds)
     report_path = paths.run_dir / "debate_report.json"
     report = {
         "schema_version": 1,
@@ -4367,6 +4370,7 @@ def debate_topic(
         "artifacts": {
             "topic": topic_path.relative_to(root).as_posix(),
             "modes": modes_path.relative_to(root).as_posix(),
+            "turn_arbitration": turn_arbitration_path.relative_to(root).as_posix(),
             "precommit_table": precommit_path.relative_to(root).as_posix(),
             "precommit_match": precommit_match_path.relative_to(root).as_posix(),
             "round1": snapshot1.relative_to(root).as_posix(),
@@ -4500,6 +4504,106 @@ def format_debate_front_status(report: dict[str, Any]) -> str:
         lines.append(f"Test: {test.get('status')} {test.get('result') or ''} {test.get('test') or test.get('instruction') or ''}".rstrip())
     if report.get("history"):
         lines.append(f"History: {len(report.get('history') or [])}")
+    return "\n".join(lines)
+
+
+def write_turn_arbitration(root: Path, paths: RunPaths, topic: str, participants: list[str], modes: dict[str, str]) -> Path:
+    path = paths.run_dir / "artifacts" / "turn_arbitration.json"
+    turns: list[dict[str, Any]] = []
+    order = 1
+    for role in ["debate_initial", "debate_review"]:
+        for participant in participants:
+            turns.append(
+                {
+                    "turn_id": stable_id("turn", paths.run_id, role, participant),
+                    "order": order,
+                    "round": role,
+                    "owner": participant,
+                    "mode": modes.get(role),
+                    "status": "planned",
+                    "deadline_seconds": 1800,
+                    "timeout_action": "escalate_to_user",
+                    "user_escalation": {
+                        "condition": "deadline_exceeded_or_provider_result_missing",
+                        "command": f"hive debate-front status --run-id {paths.run_id}",
+                    },
+                }
+            )
+            order += 1
+    payload = {
+        "schema_version": 1,
+        "kind": "TurnArbitration",
+        "run_id": paths.run_id,
+        "topic": topic,
+        "status": "planned",
+        "next_speaker": turns[0]["owner"] if turns else None,
+        "turns": turns,
+    }
+    write_json(path, payload)
+    add_state_artifact(paths, "turn_arbitration", path)
+    append_event(paths, "turn_arbitration_created", {"artifact": path.relative_to(root).as_posix(), "turn_count": len(turns)})
+    return path
+
+
+def update_turn_arbitration(root: Path, paths: RunPaths, rounds: list[dict[str, Any]]) -> Path:
+    path = paths.run_dir / "artifacts" / "turn_arbitration.json"
+    data = read_json_any(path)
+    if not isinstance(data, dict):
+        return write_turn_arbitration(root, paths, "unknown", [], {})
+    result_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    for round_report in rounds:
+        role = str(round_report.get("role") or "")
+        for item in round_report.get("participants") or []:
+            if isinstance(item, dict):
+                result_by_key[(role, str(item.get("participant") or ""))] = item
+    next_speaker = None
+    for turn in data.get("turns") or []:
+        if not isinstance(turn, dict):
+            continue
+        result = result_by_key.get((str(turn.get("round") or ""), str(turn.get("owner") or "")))
+        if not result:
+            turn["status"] = "pending"
+            next_speaker = next_speaker or turn.get("owner")
+            continue
+        status = str(result.get("status") or "unknown")
+        if status == "completed" and result.get("has_output"):
+            turn["status"] = "evidence_ready"
+        elif status == "prepared":
+            turn["status"] = "manual_followup"
+            next_speaker = next_speaker or turn.get("owner")
+        elif status in {"failed", "timeout"}:
+            turn["status"] = "escalate_to_user"
+            next_speaker = next_speaker or "user"
+        else:
+            turn["status"] = "processed"
+        turn["provider_status"] = status
+        turn["has_output"] = bool(result.get("has_output"))
+        turn["result_path"] = result.get("result_path")
+        turn["processed_at"] = now_iso()
+        turn["timed_out"] = status == "timeout"
+    data["status"] = "needs_manual_followup" if next_speaker else "complete"
+    data["next_speaker"] = next_speaker
+    data["updated_at"] = now_iso()
+    write_json(path, data)
+    add_state_artifact(paths, "turn_arbitration", path)
+    append_event(paths, "turn_arbitration_updated", {"artifact": path.relative_to(root).as_posix(), "status": data["status"], "next_speaker": next_speaker})
+    return path
+
+
+def format_turn_arbitration_context(path: Path) -> str:
+    data = read_json_any(path)
+    if not isinstance(data, dict):
+        return "TurnArbitration: unavailable"
+    lines = [
+        f"TurnArbitration: {path.name}",
+        f"Next speaker: {data.get('next_speaker')}",
+        "Turns:",
+    ]
+    for turn in data.get("turns") or []:
+        if isinstance(turn, dict):
+            lines.append(
+                f"- {turn.get('order')}. {turn.get('round')} owner={turn.get('owner')} mode={turn.get('mode')} deadline_seconds={turn.get('deadline_seconds')} timeout={turn.get('timeout_action')}"
+            )
     return "\n".join(lines)
 
 
