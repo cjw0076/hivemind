@@ -262,6 +262,7 @@ class ProductionHardeningTest(unittest.TestCase):
             self.assertTrue((root / report["artifacts"]["turn_arbitration"]).exists())
             self.assertTrue((root / report["artifacts"]["frame_anchor"]).exists())
             self.assertTrue((root / report["artifacts"]["frame_drift"]).exists())
+            self.assertTrue((root / report["artifacts"]["chair_layers"]).exists())
             self.assertTrue(all(round_report["barrier"] == "complete" for round_report in report["rounds"]))
 
     def test_debate_mode_flags_are_recorded_and_prompted(self) -> None:
@@ -351,6 +352,23 @@ class ProductionHardeningTest(unittest.TestCase):
             self.assertFalse(data["position_notes_accepted"])
             self.assertEqual(data["issues"][0]["type"], "forbidden_language")
             self.assertIn("solves truth", data["issues"][0]["hits"])
+
+    def test_chair_layer_schemas_are_written_for_debate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = debate_topic(root, "chair schema smoke", participants=["claude", "gemini"], execute=False)
+            chair = json.loads((root / report["artifacts"]["chair_layers"]).read_text(encoding="utf-8"))
+
+            self.assertEqual(chair["kind"], "ChairLayerSchemas")
+            self.assertEqual(chair["dispatcher_state"]["kind"], "DispatcherState")
+            self.assertEqual(chair["verifier_check"]["kind"], "VerifierCheck")
+            self.assertEqual(chair["referee_decision"]["kind"], "RefereeDecision")
+            self.assertEqual(chair["north_star_audit"]["kind"], "NorthStarAudit")
+            self.assertEqual(chair["conflict_review"]["kind"], "ConflictReview")
+            self.assertTrue(all(turn["kind"] == "WorkingAgentTurn" for turn in chair["working_agent_turns"]))
+            self.assertEqual(chair["dispatcher_state"]["next_speaker"], "claude")
+            self.assertEqual(chair["referee_decision"]["status"], "not_required")
+            self.assertIn("front_state.json", chair["verifier_check"]["required_artifacts"][0])
 
     def test_debate_front_blocks_new_front_until_test_closes_or_override(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

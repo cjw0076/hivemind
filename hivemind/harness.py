@@ -4359,6 +4359,16 @@ def debate_topic(
     precommit_match_path = write_debate_precommit_match(root, paths, rounds, disagreement_path)
     turn_arbitration_path = update_turn_arbitration(root, paths, rounds)
     frame_drift_path = write_frame_drift_check(root, paths, rounds, frame_anchor_path)
+    chair_layers_path = write_chair_layer_schemas(
+        root,
+        paths,
+        topic,
+        front_path=debate_front_path(paths),
+        turn_arbitration_path=turn_arbitration_path,
+        frame_drift_path=frame_drift_path,
+        disagreement_path=disagreement_path,
+        precommit_match_path=precommit_match_path,
+    )
     report_path = paths.run_dir / "debate_report.json"
     report = {
         "schema_version": 1,
@@ -4376,6 +4386,7 @@ def debate_topic(
             "turn_arbitration": turn_arbitration_path.relative_to(root).as_posix(),
             "frame_anchor": frame_anchor_path.relative_to(root).as_posix(),
             "frame_drift": frame_drift_path.relative_to(root).as_posix(),
+            "chair_layers": chair_layers_path.relative_to(root).as_posix(),
             "precommit_table": precommit_path.relative_to(root).as_posix(),
             "precommit_match": precommit_match_path.relative_to(root).as_posix(),
             "round1": snapshot1.relative_to(root).as_posix(),
@@ -4699,6 +4710,102 @@ def write_frame_drift_check(root: Path, paths: RunPaths, rounds: list[dict[str, 
 def evidence_bound_position(text: str) -> bool:
     evidence_terms = ["evidence", "proof", "test", "verified", "risk", "assumption", "근거", "증거", "검증", "위험", "가정"]
     return any(term in text for term in evidence_terms)
+
+
+def write_chair_layer_schemas(
+    root: Path,
+    paths: RunPaths,
+    topic: str,
+    *,
+    front_path: Path,
+    turn_arbitration_path: Path,
+    frame_drift_path: Path,
+    disagreement_path: Path,
+    precommit_match_path: Path,
+) -> Path:
+    front = read_json_any(front_path)
+    turns = read_json_any(turn_arbitration_path)
+    drift = read_json_any(frame_drift_path)
+    disagreements = read_json_any(disagreement_path)
+    precommit = read_json_any(precommit_match_path)
+    disagreement_records = disagreements if isinstance(disagreements, list) else []
+    severe_disagreements = [
+        item for item in disagreement_records
+        if isinstance(item, dict) and item.get("severity") in {"high", "medium"}
+    ]
+    drift_issues = (drift.get("issues") if isinstance(drift, dict) else []) or []
+    turn_rows = (turns.get("turns") if isinstance(turns, dict) else []) or []
+    next_speaker = turns.get("next_speaker") if isinstance(turns, dict) else None
+    referee_required = bool(severe_disagreements or drift_issues)
+    payload = {
+        "schema_version": 1,
+        "kind": "ChairLayerSchemas",
+        "run_id": paths.run_id,
+        "topic": topic,
+        "dispatcher_state": {
+            "kind": "DispatcherState",
+            "layer": "L0",
+            "status": "waiting_for_manual_followup" if next_speaker else "complete",
+            "active_front_id": front.get("front_id") if isinstance(front, dict) else None,
+            "front_status": front.get("status") if isinstance(front, dict) else None,
+            "next_speaker": next_speaker,
+            "allowed_actions": ["close_front", "override_front", "run_manual_provider_turn", "inspect"],
+        },
+        "verifier_check": {
+            "kind": "VerifierCheck",
+            "layer": "L1",
+            "precommit_matched": bool(precommit.get("all_matched")) if isinstance(precommit, dict) else False,
+            "frame_drift_status": drift.get("status") if isinstance(drift, dict) else "missing",
+            "position_notes_accepted": bool(drift.get("position_notes_accepted")) if isinstance(drift, dict) else False,
+            "required_artifacts": [
+                front_path.relative_to(root).as_posix(),
+                turn_arbitration_path.relative_to(root).as_posix(),
+                frame_drift_path.relative_to(root).as_posix(),
+                precommit_match_path.relative_to(root).as_posix(),
+            ],
+        },
+        "working_agent_turns": [
+            {
+                "kind": "WorkingAgentTurn",
+                "layer": "L2",
+                "turn_id": turn.get("turn_id"),
+                "owner": turn.get("owner"),
+                "round": turn.get("round"),
+                "mode": turn.get("mode"),
+                "status": turn.get("status"),
+                "deadline_seconds": turn.get("deadline_seconds"),
+                "timeout_action": turn.get("timeout_action"),
+            }
+            for turn in turn_rows
+            if isinstance(turn, dict)
+        ],
+        "referee_decision": {
+            "kind": "RefereeDecision",
+            "layer": "L3",
+            "status": "required" if referee_required else "not_required",
+            "reason": "high_or_medium_disagreement_or_frame_drift" if referee_required else "no blocking conflict detected",
+            "required_next_tests": ["resolve severe disagreements", "repair frame drift"] if referee_required else [],
+        },
+        "north_star_audit": {
+            "kind": "NorthStarAudit",
+            "layer": "L4",
+            "status": "needs_review" if drift_issues else "pass",
+            "north_star": "AIOS prompt/log operation where Hive owns execution and MemoryOS owns accepted memory.",
+            "forbidden_language_issue_count": sum(1 for item in drift_issues if isinstance(item, dict) and item.get("type") == "forbidden_language"),
+        },
+        "conflict_review": {
+            "kind": "ConflictReview",
+            "layer": "L5",
+            "status": "conflict" if severe_disagreements else "clear",
+            "severe_disagreement_count": len(severe_disagreements),
+            "axes": sorted({axis for item in severe_disagreements for axis in (item.get("axes") or [])}) if severe_disagreements else [],
+        },
+    }
+    path = paths.run_dir / "artifacts" / "chair_layers.json"
+    write_json(path, payload)
+    add_state_artifact(paths, "chair_layers", path)
+    append_event(paths, "chair_layer_schemas_created", {"artifact": path.relative_to(root).as_posix(), "referee_required": referee_required})
+    return path
 
 
 def debate_precommit_rows() -> list[dict[str, str]]:

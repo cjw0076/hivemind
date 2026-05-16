@@ -1634,3 +1634,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Add `FrameAnchor` and `FrameDriftCheck` artifacts. Drift checks scan executed provider previews for forbidden language and evidence-bound shape.
 - Evidence: `python -m unittest tests.test_production_hardening` passed 35/35; CLI smoke confirmed `FrameAnchor` prompt context and `FrameDriftCheck` artifact; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 66/66; `python -m py_compile hivemind/harness.py hivemind/run_validation.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 402/402; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the frame-anchor drift slice and continue AIOS completion gaps.
+
+## 2026-05-16 11:48 KST - Codex
+
+- Context: The layered chair roles needed concrete artifact schemas instead of remaining only as conceptual L0-L5 labels.
+- Decision: Add `ChairLayerSchemas` projection over front, turn arbitration, frame drift, precommit, and disagreement artifacts.
+- Evidence: `python -m unittest tests.test_production_hardening` passed 36/36; CLI smoke confirmed `ChairLayerSchemas`, `DispatcherState`, `VerifierCheck`, `WorkingAgentTurn`, `RefereeDecision`, `NorthStarAudit`, and `ConflictReview`; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 67/67; `python -m py_compile hivemind/harness.py hivemind/run_validation.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 403/403; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the chair-layer schema slice and continue AIOS completion gaps.

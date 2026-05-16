@@ -1111,3 +1111,11 @@
 - Decision: Add `artifacts/frame_anchor.json`, inject its claim-shape/forbidden-language rule into provider prompt context, and write `artifacts/frame_drift.json` after rounds with `position_notes_accepted`.
 - Evidence: `python -m unittest tests.test_production_hardening` passed 35/35; CLI smoke confirmed `FrameAnchor` prompt context and `FrameDriftCheck` artifact; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 66/66; `python -m py_compile hivemind/harness.py hivemind/run_validation.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 402/402; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the frame-anchor drift slice and continue AIOS completion gaps.
+
+## 2026-05-16 11:48 KST - Codex - Chair Layer Schemas
+
+- Context: Debate now has front, turn, frame, precommit, and disagreement artifacts, but the layered chair roles were not exposed as one durable schema surface.
+- Ownership: Codex owns a narrow chair schema slice in `hivemind/harness.py`, run-validation event taxonomy, focused tests, TODO, and shared coordination logs.
+- Decision: Add `artifacts/chair_layers.json` with `DispatcherState`, `VerifierCheck`, `WorkingAgentTurn`, `RefereeDecision`, `NorthStarAudit`, and `ConflictReview` projections over the existing debate artifacts.
+- Evidence: `python -m unittest tests.test_production_hardening` passed 36/36; CLI smoke confirmed `ChairLayerSchemas`, `DispatcherState`, `VerifierCheck`, `WorkingAgentTurn`, `RefereeDecision`, `NorthStarAudit`, and `ConflictReview`; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 67/67; `python -m py_compile hivemind/harness.py hivemind/run_validation.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 403/403; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the chair-layer schema slice and continue AIOS completion gaps.
