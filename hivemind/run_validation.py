@@ -49,6 +49,7 @@ ALLOWED_EVENT_TYPES = {
     "frame_anchor_created",
     "frame_drift_checked",
     "chair_layer_schemas_created",
+    "l0_dispatcher_state_created",
     "provider_disagreements_extracted",
     "memory_context_built",
     "memoryos_context_retrieved",

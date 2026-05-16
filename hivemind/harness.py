@@ -4369,6 +4369,7 @@ def debate_topic(
         disagreement_path=disagreement_path,
         precommit_match_path=precommit_match_path,
     )
+    l0_dispatcher_path = write_l0_dispatcher_state(root, paths, topic, rounds, chair_layers_path)
     report_path = paths.run_dir / "debate_report.json"
     report = {
         "schema_version": 1,
@@ -4387,6 +4388,7 @@ def debate_topic(
             "frame_anchor": frame_anchor_path.relative_to(root).as_posix(),
             "frame_drift": frame_drift_path.relative_to(root).as_posix(),
             "chair_layers": chair_layers_path.relative_to(root).as_posix(),
+            "l0_dispatcher": l0_dispatcher_path.relative_to(root).as_posix(),
             "precommit_table": precommit_path.relative_to(root).as_posix(),
             "precommit_match": precommit_match_path.relative_to(root).as_posix(),
             "round1": snapshot1.relative_to(root).as_posix(),
@@ -4805,6 +4807,95 @@ def write_chair_layer_schemas(
     write_json(path, payload)
     add_state_artifact(paths, "chair_layers", path)
     append_event(paths, "chair_layer_schemas_created", {"artifact": path.relative_to(root).as_posix(), "referee_required": referee_required})
+    return path
+
+
+def write_l0_dispatcher_state(root: Path, paths: RunPaths, topic: str, rounds: list[dict[str, Any]], chair_layers_path: Path) -> Path:
+    chair = read_json_any(chair_layers_path)
+    dispatcher = chair.get("dispatcher_state") if isinstance(chair, dict) else {}
+    turn_rows = chair.get("working_agent_turns") if isinstance(chair, dict) else []
+    front = read_debate_front(paths)
+    required_artifacts = [
+        "front_state",
+        "turn_arbitration",
+        "frame_anchor",
+        "frame_drift",
+        "chair_layers",
+        "precommit_table",
+        "precommit_match",
+        "disagreements",
+    ]
+    state_artifacts = json.loads(paths.state.read_text(encoding="utf-8")).get("artifacts") or {}
+    artifact_arrivals = {
+        name: {
+            "arrived": bool(state_artifacts.get(name) and (root / str(state_artifacts.get(name))).exists()),
+            "path": state_artifacts.get(name),
+        }
+        for name in required_artifacts
+    }
+    round_states = []
+    for round_report in rounds:
+        participants = [item for item in (round_report.get("participants") or []) if isinstance(item, dict)]
+        round_states.append(
+            {
+                "round": round_report.get("role"),
+                "mode": round_report.get("mode"),
+                "barrier": round_report.get("barrier"),
+                "terminal_count": sum(1 for item in participants if item.get("status") in {"prepared", "completed", "failed", "timeout", "skipped"}),
+                "participant_count": len(participants),
+            }
+        )
+    next_speaker = dispatcher.get("next_speaker") if isinstance(dispatcher, dict) else None
+    if next_speaker:
+        next_action = {
+            "kind": "manual_provider_turn",
+            "owner": next_speaker,
+            "reason": "prepared-only turn requires manual/provider follow-up before L0 can close the loop",
+        }
+        status = "waiting_for_turn"
+    elif front.get("status") != "closed":
+        next_action = {
+            "kind": "close_front",
+            "command": f"hive debate-front close --run-id {paths.run_id} --test '<cheap falsifiable test>' --result passed",
+            "reason": "front is open and needs a cheap falsifiable test result",
+        }
+        status = "waiting_for_front_close"
+    else:
+        next_action = {"kind": "complete", "reason": "round barriers and front close are satisfied"}
+        status = "complete"
+    payload = {
+        "schema_version": 1,
+        "kind": "L0DispatcherState",
+        "run_id": paths.run_id,
+        "topic": topic,
+        "layer": "L0",
+        "status": status,
+        "content_judgment_allowed": False,
+        "state_machine": ["front_open", "turns_planned", "round_barriers_processed", status],
+        "active_front": {
+            "front_id": front.get("front_id"),
+            "status": front.get("status"),
+            "topic": front.get("topic"),
+        },
+        "rounds": round_states,
+        "turn_timeouts": [
+            {
+                "turn_id": turn.get("turn_id"),
+                "owner": turn.get("owner"),
+                "timed_out": bool(turn.get("timed_out")),
+                "timeout_action": turn.get("timeout_action"),
+            }
+            for turn in (turn_rows or [])
+            if isinstance(turn, dict)
+        ],
+        "artifact_arrivals": artifact_arrivals,
+        "next_speaker": next_speaker,
+        "next_action": next_action,
+    }
+    path = paths.run_dir / "artifacts" / "l0_dispatcher_state.json"
+    write_json(path, payload)
+    add_state_artifact(paths, "l0_dispatcher", path)
+    append_event(paths, "l0_dispatcher_state_created", {"artifact": path.relative_to(root).as_posix(), "status": status, "next_speaker": next_speaker})
     return path
 
 

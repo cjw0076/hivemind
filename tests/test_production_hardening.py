@@ -263,6 +263,7 @@ class ProductionHardeningTest(unittest.TestCase):
             self.assertTrue((root / report["artifacts"]["frame_anchor"]).exists())
             self.assertTrue((root / report["artifacts"]["frame_drift"]).exists())
             self.assertTrue((root / report["artifacts"]["chair_layers"]).exists())
+            self.assertTrue((root / report["artifacts"]["l0_dispatcher"]).exists())
             self.assertTrue(all(round_report["barrier"] == "complete" for round_report in report["rounds"]))
 
     def test_debate_mode_flags_are_recorded_and_prompted(self) -> None:
@@ -369,6 +370,22 @@ class ProductionHardeningTest(unittest.TestCase):
             self.assertEqual(chair["dispatcher_state"]["next_speaker"], "claude")
             self.assertEqual(chair["referee_decision"]["status"], "not_required")
             self.assertIn("front_state.json", chair["verifier_check"]["required_artifacts"][0])
+
+    def test_l0_dispatcher_state_is_code_first_and_artifact_grounded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = debate_topic(root, "l0 dispatcher smoke", participants=["claude", "gemini"], execute=False)
+            dispatcher = json.loads((root / report["artifacts"]["l0_dispatcher"]).read_text(encoding="utf-8"))
+
+            self.assertEqual(dispatcher["kind"], "L0DispatcherState")
+            self.assertFalse(dispatcher["content_judgment_allowed"])
+            self.assertEqual(dispatcher["status"], "waiting_for_turn")
+            self.assertEqual(dispatcher["next_speaker"], "claude")
+            self.assertEqual(dispatcher["next_action"]["kind"], "manual_provider_turn")
+            self.assertEqual(len(dispatcher["rounds"]), 2)
+            self.assertTrue(all(row["terminal_count"] == row["participant_count"] for row in dispatcher["rounds"]))
+            self.assertTrue(dispatcher["artifact_arrivals"]["front_state"]["arrived"])
+            self.assertTrue(dispatcher["artifact_arrivals"]["chair_layers"]["arrived"])
 
     def test_debate_front_blocks_new_front_until_test_closes_or_override(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
