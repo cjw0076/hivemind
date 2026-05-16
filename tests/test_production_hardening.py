@@ -253,6 +253,8 @@ class ProductionHardeningTest(unittest.TestCase):
             self.assertEqual(report["modes"], {"debate_initial": "cooperative", "debate_review": "adversarial"})
             self.assertTrue((root / ".runs" / report["run_id"] / "debate_convergence.md").exists())
             self.assertTrue((root / ".runs" / report["run_id"] / "disagreements.json").exists())
+            self.assertTrue((root / report["artifacts"]["precommit_table"]).exists())
+            self.assertTrue((root / report["artifacts"]["precommit_match"]).exists())
             self.assertTrue(all(round_report["barrier"] == "complete" for round_report in report["rounds"]))
 
     def test_debate_mode_flags_are_recorded_and_prompted(self) -> None:
@@ -277,6 +279,24 @@ class ProductionHardeningTest(unittest.TestCase):
             self.assertIn("Debate mode: verification-only", review_prompt)
             self.assertIn("concrete evidence, tests, receipts", review_prompt)
             self.assertIn("- debate_review: verification-only", convergence)
+
+    def test_debate_precommit_table_binds_results_to_dispositions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = debate_topic(root, "bind debate outcomes", participants=["claude", "gemini"], execute=False)
+            table = json.loads((root / report["artifacts"]["precommit_table"]).read_text(encoding="utf-8"))
+            match = json.loads((root / report["artifacts"]["precommit_match"]).read_text(encoding="utf-8"))
+            prompt = (root / ".runs" / report["run_id"] / "agents" / "claude" / "debate_initial_prompt.md").read_text(encoding="utf-8")
+
+            self.assertEqual(table["kind"], "PreCommitTable")
+            self.assertEqual(len(table["signatures"]), 2)
+            self.assertTrue(all(item["signature"].startswith("sig_") for item in table["signatures"]))
+            self.assertIn("prepared_without_output", {row["outcome"] for row in table["rows"]})
+            self.assertTrue(match["all_matched"])
+            self.assertTrue(all(item["outcome"] == "prepared_without_output" for item in match["matches"]))
+            self.assertTrue(all(item["disposition"] == "manual_followup_required" for item in match["matches"]))
+            self.assertIn("PreCommitTable", prompt)
+            self.assertIn("prepared_without_output -> manual_followup_required", prompt)
 
     def test_provider_output_disagreement_extraction_detects_axes(self) -> None:
         records = extract_provider_output_disagreements(

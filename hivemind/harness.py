@@ -4335,6 +4335,8 @@ def debate_topic(
     append_transcript(paths, "Debate", f"Topic recorded at `{topic_path.relative_to(root).as_posix()}`")
     modes = {"debate_initial": initial_mode, "debate_review": review_mode}
     modes_path = write_debate_modes(root, paths, topic, modes)
+    precommit_path = write_debate_precommit_table(root, paths, topic, selected, modes)
+    append_context_section(paths, "Debate PreCommit Table", format_precommit_table_context(precommit_path))
 
     rounds: list[dict[str, Any]] = []
     round1 = run_debate_round(root, paths, selected, "debate_initial", execute=execute, mode=initial_mode)
@@ -4348,6 +4350,7 @@ def debate_topic(
 
     convergence = write_debate_convergence(root, paths, topic, rounds)
     disagreement_path = write_provider_output_disagreements(root, paths, topic, rounds)
+    precommit_match_path = write_debate_precommit_match(root, paths, rounds, disagreement_path)
     report_path = paths.run_dir / "debate_report.json"
     report = {
         "schema_version": 1,
@@ -4361,6 +4364,8 @@ def debate_topic(
         "artifacts": {
             "topic": topic_path.relative_to(root).as_posix(),
             "modes": modes_path.relative_to(root).as_posix(),
+            "precommit_table": precommit_path.relative_to(root).as_posix(),
+            "precommit_match": precommit_match_path.relative_to(root).as_posix(),
             "round1": snapshot1.relative_to(root).as_posix(),
             "round2": snapshot2.relative_to(root).as_posix(),
             "convergence": convergence.relative_to(root).as_posix(),
@@ -4380,6 +4385,153 @@ def debate_topic(
     )
     update_state(paths, phase="deliberation", status="ready")
     return report
+
+
+def debate_precommit_rows() -> list[dict[str, str]]:
+    return [
+        {
+            "outcome": "completed_with_output",
+            "disposition": "treat_as_evidence",
+            "condition": "provider result status is completed and output body exists",
+        },
+        {
+            "outcome": "prepared_without_output",
+            "disposition": "manual_followup_required",
+            "condition": "provider result was prepared but not executed or produced no output",
+        },
+        {
+            "outcome": "failed_or_timeout",
+            "disposition": "do_not_use_as_evidence",
+            "condition": "provider result status is failed or timeout",
+        },
+        {
+            "outcome": "high_or_medium_disagreement",
+            "disposition": "referee_required",
+            "condition": "structured disagreement severity is high or medium",
+        },
+        {
+            "outcome": "human_review_approved",
+            "disposition": "eligible_for_memory_draft",
+            "condition": "human/operator review receipt explicitly approves debate memory draft extraction",
+        },
+    ]
+
+
+def write_debate_precommit_table(root: Path, paths: RunPaths, topic: str, participants: list[str], modes: dict[str, str]) -> Path:
+    path = paths.run_dir / "artifacts" / "precommit_table.json"
+    rows = debate_precommit_rows()
+    rows_hash = stable_id("rows", json.dumps(rows, ensure_ascii=False, sort_keys=True))
+    signed_at = now_iso()
+    signatures = [
+        {
+            "participant": participant,
+            "signature": stable_id("sig", paths.run_id, participant, rows_hash, json.dumps(modes, sort_keys=True)),
+            "signed_at": signed_at,
+            "scope": "debate_result_disposition",
+        }
+        for participant in participants
+    ]
+    payload = {
+        "schema_version": 1,
+        "kind": "PreCommitTable",
+        "run_id": paths.run_id,
+        "topic": topic,
+        "modes": modes,
+        "rows_hash": rows_hash,
+        "rows": rows,
+        "signatures": signatures,
+        "binding": "result_outcomes_must_map_to_precommitted_dispositions_before_memory_draft_or_convergence_closeout",
+    }
+    write_json(path, payload)
+    add_state_artifact(paths, "precommit_table", path)
+    return path
+
+
+def format_precommit_table_context(precommit_path: Path) -> str:
+    data = json.loads(precommit_path.read_text(encoding="utf-8"))
+    lines = [
+        f"PreCommitTable: {precommit_path.name}",
+        f"Rows hash: {data.get('rows_hash')}",
+        "Binding: outcomes must map to dispositions before convergence closeout.",
+        "",
+        "Rows:",
+    ]
+    for row in data.get("rows") or []:
+        lines.append(f"- {row.get('outcome')} -> {row.get('disposition')} ({row.get('condition')})")
+    lines.extend(["", "Signatures:"])
+    for signature in data.get("signatures") or []:
+        lines.append(f"- {signature.get('participant')}: {signature.get('signature')}")
+    return "\n".join(lines)
+
+
+def write_debate_precommit_match(root: Path, paths: RunPaths, rounds: list[dict[str, Any]], disagreement_path: Path) -> Path:
+    table_path = paths.run_dir / "artifacts" / "precommit_table.json"
+    table = json.loads(table_path.read_text(encoding="utf-8"))
+    disposition_by_outcome = {str(row.get("outcome")): str(row.get("disposition")) for row in table.get("rows") or []}
+    matches: list[dict[str, Any]] = []
+    for round_report in rounds:
+        for item in round_report.get("participants") or []:
+            outcome = classify_debate_participant_outcome(item)
+            matches.append(
+                {
+                    "role": round_report.get("role"),
+                    "mode": round_report.get("mode"),
+                    "participant": item.get("participant"),
+                    "status": item.get("status"),
+                    "has_output": bool(item.get("has_output")),
+                    "outcome": outcome,
+                    "disposition": disposition_by_outcome.get(outcome),
+                    "matched": outcome in disposition_by_outcome,
+                    "result_path": item.get("result_path"),
+                }
+            )
+    disagreements = read_json_any(disagreement_path)
+    records = disagreements if isinstance(disagreements, list) else []
+    severe = [record for record in records if isinstance(record, dict) and record.get("severity") in {"high", "medium"}]
+    if severe:
+        matches.append(
+            {
+                "role": "disagreement_topology",
+                "participant": "hive",
+                "status": "needs_referee",
+                "has_output": False,
+                "outcome": "high_or_medium_disagreement",
+                "disposition": disposition_by_outcome.get("high_or_medium_disagreement"),
+                "matched": True,
+                "result_path": disagreement_path.relative_to(root).as_posix(),
+            }
+        )
+    path = paths.run_dir / "artifacts" / "precommit_match.json"
+    payload = {
+        "schema_version": 1,
+        "kind": "PreCommitMatch",
+        "run_id": paths.run_id,
+        "table": table_path.relative_to(root).as_posix(),
+        "rows_hash": table.get("rows_hash"),
+        "all_matched": all(bool(item.get("matched")) for item in matches),
+        "matches": matches,
+    }
+    write_json(path, payload)
+    add_state_artifact(paths, "precommit_match", path)
+    return path
+
+
+def classify_debate_participant_outcome(item: dict[str, Any]) -> str:
+    status = str(item.get("status") or "unknown")
+    if status == "completed" and item.get("has_output"):
+        return "completed_with_output"
+    if status == "prepared" and not item.get("has_output"):
+        return "prepared_without_output"
+    if status in {"failed", "timeout"}:
+        return "failed_or_timeout"
+    return "unmatched_result_state"
+
+
+def read_json_any(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def validate_debate_mode(mode: str) -> None:

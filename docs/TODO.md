@@ -107,7 +107,7 @@ Sources: `VG-03`, `VG-04`, `VG-06`, `VG-13`.
 - [x] Add `hive live`/`hive inspect` surface for active debate rounds and participant readiness.
 - [x] Add MemoryOS draft extraction from debate convergence only after human review.
 - [x] Add debate mode flags per round: cooperative, adversarial, and verification-only.
-- [ ] Add binding `PreCommitTable` artifacts with agent signatures and result-to-disposition matching.
+- [x] Add binding `PreCommitTable` artifacts with agent signatures and result-to-disposition matching.
 - [ ] Add `Front` state machine so new debate fronts are blocked until the current cheap falsifiable test closes or the user overrides.
 - [ ] Add turn arbitration with owner, deadline, next speaker, timeout, and user escalation.
 - [ ] Add frame-anchor drift checks for active claim shape and forbidden language before accepting position notes.

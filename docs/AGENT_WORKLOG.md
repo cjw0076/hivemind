@@ -1079,3 +1079,11 @@
 - Decision: Add `--initial-mode` and `--review-mode`, persist `artifacts/debate_modes.json`, include mode instructions in provider prompts, and show modes in snapshots/convergence/report output.
 - Evidence: `python -m unittest tests.test_production_hardening` passed 30/30; CLI smoke confirmed `--initial-mode adversarial --review-mode verification-only` is recorded and injected into provider prompts; focused `python -m unittest tests.test_production_hardening tests.test_live tests.test_inspect` passed 52/52; `python -m py_compile hivemind/harness.py hivemind/hive.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 397/397; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the debate mode slice and continue AIOS completion gaps.
+
+## 2026-05-16 11:27 KST - Codex - Debate PreCommit Table
+
+- Context: Debate convergence still lacked a pre-committed outcome-to-disposition table, so provider results could be interpreted after the fact.
+- Ownership: Codex owns a narrow PreCommitTable slice in `hivemind/harness.py`, focused tests, TODO, and shared coordination logs.
+- Decision: Write `artifacts/precommit_table.json` before provider prompts, include participant signatures and rows in prompt context, and write `artifacts/precommit_match.json` after rounds to map results and disagreements to precommitted dispositions.
+- Evidence: `python -m unittest tests.test_production_hardening` passed 31/31; CLI smoke confirmed `PreCommitTable` prompt context, participant signatures, and `PreCommitMatch` output; focused `python -m unittest tests.test_production_hardening tests.test_live tests.test_inspect tests.test_run_validation` passed 62/62; `python -m py_compile hivemind/harness.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 398/398; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the PreCommitTable slice and continue AIOS completion gaps.
