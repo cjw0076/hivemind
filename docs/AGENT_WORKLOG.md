@@ -1119,3 +1119,37 @@
 - Decision: Add `artifacts/chair_layers.json` with `DispatcherState`, `VerifierCheck`, `WorkingAgentTurn`, `RefereeDecision`, `NorthStarAudit`, and `ConflictReview` projections over the existing debate artifacts.
 - Evidence: `python -m unittest tests.test_production_hardening` passed 36/36; CLI smoke confirmed `ChairLayerSchemas`, `DispatcherState`, `VerifierCheck`, `WorkingAgentTurn`, `RefereeDecision`, `NorthStarAudit`, and `ConflictReview`; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 67/67; `python -m py_compile hivemind/harness.py hivemind/run_validation.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 403/403; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the chair-layer schema slice and continue AIOS completion gaps.
+
+## 2026-05-16 13:45 KST - Claude - ASC-0180 AIOS hosting trust model debate completed
+
+- Context: MyWorld ASC-0180 requested a 7-round Hive deliberation (3 voices per
+  round) on how AIOS hosting should relate to the DNA — specifically Preamble 3
+  (operator root-of-trust), Invariant 7 (privacy boundary), and Invariant 6
+  (operator override) — given Model A (uri invisible infra) needs a non-localhost
+  ingest endpoint.
+- Semantic handshake: ASC-0180 terms confirmed: AIOS smart contract, dispatch
+  packet, hive execution, stop condition, memory draft, capability route,
+  semantic handshake. Ambiguous terms: none.
+- Ownership: Claude touched only `hivemind/.runs/aios_hosting_debate/**` and this
+  worklog in the hivemind repo. MyWorld discovery summary is WP-0180-B
+  (claude@myworld responsibility).
+- Decision: final convergence verdict is `proceed_phased_hosting` +
+  `escalate_to_founder`. Phase 1: uri emits to managed queue, AIOS pulls locally
+  (no DNA amendment, operator-authorized). Phase 2: AIOS deploys minimal hosted
+  ingest endpoint under founder-approved DNA amendment (delegated hosting,
+  local-first primacy, multi-tenant prohibition, mediated override). Phase 3:
+  hosted surfaces beyond ingest (separate contract, founder-gated).
+- Evidence: 7 rounds, 21 proposer/critic/extender voices, all 9 probes
+  addressed, all 6 assumptions negated, 3 dissents registered. Verification
+  artifact at `.runs/aios_hosting_debate/artifacts/verification.json`.
+  `final_state.md` exists under `.runs/aios_hosting_debate/`.
+- Probes covered: trust topology (R1,R6,R7), invariant 7 boundary (R2,R6),
+  minimal footprint (R2,R5,R6), model A vs B (R3,R6), reversibility (R3,R5,R6),
+  operator override (R4,R6), single vs multi-tenant (R4,R6), provider/cost
+  (R5,R6), founder vision (R1,R6,R7).
+- Dissents: D1 hosting momentum underestimated, D2 Phase 1 queue trust
+  unexamined, D3 founder decision-vacuum risk.
+- Next: MyWorld should collect ASC-0180, write discovery summary (WP-0180-B),
+  surface verdict + recommendation to founder for Phase 2 gating, and propose
+  downstream contracts (Phase 1 implementation, local-first primacy DNA clause,
+  Phase 1 evaluation).
