@@ -15,9 +15,11 @@ from hivemind.harness import (
     build_debate_memory_draft,
     build_memory_draft,
     build_context_pack_for_role,
+    close_debate_front,
     close_gap_loop,
     create_run,
     debate_topic,
+    debate_front_status,
     extract_provider_output_disagreements,
     ensure_memoryos_context,
     flow_advance,
@@ -297,6 +299,36 @@ class ProductionHardeningTest(unittest.TestCase):
             self.assertTrue(all(item["disposition"] == "manual_followup_required" for item in match["matches"]))
             self.assertIn("PreCommitTable", prompt)
             self.assertIn("prepared_without_output -> manual_followup_required", prompt)
+
+    def test_debate_front_blocks_new_front_until_test_closes_or_override(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = debate_topic(root, "first front", participants=["claude", "gemini"], execute=False)
+            run_id = report["run_id"]
+            state = debate_front_status(root, run_id)
+
+            self.assertEqual(state["status"], "awaiting_falsifiable_test")
+            self.assertIn("cheap_falsifiable_test", state)
+            with self.assertRaisesRegex(RuntimeError, "active debate front is open"):
+                debate_topic(root, "second front blocked", run_id=run_id, participants=["claude", "gemini"], execute=False)
+
+            closed = close_debate_front(root, run_id, test="run the smallest release-gate smoke", result="passed", closed_by="user")
+            self.assertEqual(closed["status"], "closed")
+            self.assertEqual(closed["cheap_falsifiable_test"]["result"], "passed")
+            reopened = debate_topic(root, "second front allowed", run_id=run_id, participants=["claude", "gemini"], execute=False)
+            self.assertEqual(reopened["front"]["status"], "awaiting_falsifiable_test")
+
+    def test_debate_front_override_records_previous_front(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = debate_topic(root, "override first front", participants=["claude", "gemini"], execute=False)
+            second = debate_topic(root, "override second front", run_id=first["run_id"], participants=["claude", "gemini"], execute=False, override_front=True)
+            state = debate_front_status(root, first["run_id"])
+
+            self.assertTrue(second["front"]["override_previous"])
+            self.assertEqual(state["front_id"], second["front"]["front_id"])
+            self.assertEqual(len(state["history"]), 1)
+            self.assertEqual(state["history"][0]["close_reason"], "operator_override")
 
     def test_provider_output_disagreement_extraction_detects_axes(self) -> None:
         records = extract_provider_output_disagreements(

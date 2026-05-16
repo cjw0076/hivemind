@@ -11,6 +11,7 @@ from pathlib import Path
 from .harness import (
     build_memory_draft,
     build_debate_memory_draft,
+    close_debate_front,
     build_summary,
     build_verification,
     auto_loop,
@@ -65,10 +66,12 @@ from .harness import (
     format_settings,
     format_settings_shell,
     format_debate_report,
+    format_debate_front_status,
     format_orchestration_report,
     settings_report,
     ask_router,
     debate_topic,
+    debate_front_status,
     orchestrate_prompt,
     checks_report,
     agent_icon,
@@ -167,6 +170,7 @@ COMMANDS = {
     "ask",
     "orchestrate",
     "debate",
+    "debate-front",
     "demo",
     "step",
     "status",
@@ -438,8 +442,20 @@ def _main(argv: list[str] | None = None) -> None:
     debate_cmd.add_argument("--participant", action="append", choices=["claude", "gemini", "codex"], help="provider participant; repeatable")
     debate_cmd.add_argument("--initial-mode", choices=["cooperative", "adversarial", "verification-only"], default="cooperative")
     debate_cmd.add_argument("--review-mode", choices=["cooperative", "adversarial", "verification-only"], default="adversarial")
+    debate_cmd.add_argument("--override-front", action="store_true", help="override an active front in the same run and record the override")
     debate_cmd.add_argument("--execute", action="store_true", help="execute supported non-Codex providers and wait at each round barrier")
     debate_cmd.add_argument("--json", action="store_true")
+    debate_front_cmd = sub.add_parser("debate-front", help="inspect or close the active debate front")
+    debate_front_sub = debate_front_cmd.add_subparsers(dest="debate_front_cmd", required=True)
+    debate_front_status_cmd = debate_front_sub.add_parser("status", help="show active debate front state")
+    debate_front_status_cmd.add_argument("--run-id")
+    debate_front_status_cmd.add_argument("--json", action="store_true")
+    debate_front_close_cmd = debate_front_sub.add_parser("close", help="close a front with a cheap falsifiable test result")
+    debate_front_close_cmd.add_argument("--run-id")
+    debate_front_close_cmd.add_argument("--test", required=True, help="cheap falsifiable test that closed the current front")
+    debate_front_close_cmd.add_argument("--result", required=True, choices=["passed", "failed", "inconclusive"])
+    debate_front_close_cmd.add_argument("--closed-by", default="user")
+    debate_front_close_cmd.add_argument("--json", action="store_true")
     demo_cmd = sub.add_parser("demo", help="safe live demo that animates a Hive Mind run")
     demo_sub = demo_cmd.add_subparsers(dest="demo_cmd", required=True)
     demo_live_cmd = demo_sub.add_parser("live", help="write a live coordination demo run without provider execution")
@@ -1192,6 +1208,7 @@ def _main(argv: list[str] | None = None) -> None:
             execute=args.execute,
             initial_mode=args.initial_mode,
             review_mode=args.review_mode,
+            override_front=args.override_front,
         )
         if args.json:
             import json
@@ -1199,6 +1216,18 @@ def _main(argv: list[str] | None = None) -> None:
             print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
         else:
             print(format_debate_report(report))
+        return
+    if args.cmd == "debate-front":
+        if args.debate_front_cmd == "status":
+            report = debate_front_status(root, args.run_id)
+        else:
+            report = close_debate_front(root, args.run_id, test=args.test, result=args.result, closed_by=args.closed_by)
+        if args.json:
+            import json
+
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            print(format_debate_front_status(report))
         return
     if args.cmd == "demo":
         if args.demo_cmd == "live":

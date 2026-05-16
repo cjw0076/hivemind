@@ -4318,6 +4318,7 @@ def debate_topic(
     execute: bool = False,
     initial_mode: str = "cooperative",
     review_mode: str = "adversarial",
+    override_front: bool = False,
 ) -> dict[str, Any]:
     """Run a provider deliberation barrier: first opinions, review, convergence."""
     selected = participants or ["claude", "gemini", "codex"]
@@ -4329,6 +4330,7 @@ def debate_topic(
     validate_debate_mode(review_mode)
 
     paths = create_run(root, f"Provider debate: {topic}", project="Hive Mind", task_type="deliberation") if run_id is None else load_run(root, run_id)[0]
+    front = open_debate_front(root, paths, topic, override=override_front)
     topic_path = paths.run_dir / "debate_topic.md"
     topic_path.write_text(f"# Debate Topic\n\n{topic.strip()}\n", encoding="utf-8")
     add_state_artifact(paths, "debate_topic", topic_path)
@@ -4358,6 +4360,7 @@ def debate_topic(
         "topic": topic,
         "participants": selected,
         "execute_requested": execute,
+        "front": front,
         "barrier": "all_participants_processed_before_convergence",
         "modes": modes,
         "rounds": rounds,
@@ -4385,6 +4388,119 @@ def debate_topic(
     )
     update_state(paths, phase="deliberation", status="ready")
     return report
+
+
+def debate_front_path(paths: RunPaths) -> Path:
+    return paths.run_dir / "artifacts" / "front_state.json"
+
+
+def read_debate_front(paths: RunPaths) -> dict[str, Any]:
+    path = debate_front_path(paths)
+    if not path.exists():
+        return {
+            "schema_version": 1,
+            "kind": "FrontState",
+            "run_id": paths.run_id,
+            "status": "none",
+            "front_id": None,
+            "history": [],
+        }
+    data = read_json_any(path)
+    return data if isinstance(data, dict) else {"schema_version": 1, "kind": "FrontState", "run_id": paths.run_id, "status": "invalid", "history": []}
+
+
+def open_debate_front(root: Path, paths: RunPaths, topic: str, *, override: bool = False) -> dict[str, Any]:
+    existing = read_debate_front(paths)
+    existing_status = str(existing.get("status") or "none")
+    if existing_status not in {"none", "closed"} and not override:
+        raise RuntimeError(
+            "active debate front is open; close it with "
+            f"hive debate-front close --run-id {paths.run_id} --test '<cheap falsifiable test>' --result passed "
+            "or rerun debate with --override-front"
+        )
+    now = now_iso()
+    history = [item for item in existing.get("history", []) if isinstance(item, dict)]
+    if existing_status not in {"none", "closed"}:
+        history.append(
+            {
+                "front_id": existing.get("front_id"),
+                "status": existing_status,
+                "topic": existing.get("topic"),
+                "closed_at": now,
+                "close_reason": "operator_override",
+            }
+        )
+    elif existing.get("front_id"):
+        history.append({key: existing.get(key) for key in ["front_id", "status", "topic", "opened_at", "closed_at", "test_result"] if existing.get(key) is not None})
+    front_id = stable_id("front", paths.run_id, topic, now)
+    state = {
+        "schema_version": 1,
+        "kind": "FrontState",
+        "run_id": paths.run_id,
+        "front_id": front_id,
+        "topic": topic,
+        "status": "awaiting_falsifiable_test",
+        "opened_at": now,
+        "cheap_falsifiable_test": {
+            "status": "pending",
+            "instruction": "Before opening another front in this run, record the cheapest falsifiable test that closes this front.",
+        },
+        "override_previous": bool(override and existing_status not in {"none", "closed"}),
+        "history": history[-20:],
+    }
+    path = debate_front_path(paths)
+    write_json(path, state)
+    add_state_artifact(paths, "front_state", path)
+    append_event(paths, "debate_front_opened", {"front_id": front_id, "topic": topic, "status": state["status"]})
+    if state["override_previous"]:
+        append_event(paths, "debate_front_overridden", {"front_id": front_id, "previous_front_id": existing.get("front_id")})
+    return state
+
+
+def close_debate_front(root: Path, run_id: str | None = None, *, test: str, result: str, closed_by: str = "user") -> dict[str, Any]:
+    paths, _ = load_run(root, run_id)
+    if result not in {"passed", "failed", "inconclusive"}:
+        raise RuntimeError("front close result must be passed, failed, or inconclusive")
+    state = read_debate_front(paths)
+    if state.get("status") in {"none", "closed"}:
+        raise RuntimeError("no active debate front to close")
+    now = now_iso()
+    state["status"] = "closed"
+    state["closed_at"] = now
+    state["closed_by"] = closed_by
+    state["test_result"] = result
+    state["cheap_falsifiable_test"] = {
+        "status": "closed",
+        "test": test,
+        "result": result,
+        "closed_at": now,
+        "closed_by": closed_by,
+    }
+    path = debate_front_path(paths)
+    write_json(path, state)
+    add_state_artifact(paths, "front_state", path)
+    append_event(paths, "debate_front_closed", {"front_id": state.get("front_id"), "result": result, "closed_by": closed_by})
+    return state
+
+
+def debate_front_status(root: Path, run_id: str | None = None) -> dict[str, Any]:
+    paths, _ = load_run(root, run_id)
+    return read_debate_front(paths)
+
+
+def format_debate_front_status(report: dict[str, Any]) -> str:
+    lines = [
+        f"Debate Front: {report.get('run_id')}",
+        f"Status: {report.get('status')}",
+        f"Front: {report.get('front_id') or '-'}",
+        f"Topic: {report.get('topic') or '-'}",
+    ]
+    test = report.get("cheap_falsifiable_test") if isinstance(report.get("cheap_falsifiable_test"), dict) else {}
+    if test:
+        lines.append(f"Test: {test.get('status')} {test.get('result') or ''} {test.get('test') or test.get('instruction') or ''}".rstrip())
+    if report.get("history"):
+        lines.append(f"History: {len(report.get('history') or [])}")
+    return "\n".join(lines)
 
 
 def debate_precommit_rows() -> list[dict[str, str]]:

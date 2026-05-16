@@ -1087,3 +1087,11 @@
 - Decision: Write `artifacts/precommit_table.json` before provider prompts, include participant signatures and rows in prompt context, and write `artifacts/precommit_match.json` after rounds to map results and disagreements to precommitted dispositions.
 - Evidence: `python -m unittest tests.test_production_hardening` passed 31/31; CLI smoke confirmed `PreCommitTable` prompt context, participant signatures, and `PreCommitMatch` output; focused `python -m unittest tests.test_production_hardening tests.test_live tests.test_inspect tests.test_run_validation` passed 62/62; `python -m py_compile hivemind/harness.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 398/398; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the PreCommitTable slice and continue AIOS completion gaps.
+
+## 2026-05-16 11:33 KST - Codex - Debate Front State Machine
+
+- Context: Debate fronts could be reopened in the same run without closing the current cheap falsifiable test, leaving the user as the hidden convergence enforcer.
+- Ownership: Codex owns a narrow Front state-machine slice in `hivemind/harness.py`, `hivemind/hive.py`, run-validation event taxonomy, focused tests, TODO, and shared coordination logs.
+- Decision: Add `artifacts/front_state.json`; block a new front in the same run while status is `awaiting_falsifiable_test`; add `hive debate-front close` and `--override-front` with explicit override history.
+- Evidence: `python -m unittest tests.test_production_hardening` passed 33/33; CLI smoke confirmed active-front block, `hive debate-front close`, and same-run reopen after cheap falsifiable test result; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 64/64; `python -m py_compile hivemind/harness.py hivemind/hive.py hivemind/run_validation.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 400/400; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the Front state-machine slice and continue AIOS completion gaps.
