@@ -436,6 +436,8 @@ def _main(argv: list[str] | None = None) -> None:
     debate_cmd.add_argument("topic", help="topic or decision to debate")
     debate_cmd.add_argument("--run-id")
     debate_cmd.add_argument("--participant", action="append", choices=["claude", "gemini", "codex"], help="provider participant; repeatable")
+    debate_cmd.add_argument("--initial-mode", choices=["cooperative", "adversarial", "verification-only"], default="cooperative")
+    debate_cmd.add_argument("--review-mode", choices=["cooperative", "adversarial", "verification-only"], default="adversarial")
     debate_cmd.add_argument("--execute", action="store_true", help="execute supported non-Codex providers and wait at each round barrier")
     debate_cmd.add_argument("--json", action="store_true")
     demo_cmd = sub.add_parser("demo", help="safe live demo that animates a Hive Mind run")
@@ -1182,7 +1184,15 @@ def _main(argv: list[str] | None = None) -> None:
             print(format_orchestration_report(report))
         return
     if args.cmd == "debate":
-        report = debate_topic(root, args.topic, run_id=args.run_id, participants=args.participant, execute=args.execute)
+        report = debate_topic(
+            root,
+            args.topic,
+            run_id=args.run_id,
+            participants=args.participant,
+            execute=args.execute,
+            initial_mode=args.initial_mode,
+            review_mode=args.review_mode,
+        )
         if args.json:
             import json
 

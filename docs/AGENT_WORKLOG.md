@@ -1071,3 +1071,11 @@
 - Decision: Block generic `hive memory draft` on debate runs. Add `hive memory draft --from-debate --reviewed-by user|operator|human` to write a human-review receipt plus a draft with raw refs to debate artifacts.
 - Evidence: `python -m unittest tests.test_production_hardening` passed 29/29; CLI smoke confirmed unreviewed debate memory draft is blocked and reviewed extraction writes `source=debate_convergence`; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 60/60; `python -m py_compile hivemind/harness.py hivemind/hive.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 396/396; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the debate memory review gate and continue AIOS completion gaps.
+
+## 2026-05-16 11:22 KST - Codex - Debate Round Modes
+
+- Context: Provider debates needed explicit cooperative/adversarial/verification-only modes per round so the chair can shape disagreement instead of treating every round as the same prompt.
+- Ownership: Codex owns a narrow debate mode slice in `hivemind/harness.py`, `hivemind/hive.py`, focused tests, TODO, and shared coordination logs.
+- Decision: Add `--initial-mode` and `--review-mode`, persist `artifacts/debate_modes.json`, include mode instructions in provider prompts, and show modes in snapshots/convergence/report output.
+- Evidence: `python -m unittest tests.test_production_hardening` passed 30/30; CLI smoke confirmed `--initial-mode adversarial --review-mode verification-only` is recorded and injected into provider prompts; focused `python -m unittest tests.test_production_hardening tests.test_live tests.test_inspect` passed 52/52; `python -m py_compile hivemind/harness.py hivemind/hive.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 397/397; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the debate mode slice and continue AIOS completion gaps.

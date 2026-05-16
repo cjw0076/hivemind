@@ -1599,3 +1599,10 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Add a human-review gate for debate-derived memory drafts. Generic `hive memory draft` now refuses debate runs; `--from-debate --reviewed-by user|operator|human` writes a review receipt and a draft that remains pending MemoryOS acceptance.
 - Evidence: `python -m unittest tests.test_production_hardening` passed 29/29; CLI smoke confirmed unreviewed debate memory draft is blocked and reviewed extraction writes `source=debate_convergence`; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 60/60; `python -m py_compile hivemind/harness.py hivemind/hive.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 396/396; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the debate memory review gate and continue AIOS completion gaps.
+
+## 2026-05-16 11:22 KST - Codex
+
+- Context: Debate rounds needed explicit modes so provider prompts can distinguish cooperation, adversarial pressure, and verification-only checks.
+- Decision: Add round-level debate mode flags, persist mode artifacts, and inject mode instructions into provider prompts.
+- Evidence: `python -m unittest tests.test_production_hardening` passed 30/30; CLI smoke confirmed `--initial-mode adversarial --review-mode verification-only` is recorded and injected into provider prompts; focused `python -m unittest tests.test_production_hardening tests.test_live tests.test_inspect` passed 52/52; `python -m py_compile hivemind/harness.py hivemind/hive.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 397/397; `bash scripts/public-release-check.sh` passed 19/19.
+- Next: Commit the debate mode slice and continue AIOS completion gaps.

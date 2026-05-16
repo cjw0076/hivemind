@@ -250,9 +250,33 @@ class ProductionHardeningTest(unittest.TestCase):
             report = debate_topic(root, "choose safer release gate", participants=["claude", "gemini"], execute=False)
 
             self.assertEqual(report["barrier"], "all_participants_processed_before_convergence")
+            self.assertEqual(report["modes"], {"debate_initial": "cooperative", "debate_review": "adversarial"})
             self.assertTrue((root / ".runs" / report["run_id"] / "debate_convergence.md").exists())
             self.assertTrue((root / ".runs" / report["run_id"] / "disagreements.json").exists())
             self.assertTrue(all(round_report["barrier"] == "complete" for round_report in report["rounds"]))
+
+    def test_debate_mode_flags_are_recorded_and_prompted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = debate_topic(
+                root,
+                "verify release claims only",
+                participants=["claude", "gemini"],
+                execute=False,
+                initial_mode="adversarial",
+                review_mode="verification-only",
+            )
+            run_dir = root / ".runs" / report["run_id"]
+            modes = json.loads((run_dir / "artifacts" / "debate_modes.json").read_text(encoding="utf-8"))
+            review_prompt = (run_dir / "agents" / "claude" / "debate_review_prompt.md").read_text(encoding="utf-8")
+            convergence = (run_dir / "debate_convergence.md").read_text(encoding="utf-8")
+
+            self.assertEqual(report["rounds"][0]["mode"], "adversarial")
+            self.assertEqual(report["rounds"][1]["mode"], "verification-only")
+            self.assertEqual(modes["roles"]["debate_review"]["mode"], "verification-only")
+            self.assertIn("Debate mode: verification-only", review_prompt)
+            self.assertIn("concrete evidence, tests, receipts", review_prompt)
+            self.assertIn("- debate_review: verification-only", convergence)
 
     def test_provider_output_disagreement_extraction_detects_axes(self) -> None:
         records = extract_provider_output_disagreements(

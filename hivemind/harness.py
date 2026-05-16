@@ -62,6 +62,7 @@ AUTO_LOOP_ALLOWED_ACTIONS = {
     "local-context",
     "local-review",
 }
+DEBATE_MODES = {"cooperative", "adversarial", "verification-only"}
 
 PIPELINE_SPEC = [
     ("intake", "task.yaml", "task"),
@@ -4315,6 +4316,8 @@ def debate_topic(
     run_id: str | None = None,
     participants: list[str] | None = None,
     execute: bool = False,
+    initial_mode: str = "cooperative",
+    review_mode: str = "adversarial",
 ) -> dict[str, Any]:
     """Run a provider deliberation barrier: first opinions, review, convergence."""
     selected = participants or ["claude", "gemini", "codex"]
@@ -4322,20 +4325,24 @@ def debate_topic(
     invalid = sorted(set(selected) - allowed)
     if invalid:
         raise ValueError(f"Unsupported debate participants: {', '.join(invalid)}")
+    validate_debate_mode(initial_mode)
+    validate_debate_mode(review_mode)
 
     paths = create_run(root, f"Provider debate: {topic}", project="Hive Mind", task_type="deliberation") if run_id is None else load_run(root, run_id)[0]
     topic_path = paths.run_dir / "debate_topic.md"
     topic_path.write_text(f"# Debate Topic\n\n{topic.strip()}\n", encoding="utf-8")
     add_state_artifact(paths, "debate_topic", topic_path)
     append_transcript(paths, "Debate", f"Topic recorded at `{topic_path.relative_to(root).as_posix()}`")
+    modes = {"debate_initial": initial_mode, "debate_review": review_mode}
+    modes_path = write_debate_modes(root, paths, topic, modes)
 
     rounds: list[dict[str, Any]] = []
-    round1 = run_debate_round(root, paths, selected, "debate_initial", execute=execute)
+    round1 = run_debate_round(root, paths, selected, "debate_initial", execute=execute, mode=initial_mode)
     rounds.append(round1)
     snapshot1 = write_debate_snapshot(root, paths, "debate_round1.md", topic, round1)
     append_context_section(paths, "Debate Round 1 Snapshot", snapshot1.read_text(encoding="utf-8"))
 
-    round2 = run_debate_round(root, paths, selected, "debate_review", execute=execute)
+    round2 = run_debate_round(root, paths, selected, "debate_review", execute=execute, mode=review_mode)
     rounds.append(round2)
     snapshot2 = write_debate_snapshot(root, paths, "debate_round2.md", topic, round2)
 
@@ -4349,9 +4356,11 @@ def debate_topic(
         "participants": selected,
         "execute_requested": execute,
         "barrier": "all_participants_processed_before_convergence",
+        "modes": modes,
         "rounds": rounds,
         "artifacts": {
             "topic": topic_path.relative_to(root).as_posix(),
+            "modes": modes_path.relative_to(root).as_posix(),
             "round1": snapshot1.relative_to(root).as_posix(),
             "round2": snapshot2.relative_to(root).as_posix(),
             "convergence": convergence.relative_to(root).as_posix(),
@@ -4371,6 +4380,42 @@ def debate_topic(
     )
     update_state(paths, phase="deliberation", status="ready")
     return report
+
+
+def validate_debate_mode(mode: str) -> None:
+    if mode not in DEBATE_MODES:
+        raise ValueError(f"debate mode must be one of: {', '.join(sorted(DEBATE_MODES))}")
+
+
+def write_debate_modes(root: Path, paths: RunPaths, topic: str, modes: dict[str, str]) -> Path:
+    path = paths.run_dir / "artifacts" / "debate_modes.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": 1,
+        "kind": "debate_modes",
+        "run_id": paths.run_id,
+        "topic": topic,
+        "roles": {
+            role: {
+                "mode": mode,
+                "instruction": debate_mode_instruction(mode),
+            }
+            for role, mode in modes.items()
+        },
+    }
+    write_json(path, payload)
+    add_state_artifact(paths, "debate_modes", path)
+    return path
+
+
+def debate_mode_instruction(mode: str) -> str:
+    if mode == "cooperative":
+        return "Seek shared constraints, compatible recommendations, and the least risky reversible next step."
+    if mode == "adversarial":
+        return "Challenge assumptions, name disagreements directly, and identify what evidence would change your position."
+    if mode == "verification-only":
+        return "Avoid new opinions unless tied to concrete evidence, tests, receipts, or falsifiable checks."
+    return "Use the debate artifact protocol and keep claims evidence-bound."
 
 
 def write_provider_output_disagreements(root: Path, paths: RunPaths, topic: str, rounds: list[dict[str, Any]]) -> Path:
@@ -4509,7 +4554,7 @@ def provider_disagreement_severity(axes: list[str]) -> str:
     return "low"
 
 
-def run_debate_round(root: Path, paths: RunPaths, participants: list[str], role: str, execute: bool) -> dict[str, Any]:
+def run_debate_round(root: Path, paths: RunPaths, participants: list[str], role: str, execute: bool, mode: str) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
     for participant in participants:
         result_path = invoke_external_agent(
@@ -4528,6 +4573,7 @@ def run_debate_round(root: Path, paths: RunPaths, participants: list[str], role:
             {
                 "participant": participant,
                 "role": role,
+                "mode": mode,
                 "status": result.get("status", "unknown"),
                 "provider_mode": result.get("provider_mode", "unknown"),
                 "result_path": result_path.relative_to(root).as_posix(),
@@ -4536,13 +4582,14 @@ def run_debate_round(root: Path, paths: RunPaths, participants: list[str], role:
                 "output_preview": output_text.strip()[:1200],
             }
         )
-    append_event(paths, "debate_round_created", {"role": role, "participants": participants})
-    return {"role": role, "barrier": "complete", "participants": results}
+    append_event(paths, "debate_round_created", {"role": role, "mode": mode, "participants": participants})
+    return {"role": role, "mode": mode, "barrier": "complete", "participants": results}
 
 
 def write_debate_snapshot(root: Path, paths: RunPaths, filename: str, topic: str, round_report: dict[str, Any]) -> Path:
     path = paths.run_dir / filename
     lines = [f"# {round_report.get('role')} Snapshot", "", f"Topic: {topic}", ""]
+    lines.extend([f"Mode: {round_report.get('mode')}", ""])
     for item in round_report.get("participants") or []:
         lines.append(f"## {item.get('participant')}")
         lines.append(f"- status: {item.get('status')}")
@@ -4580,11 +4627,20 @@ def write_debate_convergence(root: Path, paths: RunPaths, topic: str, rounds: li
         "",
         "All selected participants reached a terminal prepared/completed/failed result before this convergence artifact was written.",
         "",
-        "## Participants",
-        "",
+            "## Participants",
+            "",
     ]
     for participant in participants:
         lines.append(f"- {participant}")
+    lines.extend(
+        [
+            "",
+            "## Modes",
+            "",
+        ]
+    )
+    for round_report in rounds:
+        lines.append(f"- {round_report.get('role')}: {round_report.get('mode')}")
     lines.extend(
         [
             "",
@@ -4670,7 +4726,7 @@ def format_debate_report(report: dict[str, Any]) -> str:
     for participant in report.get("participants") or []:
         lines.append(f"- {participant}")
     for round_report in report.get("rounds") or []:
-        lines.extend(["", f"Round: {round_report.get('role')}"])
+        lines.extend(["", f"Round: {round_report.get('role')}  Mode: {round_report.get('mode')}"])
         for item in round_report.get("participants") or []:
             marker = "output" if item.get("has_output") else "prepared"
             lines.append(f"- {item.get('participant')}: {item.get('status')} ({marker}) -> {item.get('result_path')}")
@@ -5941,6 +5997,7 @@ def build_external_prompt(paths: RunPaths, state: dict[str, Any], agent: str, ro
         "debate_initial": "Give your independent position on the debate topic. Include assumptions, risks, and what would change your mind.",
         "debate_review": "Review the first-round debate snapshot. Name agreements, disagreements, weak evidence, and the best convergence point.",
     }.get(role, "Work only through structured artifacts and return a concise result.")
+    debate_mode_context = debate_mode_prompt_context(paths, role)
     return (
         f"# Hive Mind Harness Prompt\n\n"
         f"Agent: {agent}\n"
@@ -5948,6 +6005,7 @@ def build_external_prompt(paths: RunPaths, state: dict[str, Any], agent: str, ro
         f"Run: {paths.run_id}\n"
         f"Task: {state.get('user_request')}\n\n"
         f"## Contract\n{role_contract}\n\n"
+        f"{debate_mode_context}"
         "Do not bypass the harness. Treat files under this run folder as the communication boundary.\n"
         "Prefer structured outputs that can be saved as handoff/result/verification artifacts.\n\n"
         f"## Required Output\n"
@@ -5962,6 +6020,25 @@ def build_external_prompt(paths: RunPaths, state: dict[str, Any], agent: str, ro
         f"## Current Handoff\n```yaml\n{handoff}\n```\n\n"
         f"## Recent Events\n```jsonl\n{events[-8000:]}\n```\n"
     )
+
+
+def debate_mode_prompt_context(paths: RunPaths, role: str) -> str:
+    path = paths.run_dir / "artifacts" / "debate_modes.json"
+    if not path.exists():
+        return ""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    roles = data.get("roles") if isinstance(data, dict) else {}
+    entry = roles.get(role) if isinstance(roles, dict) else None
+    if not isinstance(entry, dict):
+        return ""
+    mode = entry.get("mode")
+    instruction = entry.get("instruction")
+    if not mode:
+        return ""
+    return f"Debate mode: {mode}\nMode instruction: {instruction or debate_mode_instruction(str(mode))}\n\n"
 
 
 def resolve_provider_binary(root: Path, agent: str) -> str | None:
