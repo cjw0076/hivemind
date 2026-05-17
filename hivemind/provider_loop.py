@@ -241,6 +241,56 @@ def _read_provider_result(path: Path) -> dict[str, Any]:
         return {}
 
 
+def _load_verification_report(path: Path) -> dict[str, Any]:
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _verification_summary(
+    root: Path,
+    paths: h.RunPaths,
+    *,
+    result_ref: str | None,
+    tick_status: str,
+) -> dict[str, Any]:
+    if not result_ref:
+        return {
+            "status": "not_run",
+            "verdict": "not_run-with-reason",
+            "reason": "provider_loop_tick_produced_no_output",
+            "artifact": None,
+        }
+    try:
+        verification_path = h.build_verification(root, paths.run_id)
+        report = _load_verification_report(verification_path)
+    except Exception as exc:  # pragma: no cover - defensive receipt path
+        return {
+            "status": "degraded",
+            "verdict": "degraded",
+            "reason": f"verification_error:{type(exc).__name__}",
+            "artifact": None,
+        }
+
+    source_verdict = str(report.get("verdict") or "unknown")
+    if tick_status in {"failed", "timeout"}:
+        verdict = "failed"
+    elif source_verdict == "pass":
+        verdict = "passed"
+    else:
+        verdict = "degraded"
+    return {
+        "status": "completed",
+        "verdict": verdict,
+        "source_verdict": source_verdict,
+        "artifact": _rel(root, verification_path),
+        "issues_count": len(report.get("issues") or []),
+        "checks": report.get("checks") or {},
+    }
+
+
 def tick_provider_loop(
     root: Path,
     *,
@@ -286,16 +336,28 @@ def tick_provider_loop(
     else:
         result_path = paths.local_dir / f"{worker['worker_id']}_tick_{tick_count}.json"
         result = {
-            "schema_version": "hive.local_provider_loop_tick.v1",
-            "worker_id": worker["worker_id"],
-            "run_id": paths.run_id,
-            "provider": "local",
+            "schema_version": 1,
+            "agent": "local",
+            "role": "provider_loop",
             "provider_mode": "local_worker_tick",
             "status": "prepared",
+            "runtime": "hive",
+            "worker": worker["worker_id"],
+            "model": "deterministic",
+            "source_ref": worker_path(paths, worker["worker_id"]).relative_to(root).as_posix(),
+            "output_valid": True,
+            "output_issues": [],
+            "confidence": 0.8,
+            "should_escalate": False,
+            "escalation_reason": "",
+            "artifacts_created": [],
+            "run_id": paths.run_id,
+            "provider": "local",
             "prompt": prompt,
             "created_at": now_iso(),
             "execute": execute,
         }
+        result["artifacts_created"] = [_rel(root, result_path)]
         _write(result_path, result)
         last_status = "prepared"
         result_ref = _rel(root, result_path)
@@ -336,7 +398,18 @@ def tick_provider_loop(
     _write(path, worker)
     h.append_event(paths, "provider_loop_tick", {"worker_id": worker["worker_id"], "provider": provider, "status": last_status, "result": result_ref})
     h.set_agent_status(paths, f"{provider}-loop", last_status)
-    return {"schema_version": SCHEMA_VERSION, "worker_id": worker["worker_id"], "status": last_status, "tick_executed": True, "worker": {**worker, "path": _rel(root, path)}}
+    verification = _verification_summary(root, paths, result_ref=result_ref, tick_status=last_status)
+    worker["last_verification"] = verification
+    _write(path, worker)
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "worker_id": worker["worker_id"],
+        "status": last_status,
+        "tick_executed": True,
+        "verdict": verification.get("verdict"),
+        "verification": verification,
+        "worker": {**worker, "path": _rel(root, path)},
+    }
 
 
 def provider_loop_status(root: Path, *, run_id: str | None = None) -> dict[str, Any]:

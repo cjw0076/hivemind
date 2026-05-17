@@ -53,6 +53,8 @@ class AiosPacketRunnerTest(unittest.TestCase):
 
             self.assertEqual(result["schema_version"], "hive.aios_packet_runner.v1")
             self.assertEqual(result["status"], "prepared")
+            self.assertEqual(result["verdict"], "passed")
+            self.assertEqual(result["verification"]["source_verdict"], "pass")
             self.assertEqual(result["authority"]["executor"], "hivemind")
             self.assertEqual(result["provider_loop_tick"]["status"], "prepared")
             self.assertTrue((myworld_root / ".aios/outbox/hivemind/asc-test.hivemind.result.json").exists())
@@ -112,6 +114,7 @@ class AiosPacketRunnerTest(unittest.TestCase):
                     )
 
             self.assertEqual(result["status"], "executed")
+            self.assertEqual(result["verdict"], "passed")
             self.assertEqual(result["provider_loop_tick"]["status"], "completed")
             command_ref = result["provider_loop_tick"]["worker"]["last_result_path"].replace("_result.yaml", "_command.txt")
             command = (hive_root / command_ref).read_text(encoding="utf-8")

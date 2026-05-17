@@ -1,5 +1,17 @@
 # Agent Worklog
 
+## 2026-05-17 21:09 KST - Codex - ASC-0190 verification auto-fire
+
+- repo: hivemind
+- role: implementation
+- goal: Make provider-loop run completion auto-fire the Hive verification gate so receipts no longer default to `verdict=not_run`.
+- changed: `hivemind/provider_loop.py`, `hivemind/aios_packet_runner.py`, `hivemind/run_validation.py`, `tests/test_provider_loop.py`, `tests/test_aios_packet_runner.py`, `docs/AGENT_WORKLOG.md`.
+- evidence: Focused `python -m pytest tests/test_provider_loop.py tests/test_aios_packet_runner.py tests/test_run_validation.py -q` passed 30/30; unmocked local provider-loop smoke produced `run_20260517_210818_176acc` with tick `verdict=passed`, verification artifact `.runs/run_20260517_210818_176acc/verification.yaml`, `source_verdict=pass`, and `issues_count=0`; full `python -m pytest -q` passed 404/404; `git diff --check` passed.
+- decision: Provider-loop ticks now call the existing run verifier after writing the tick receipt and event, return a normalized lifecycle verdict (`passed`, `failed`, `degraded`, or `not_run-with-reason`), and expose that verdict through the AIOS packet runner result.
+- risk: Existing execution proofs can still carry their own lower-level `verifier_status=not_run`; ASC-0190 closes the run-level provider-loop receipt and verification gate path, not a proof schema migration.
+- next: MyWorld watcher should collect `asc-0190-r2`; a later contract can decide whether execution-proof verifier status should be backfilled from run-level verification.
+- status: done
+
 ## 2026-05-15 KST - Codex - ASC-0174 observer-vs-executor debate completed
 
 - Context: MyWorld ASC-0174 requested a 6+ round Hive deliberation on whether

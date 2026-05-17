@@ -125,10 +125,16 @@ def run_aios_packet(
         if tick.get("status") in {"failed", "timeout"}:
             status = "held"
             stop_conditions.append("provider_tick_failed")
+        verification = tick.get("verification") if isinstance(tick.get("verification"), dict) else {}
+        if verification.get("verdict") in {"failed", "degraded"}:
+            status = "held"
+            stop_conditions.append("provider_loop_verification_not_passed")
     result = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": now_iso(),
         "status": status,
+        "verdict": (tick.get("verification") or {}).get("verdict") if isinstance(tick, dict) else None,
+        "verification": tick.get("verification") if isinstance(tick, dict) else None,
         "packet": str(packet_path),
         "contract_id": packet.get("contract_id"),
         "dispatch_id": packet.get("dispatch_id"),

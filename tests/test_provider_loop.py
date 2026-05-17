@@ -53,6 +53,9 @@ class ProviderLoopTest(unittest.TestCase):
             result = tick_provider_loop(root, worker_id=worker["worker_id"])
 
             self.assertTrue(result["tick_executed"])
+            self.assertEqual(result["verdict"], "passed")
+            self.assertEqual(result["verification"]["source_verdict"], "pass")
+            self.assertNotIn("not_run", (root / result["verification"]["artifact"]).read_text(encoding="utf-8"))
             self.assertEqual(result["worker"]["tick_count"], 1)
             self.assertEqual(result["worker"]["last_status"], "prepared")
             receipt = yaml.safe_load((root / result["worker"]["last_result_path"]).read_text(encoding="utf-8"))
@@ -69,6 +72,7 @@ class ProviderLoopTest(unittest.TestCase):
             status = provider_loop_status(root)
 
             self.assertEqual(result["status"], "prepared")
+            self.assertEqual(result["verdict"], "passed")
             self.assertEqual(status["workers"][0]["provider"], "local")
             self.assertEqual(status["workers"][0]["loop_mode"], "local_worker_tick")
             self.assertTrue((root / result["worker"]["last_result_path"]).exists())
@@ -108,6 +112,7 @@ class ProviderLoopTest(unittest.TestCase):
                     result = tick_provider_loop(root, worker_id=worker["worker_id"], execute=True)
 
             self.assertEqual(result["status"], "failed")
+            self.assertEqual(result["verdict"], "failed")
             self.assertEqual(result["worker"]["status"], "degraded")
             self.assertEqual(result["worker"]["next_action"], "fallback")
             self.assertEqual(result["worker"]["failure_category"], "unknown_provider_failure")
@@ -122,6 +127,7 @@ class ProviderLoopTest(unittest.TestCase):
             result = tick_provider_loop(root, worker_id=worker["worker_id"], execute=True)
 
             self.assertEqual(result["status"], "failed")
+            self.assertEqual(result["verdict"], "failed")
             self.assertEqual(result["worker"]["status"], "degraded")
             self.assertEqual(result["worker"]["failure_category"], "policy_blocked")
             self.assertEqual(result["worker"]["next_action"], "fallback")

@@ -22,6 +22,10 @@ ALLOWED_EVENT_TYPES = {
     "provider_passthrough_completed",
     "provider_passthrough_failed",
     "provider_passthrough_timeout",
+    "provider_loop_prepared",
+    "provider_loop_tick",
+    "provider_loop_stopped",
+    "provider_fallback_verified",
     "verification_created",
     "summary_created",
     "memory_drafts_created",
@@ -156,8 +160,8 @@ REQUIRED_LOCAL_WORKER_RESULT_KEYS = {
     "escalation_reason",
     "artifacts_created",
 }
-ALLOWED_LOCAL_WORKER_STATUSES = {"completed", "failed", "fallback", "timeout", "partial", "skipped"}
-ALLOWED_LOCAL_WORKER_PROVIDER_MODES = {"local_runtime", "demo_runtime"}
+ALLOWED_LOCAL_WORKER_STATUSES = {"prepared", "completed", "failed", "fallback", "timeout", "partial", "skipped"}
+ALLOWED_LOCAL_WORKER_PROVIDER_MODES = {"local_runtime", "demo_runtime", "local_worker_tick"}
 
 
 def validate_run_artifacts(run_dir: Path, root: Path) -> dict[str, Any]:
