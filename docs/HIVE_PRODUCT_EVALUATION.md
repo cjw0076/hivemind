@@ -137,17 +137,18 @@ so it uses `-p <prompt> --permission-mode plan --output-format text` instead
 of `--dangerously-skip-permissions`. Native provider passthrough still hard
 blocks the dangerous Claude bypass flag and records policy-block receipts.
 
-Execution correctness concern: `execute_step()` should inspect local/provider
-result artifacts before marking a step `completed`. A failed local worker should
-be `failed` or `skipped` according to `on_failure`, and barriers should apply
-clear completed/skipped rules instead of assuming every produced artifact means
-success.
+Resolved execution correctness concern: ASC-0229 makes local/provider result
+artifacts pass through a shared terminal status decision before a DAG step can
+be marked `completed` or `prepared`. Failed, timeout, missing-status, and other
+non-success artifacts now become `failed` or `skipped` according to
+`on_failure`, and `sync_dag_with_run_state()` no longer promotes failed
+artifacts from run state into completed DAG steps.
 
 ## Next Product P0
 
 1. [closed via ASC-0228] Policy-gate or replace the unsafe Claude execute workaround before adding
    broader automation.
-2. Harden DAG step result handling: local/provider failures must not become
+2. [closed via ASC-0229] Harden DAG step result handling: local/provider failures must not become
    completed steps.
 3. Reconcile `hive flow` and `plan_dag.json` into one scheduler surface.
 4. Add bounded parallel fan-out plus barrier join for safe internal/local

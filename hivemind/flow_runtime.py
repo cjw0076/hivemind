@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .utils import now_iso
+from .step_result import decide_step_result, read_artifact_status
 
 
 SAFE_LOCAL_TASK_ROLES = {
@@ -135,7 +136,8 @@ def sync_dag_with_run_state(root: Path, run_id: str, dag: Any) -> None:
             status = h.agent_status(state, h.local_agent_name(local_role))
             artifact = paths.local_dir / f"{local_role.replace('-', '_')}.json"
             if status == "completed" and artifact.exists():
-                step.status = "completed"
+                decision = decide_step_result(read_artifact_status(artifact), execute=True, on_failure=step.on_failure)
+                step.status = decision.status
                 step.finished_at = step.finished_at or now_iso()
                 step.artifact = artifact.relative_to(root).as_posix()
             elif status == "failed" and artifact.exists():
@@ -149,7 +151,12 @@ def sync_dag_with_run_state(root: Path, run_id: str, dag: Any) -> None:
             status = h.agent_status(state, f"{provider}-{role}")
             artifact = paths.run_dir / "agents" / provider / f"{role}_result.yaml"
             if status in {"prepared", "completed"} and artifact.exists():
-                step.status = "prepared" if status == "prepared" else "completed"
+                decision = decide_step_result(
+                    read_artifact_status(artifact),
+                    execute=status == "completed",
+                    on_failure=step.on_failure,
+                )
+                step.status = decision.status
                 step.finished_at = step.finished_at or now_iso()
                 step.artifact = artifact.relative_to(root).as_posix()
             elif status == "failed" and artifact.exists():

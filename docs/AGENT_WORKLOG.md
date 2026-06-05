@@ -1,5 +1,30 @@
 # Agent Worklog
 
+## 2026-06-06 07:29 KST - Codex - ASC-0229 DAG step result hardening
+
+- repo: hivemind
+- role: implementation
+- goal: Harden DAG step result handling so local/provider failures cannot
+  become completed steps.
+- changed: `hivemind/step_result.py`, `hivemind/plan_dag.py`,
+  `hivemind/flow_runtime.py`, `tests/test_step_result_hardening.py`,
+  `docs/HIVE_PRODUCT_EVALUATION.md`, `docs/TODO.md`, and this worklog.
+- evidence: Added regression tests for timeout, missing-status, and run-state
+  sync failure dominance. Focused hardening tests passed 3/3; `test_plan_dag`
+  passed 112/112; `test_workloop_ledger` passed 11/11;
+  `test_production_hardening` passed 37/37; `test_provider_passthrough`
+  passed 13/13; py_compile passed for the changed Python modules; public
+  release gate passed 19/19 with artifact root
+  `.hivemind/release/20260606_073309`.
+- decision: Local/provider result artifacts now pass through one terminal
+  status decision before `completed` or `prepared` is allowed. Non-success
+  artifacts become `failed` or `skipped` according to `on_failure`; built-in
+  verifier/synthesizer artifacts retain function-completion semantics.
+- risk: `plan_dag.py` and `flow_runtime.py` remain oversized legacy modules;
+  this slice extracted only status interpretation into `step_result.py`.
+- next: Reconcile `hive flow` and `plan_dag.json` into one scheduler surface.
+- status: done
+
 ## 2026-06-06 07:08 KST - Codex - ASC-0228 Claude execute policy gate
 
 - repo: hivemind

@@ -24,6 +24,7 @@ from .protocol import (
     create_proof,
     step_requires_protocol_decision,
 )
+from .step_result import decide_step_result, execution_score_from_status, read_artifact_status
 
 PLAN_DAG_FILE = "plan_dag.json"
 SCHEMA_VERSION = 1
@@ -574,20 +575,7 @@ _ROLE_MAP: dict[str, tuple[str, str, str] | tuple[str, str, None]] = {
 
 def _read_artifact_status(artifact_path: Path) -> str | None:
     """Read the 'status' field from a result yaml or json artifact."""
-    if not artifact_path.exists():
-        return None
-    try:
-        text = artifact_path.read_text(encoding="utf-8")
-        if artifact_path.suffix == ".json":
-            data = json.loads(text)
-            return str(data.get("status", "")) or None
-        for line in text.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("status:"):
-                return stripped.split(":", 1)[1].strip().strip('"').strip("'") or None
-    except Exception:
-        pass
-    return None
+    return read_artifact_status(artifact_path)
 
 
 def _rewrite_artifact_status(artifact_path: Path, status: str, reason: str) -> None:
@@ -752,8 +740,7 @@ def _evaluate_syntax(step: "PlanStep", artifact_path: "Path | None") -> dict[str
 
 def _evaluate_execution(artifact_status: "str | None") -> dict[str, Any]:
     """Execution evaluator: subprocess success score 0–1."""
-    score_map = {"completed": 1.0, "prepared": 1.0, "partial": 0.5, "failed": 0.0}
-    score = score_map.get(artifact_status or "", 0.5 if artifact_status else 0.0)
+    score = execution_score_from_status(artifact_status)
     return {"execution_score": score, "artifact_status": artifact_status}
 
 
@@ -2057,13 +2044,17 @@ def execute_step(
         else:
             raise ValueError(f"Unknown executor kind: {kind}")
 
-        artifact_status = _read_artifact_status(artifact_path)
-        if artifact_status == "failed":
-            new_status = "failed" if step.on_failure == "stop" else "skipped"
-            if new_status == "skipped":
-                _rewrite_artifact_status(artifact_path, "skipped", "step.on_failure allowed optional failure to skip")
-            guard_transition(step_id, "running", new_status, force=force)
-            step.status = new_status
+        artifact_status = "completed" if kind == "builtin" else _read_artifact_status(artifact_path)
+        decision = decide_step_result(artifact_status, execute=execute, on_failure=step.on_failure)
+        if not decision.ok:
+            if decision.rewrite_artifact_status:
+                _rewrite_artifact_status(
+                    artifact_path,
+                    decision.rewrite_artifact_status,
+                    f"step.on_failure allowed optional failure to skip ({decision.reason})",
+                )
+            guard_transition(step_id, "running", decision.status, force=force)
+            step.status = decision.status
             step.finished_at = now_iso()
             step.artifact = artifact_path.relative_to(root).as_posix()
             evaluation = evaluate_step_output(root, dag, step)
@@ -2076,7 +2067,7 @@ def execute_step(
             append_execution_ledger(
                 root,
                 dag.run_id,
-                "step_failed" if new_status == "failed" else "step_skipped",
+                decision.ledger_event,
                 actor=step.owner_role,
                 step_id=step_id,
                 status=step.status,
@@ -2084,7 +2075,7 @@ def execute_step(
                 bypass_mode="execute" if execute else "prepare",
                 files_touched=files_touched,
                 artifact=relative_artifact(root, artifact_path),
-                message="artifact reported status=failed",
+                message=decision.reason,
                 extra={"recommended_action": evaluation.get("recommended_action")},
             )
             append_execution_ledger(
@@ -2106,13 +2097,13 @@ def execute_step(
             lease.release()
             return {
                 "ok": False, "step_id": step_id, "status": step.status,
-                "artifact": step.artifact, "error": "artifact reported status=failed",
+                "artifact": step.artifact, "error": decision.reason,
                 "files_touched": files_touched,
                 "recommended_action": evaluation.get("recommended_action"),
                 "idempotency_key": lease.idempotency_key,
             }
         # "prepared" = prompt ready, human must execute; "completed" = subprocess ran.
-        new_status = "prepared" if (not execute and artifact_status == "prepared") else "completed"
+        new_status = decision.status
         guard_transition(step_id, "running", new_status, force=force)
         step.status = new_status
         step.finished_at = now_iso()

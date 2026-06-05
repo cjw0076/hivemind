@@ -1,5 +1,18 @@
 # MyWorld Shared Comms Log
 
+## 2026-06-06 07:29 KST - Codex
+
+- Context: ASC-0229 closed Hive Product Evaluation P0 item 2: failed
+  local/provider artifacts could be promoted to completed DAG steps.
+- Decision: Centralized step result status interpretation in
+  `hivemind/step_result.py` and used it from DAG execution and flow-state sync.
+- Evidence: `test_step_result_hardening` covers timeout, missing status, and
+  run-state sync failure dominance; `test_plan_dag`, `test_workloop_ledger`,
+  `test_production_hardening`, `test_provider_passthrough`, and py_compile
+  passed. Public release gate passed 19/19 with artifact root
+  `.hivemind/release/20260606_073309`.
+- Next: Reconcile `hive flow` and `plan_dag.json` into one scheduler surface.
+
 ## 2026-06-06 07:08 KST - Codex
 
 - Context: ASC-0228 closed Hive Product Evaluation P0 item 1: the unsafe Claude
