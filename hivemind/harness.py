@@ -6753,9 +6753,7 @@ def suggest_external_command(agent: str, prompt_path: Path, root: Path | None = 
 def external_command(agent: str, binary: str, prompt: str) -> tuple[list[str], str | None]:
     """Return (argv, stdin_text). stdin_text is None when prompt is passed as an arg."""
     if agent == "claude":
-        # Pass prompt via stdin to avoid ARG_MAX issues and --permission-mode plan
-        # blocking on approval prompts in non-TTY mode (produces empty output).
-        return ([binary, "--dangerously-skip-permissions", "--output-format", "text"], prompt)
+        return ([binary, "-p", prompt, "--permission-mode", "plan", "--output-format", "text"], None)
     if agent == "gemini":
         return ([binary, "-p", prompt, "--approval-mode", "plan", "--output-format", "text", "--skip-trust"], None)
     if agent == "codex":

@@ -1,5 +1,27 @@
 # Agent Worklog
 
+## 2026-06-06 07:08 KST - Codex - ASC-0228 Claude execute policy gate
+
+- repo: hivemind
+- role: implementation
+- goal: Policy-gate or replace the unsafe Claude execute workaround before
+  broader automation.
+- changed: `hivemind/harness.py`, `tests/test_provider_passthrough.py`,
+  `docs/HIVE_PRODUCT_EVALUATION.md`, `docs/TODO.md`, and this worklog.
+- evidence: Added a regression test proving the Claude execute command uses
+  plan mode and does not include `--dangerously-skip-permissions`.
+  `python -m unittest discover -s tests -p 'test_provider_passthrough.py' -v`
+  passed 13/13; `python -m unittest discover -s tests -p
+  'test_production_hardening.py' -v` passed 37/37.
+- decision: `external_command()` now builds Claude execute commands as
+  `-p <prompt> --permission-mode plan --output-format text`; the native
+  provider passthrough hard-block for the dangerous Claude flag remains.
+- risk: `hivemind/harness.py` remains an oversized legacy module; this contract
+  avoided broad refactoring and changed only the command builder.
+- next: Harden DAG step result handling so failed local/provider artifacts
+  cannot become completed steps.
+- status: done
+
 ## 2026-05-17 21:09 KST - Codex - ASC-0190 verification auto-fire
 
 - repo: hivemind

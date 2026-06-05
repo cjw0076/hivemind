@@ -132,11 +132,10 @@ steps are marked in the schema, but `hive step run` chooses one runnable step,
 then the next. A true Hive Mind loop needs a bounded fan-out runner that starts
 all safe runnable parallel steps, waits at the barrier, and only then advances.
 
-Blocking safety concern: the current Claude execute path uses
-`--dangerously-skip-permissions` to avoid non-TTY empty output. That may be a
-useful diagnostic workaround, but it conflicts with the public-alpha safety
-gate unless it is moved behind an explicit danger policy, isolated runner, or
-replaced with a safer non-interactive Claude contract.
+Resolved safety concern: ASC-0228 replaced the Claude execute command builder
+so it uses `-p <prompt> --permission-mode plan --output-format text` instead
+of `--dangerously-skip-permissions`. Native provider passthrough still hard
+blocks the dangerous Claude bypass flag and records policy-block receipts.
 
 Execution correctness concern: `execute_step()` should inspect local/provider
 result artifacts before marking a step `completed`. A failed local worker should
@@ -146,7 +145,7 @@ success.
 
 ## Next Product P0
 
-1. Policy-gate or replace the unsafe Claude execute workaround before adding
+1. [closed via ASC-0228] Policy-gate or replace the unsafe Claude execute workaround before adding
    broader automation.
 2. Harden DAG step result handling: local/provider failures must not become
    completed steps.

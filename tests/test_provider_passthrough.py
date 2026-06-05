@@ -10,12 +10,22 @@ from unittest.mock import patch
 
 import yaml
 
-from hivemind.harness import create_run, provider_passthrough
+from hivemind.harness import create_run, external_command, provider_passthrough
 from hivemind.run_validation import validate_run_artifacts
 from hivemind.workloop import read_execution_ledger
 
 
 class ProviderPassthroughTest(unittest.TestCase):
+    def test_claude_external_execute_command_uses_plan_mode_without_danger_bypass(self) -> None:
+        command, stdin_text = external_command("claude", "claude", "review the plan")
+
+        self.assertIsNone(stdin_text)
+        self.assertIn("-p", command)
+        self.assertIn("review the plan", command)
+        self.assertIn("--permission-mode", command)
+        self.assertIn("plan", command)
+        self.assertNotIn("--dangerously-skip-permissions", command)
+
     def test_dry_run_records_native_command_without_execution(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

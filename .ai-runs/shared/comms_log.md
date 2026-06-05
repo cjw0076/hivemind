@@ -1,5 +1,17 @@
 # MyWorld Shared Comms Log
 
+## 2026-06-06 07:08 KST - Codex
+
+- Context: ASC-0228 closed Hive Product Evaluation P0 item 1: the unsafe Claude
+  execute workaround blocked broader automation.
+- Decision: Replaced Claude execute command construction with plan-mode
+  `-p <prompt> --permission-mode plan --output-format text`; kept native
+  passthrough hard-blocking `--dangerously-skip-permissions`.
+- Evidence: `python -m unittest discover -s tests -p 'test_provider_passthrough.py' -v`
+  passed 13/13; `python -m unittest discover -s tests -p 'test_production_hardening.py' -v`
+  passed 37/37.
+- Next: Move to DAG step result handling P0.
+
 ## 2026-05-12 20:19 KST - Codex
 
 - Context: Starting ASC-0045 from MyWorld control plane.

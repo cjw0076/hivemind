@@ -125,7 +125,7 @@ Source: `docs/HIVE_MIND_GAPS.md` section "Header Role Decomposition and Per-Laye
 - [x] Add first `plan_dag.json` runtime and CLI surface: `hive plan dag`, `hive step list/status/next/run`, and DAG-aware `hive next`.
 - [ ] Reconcile `artifacts/workflow_state.json` and `plan_dag.json` into one durable scheduler surface.
 - [ ] Harden DAG step result handling so failed local/provider artifacts become `failed` or `skipped`, not `completed`.
-- [ ] Policy-gate or replace the Claude `--dangerously-skip-permissions` execute workaround before expanding automation.
+- [x] Policy-gate or replace the Claude `--dangerously-skip-permissions` execute workaround before expanding automation.
 - [x] Specify adaptive adversarial chair design: task feature vectors, step evaluations, append-only DAG mutations, referee decisions, and capability learning.
 - [ ] Persist `StepEvaluation` artifacts under `.runs/<run_id>/step_evaluations/`, not only inline `PlanStep.evaluation`.
 - [ ] Converge `PlanStep` on `evaluation_policy` and phase out ad hoc `quality_gates`, `escalation_threshold`, and `referee_policy` use.
