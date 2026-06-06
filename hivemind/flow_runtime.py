@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -296,20 +295,10 @@ def build_workflow_state(
 
     dag = load_dag(root, run_id)
     dag_file = paths.run_dir / "plan_dag.json"
-    dag_steps: list[dict[str, Any]] = []
     if dag is not None:
-        dag_steps = [asdict(s) for s in dag.steps]
-        dag_next = dag.next_sequential()
-        if dag_next:
-            next_action = {
-                "command": f"hive step run {dag_next.step_id}",
-                "reason": f"DAG step {dag_next.step_id} is next [{dag_next.owner_role}]",
-            }
-        elif dag.is_complete():
-            status = "complete"
-        elif dag.is_blocked():
-            status = "blocked"
-            next_action = {"command": "hive step list", "reason": "DAG is blocked — check failed steps"}
+        from .workflow_projection import workflow_state_from_plan_dag
+
+        return workflow_state_from_plan_dag(root, dag, dag_file, actions_taken=actions_taken)
 
     return {
         "schema_version": 1,

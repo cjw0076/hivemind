@@ -1,5 +1,32 @@
 # Agent Worklog
 
+## 2026-06-06 20:52 KST - Codex - ASC-0230 scheduler surface reconciliation
+
+- repo: hivemind
+- role: implementation
+- goal: Reconcile `hive flow` and `plan_dag.json` into one scheduler surface.
+- changed: `hivemind/workflow_projection.py`, `hivemind/flow_runtime.py`,
+  `tests/test_workflow_scheduler_surface.py`, `tests/test_production_hardening.py`,
+  `docs/HIVE_PRODUCT_EVALUATION.md`, `docs/TODO.md`, and this worklog.
+- evidence: Added regression tests proving `artifacts/workflow_state.json`
+  is a `plan_dag.json` read model with `scheduler_authority=plan_dag.json`,
+  `surface_role=read_model`, `read_model_of=<plan_dag_path>`, one `steps`
+  projection from the DAG, and no competing `legacy_steps` or `dag_steps`.
+  Focused scheduler tests passed 2/2; `test_production_hardening` passed
+  37/37; `test_plan_dag` passed 112/112; `test_workloop_ledger` passed
+  11/11; `test_provider_passthrough` passed 13/13;
+  `test_step_result_hardening` passed 3/3; py_compile and `git diff --check`
+  passed; public release gate passed 19/19 with artifact root
+  `.hivemind/release/20260606_202557`.
+- decision: `plan_dag.json` is the scheduler authority for `hive flow`.
+  `workflow_state.json` remains as an operator/read-model artifact only.
+- risk: `flow_runtime.py` and `plan_dag.py` remain oversized legacy modules;
+  this slice extracted only the read-model projection into
+  `workflow_projection.py`.
+- next: Add bounded parallel fan-out plus barrier join for safe internal/local
+  steps first, provider execution later.
+- status: done
+
 ## 2026-06-06 07:29 KST - Codex - ASC-0229 DAG step result hardening
 
 - repo: hivemind

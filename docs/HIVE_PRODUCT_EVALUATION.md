@@ -144,13 +144,19 @@ non-success artifacts now become `failed` or `skipped` according to
 `on_failure`, and `sync_dag_with_run_state()` no longer promotes failed
 artifacts from run state into completed DAG steps.
 
+Resolved scheduler surface concern: ASC-0230 makes `plan_dag.json` the single
+authority for `hive flow`. `artifacts/workflow_state.json` now declares
+`scheduler_authority=plan_dag.json`, `surface_role=read_model`, and
+`read_model_of=<plan_dag_path>`, projects one `steps` list from the DAG, and no
+longer exposes parallel `legacy_steps` or `dag_steps` scheduler lists.
+
 ## Next Product P0
 
 1. [closed via ASC-0228] Policy-gate or replace the unsafe Claude execute workaround before adding
    broader automation.
 2. [closed via ASC-0229] Harden DAG step result handling: local/provider failures must not become
    completed steps.
-3. Reconcile `hive flow` and `plan_dag.json` into one scheduler surface.
+3. [closed via ASC-0230] Reconcile `hive flow` and `plan_dag.json` into one scheduler surface.
 4. Add bounded parallel fan-out plus barrier join for safe internal/local
    steps first, provider execution later.
 5. Add schema-validated route-quality scoring and provider fallback.

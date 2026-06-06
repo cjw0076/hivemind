@@ -652,7 +652,7 @@ class ProductionHardeningTest(unittest.TestCase):
             run_dir = root / ".runs" / report["run_id"]
 
             self.assertEqual(report["mode"], "prepare_only")
-            self.assertEqual(report["status"], "waiting_for_local_context")
+            self.assertEqual(report["status"], "waiting_for_dag_step")
             self.assertTrue((run_dir / "routing_plan.json").exists())
             self.assertTrue((run_dir / "society_plan.json").exists())
             self.assertTrue((run_dir / "artifacts" / "workflow_state.json").exists())

@@ -123,7 +123,7 @@ Source: `docs/HIVE_MIND_GAPS.md` section "Header Role Decomposition and Per-Laye
 - [x] Define chair layer artifact schemas: `DispatcherState`, `VerifierCheck`, `WorkingAgentTurn`, `RefereeDecision`, `NorthStarAudit`, and `ConflictReview`.
 - [ ] Implement L0 dispatcher as code-first state machine for rounds, fronts, turns, timeouts, artifact arrival, and next-speaker scheduling.
 - [x] Add first `plan_dag.json` runtime and CLI surface: `hive plan dag`, `hive step list/status/next/run`, and DAG-aware `hive next`.
-- [ ] Reconcile `artifacts/workflow_state.json` and `plan_dag.json` into one durable scheduler surface.
+- [x] Reconcile `artifacts/workflow_state.json` and `plan_dag.json` into one durable scheduler surface.
 - [x] Harden DAG step result handling so failed local/provider artifacts become `failed` or `skipped`, not `completed`.
 - [x] Policy-gate or replace the Claude `--dangerously-skip-permissions` execute workaround before expanding automation.
 - [x] Specify adaptive adversarial chair design: task feature vectors, step evaluations, append-only DAG mutations, referee decisions, and capability learning.
