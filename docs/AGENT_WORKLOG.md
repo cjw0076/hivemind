@@ -1,5 +1,35 @@
 # Agent Worklog
 
+## 2026-06-07 01:54 KST - Codex - ASC-0233 Provider Output Disagreements
+
+- repo: hivemind
+- role: implementation / verifier hardening
+- goal: Close Product P0 #6 by extracting structured disagreements from
+  executed provider result outputs outside the debate-only path.
+- changed: `hivemind/provider_disagreements.py`, thin `hivemind/hive.py` CLI
+  glue, `tests/test_provider_disagreements.py`,
+  `docs/HIVE_PRODUCT_EVALUATION.md`, and this worklog.
+- evidence: Red tests first showed `provider-disagreements` was parsed as a
+  natural-language prompt, partial provider outputs were ignored, and receipts
+  without `output_path` did not fall back to `stdout_path`. Focused
+  `python -m pytest tests/test_provider_disagreements.py -q` passed 4/4;
+  wider `python -m pytest tests/test_provider_disagreements.py
+  tests/test_provider_projection.py tests/test_production_hardening.py
+  tests/test_inspect.py tests/test_next_grounded.py tests/test_run_validation.py
+  -q` passed 71/71; `python -m py_compile
+  hivemind/provider_disagreements.py hivemind/hive.py` and `git diff --check`
+  passed; `bash scripts/public-release-check.sh` passed 19/19 with artifact
+  root `.hivemind/release/20260607_015539`.
+- decision: `provider-disagreements` reads completed/partial provider receipts,
+  uses `output_path` with `stdout_path` fallback only for internal comparison,
+  writes `artifacts/provider_output_disagreements.json`, merges records into
+  `disagreements.json`, and keeps raw bodies/previews out of reports.
+- risk: Axis extraction still uses the existing keyword-based disagreement
+  labels; richer semantic comparison should remain behind verifier tests or a
+  future local/provider route.
+- next: Commit/push ASC-0233, then continue to Product P0 #7.
+- status: done
+
 ## 2026-06-07 01:52 KST - Codex - ASC-0232 Route Quality Fallback Validation
 
 - Context: Hive Product P0 #5 still named schema-validated route-quality scoring

@@ -162,6 +162,12 @@ schema-validation for `routing_quality.json`, projects prepare-only provider
 fallback recommendations into routing plans, and classifies localized Codex
 PIN/access failures as `pin_required_noninteractive`.
 
+Resolved executed-provider disagreement concern: ASC-0233 adds a
+`provider-disagreements` CLI and `provider_output_disagreements.json` artifact
+that read completed/partial provider receipts, compare `output_path` with
+`stdout_path` fallback, merge structured records into `disagreements.json`, and
+keep raw provider bodies out of reports.
+
 ## Next Product P0
 
 1. [closed via ASC-0228] Policy-gate or replace the unsafe Claude execute workaround before adding
@@ -172,7 +178,7 @@ PIN/access failures as `pin_required_noninteractive`.
 4. [closed via ASC-0231] Add bounded parallel fan-out plus barrier join for safe internal/local
    steps first, provider execution later.
 5. [closed via ASC-0232] Add schema-validated route-quality scoring and provider fallback.
-6. Extract structured disagreements from executed provider outputs.
+6. [closed via ASC-0233] Extract structured disagreements from executed provider outputs.
 7. Make `hive "task"` and `hive ask` return a readable plan plus next command,
    not only artifact paths.
 8. Add convergence scoring and front/turn arbitration.
