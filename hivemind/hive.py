@@ -404,6 +404,7 @@ def _main(argv: list[str] | None = None) -> None:
     run_cmd.add_argument("--complexity", choices=["fast", "default", "strong"], default="fast")
     run_cmd.add_argument("--run-id", help="run id for start/status/tail/stop")
     run_cmd.add_argument("--max-rounds", type=int, default=20, help="supervisor max scheduler rounds")
+    run_cmd.add_argument("--max-parallel", type=int, default=2, help="fanout scheduler max safe parallel steps per round")
     run_cmd.add_argument("--interval", type=float, default=0.0, help="supervisor delay between rounds")
     run_cmd.add_argument("--execute", action="store_true", help="supervisor may execute approved provider steps")
     run_cmd.add_argument(
@@ -604,6 +605,7 @@ def _main(argv: list[str] | None = None) -> None:
     step_fanout_cmd = step_sub.add_parser("fan-out", help="one scheduler round: parallel steps + barrier close + next sequential")
     step_fanout_cmd.add_argument("--run-id")
     step_fanout_cmd.add_argument("--execute", action="store_true", help="execute external agents (default: prepare-only)")
+    step_fanout_cmd.add_argument("--max-parallel", type=int, default=2, help="max safe parallel steps to dispatch")
     step_fanout_cmd.add_argument("--json", action="store_true")
 
     sub.add_parser("runs", help="list recent runs")
@@ -1086,6 +1088,7 @@ def _main(argv: list[str] | None = None) -> None:
                         root,
                         args.run_id,
                         max_rounds=args.max_rounds,
+                        max_parallel=args.max_parallel,
                         execute=args.execute,
                         interval=args.interval,
                         scheduler=args.scheduler,
@@ -1095,6 +1098,7 @@ def _main(argv: list[str] | None = None) -> None:
                         root,
                         args.run_id,
                         max_rounds=args.max_rounds,
+                        max_parallel=args.max_parallel,
                         execute=args.execute,
                         interval=args.interval,
                         scheduler=args.scheduler,
@@ -1520,7 +1524,7 @@ def _main(argv: list[str] | None = None) -> None:
             return
         if sub_cmd == "fan-out":
             execute = getattr(args, "execute", False)
-            result = execute_fan_out(root, dag, execute=execute)
+            result = execute_fan_out(root, dag, execute=execute, max_parallel=args.max_parallel)
             save_dag(root, dag)
             if args.json:
                 print(_json.dumps(result, ensure_ascii=False, indent=2))

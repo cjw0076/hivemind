@@ -145,7 +145,7 @@ Source: `docs/HIVE_MIND_GAPS.md` section "Header Role Decomposition and Per-Laye
 - [ ] Extend live/inspect protocol drilldown with per-intent conditions, artifact paths, and active lease details.
 - [x] Design `ProbeStep` criterion schema before implementation: typed criterion, evaluator, expected artifact field, timeout, and failure disposition.
 - [x] Surface `ProbeStep` action, confidence, and criteria count in ledger replay, live summaries, and supervised run status.
-- [ ] Add bounded parallel fan-out/fan-in runner for safe runnable steps, with durable resume and barrier joins.
+- [x] Add bounded parallel fan-out/fan-in runner for safe runnable steps, with durable resume and barrier joins.
 - [ ] Add evaluation-aware barrier joins: close only when dependency status and evaluation policy are satisfied.
 - [ ] Add `RefereeDecision` artifact and `referee` step type; prefer required next tests over winner selection.
 - [ ] Add capability-performance memory by provider, role, task feature vector, quality, cost, and outcome.

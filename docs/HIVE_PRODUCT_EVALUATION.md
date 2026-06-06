@@ -150,6 +150,12 @@ authority for `hive flow`. `artifacts/workflow_state.json` now declares
 `read_model_of=<plan_dag_path>`, projects one `steps` list from the DAG, and no
 longer exposes parallel `legacy_steps` or `dag_steps` scheduler lists.
 
+Resolved bounded fan-out concern: ASC-0231 extracts the fan-out scheduler into
+`hivemind/fanout_scheduler.py`, adds `max_parallel` to `hive step fan-out` and
+`hive run start`, defaults fan-out to safe local/internal parallel steps first,
+and defers provider-owned parallel branches as `deferred_unsafe_parallel` until
+a later provider execution contract.
+
 ## Next Product P0
 
 1. [closed via ASC-0228] Policy-gate or replace the unsafe Claude execute workaround before adding
@@ -157,7 +163,7 @@ longer exposes parallel `legacy_steps` or `dag_steps` scheduler lists.
 2. [closed via ASC-0229] Harden DAG step result handling: local/provider failures must not become
    completed steps.
 3. [closed via ASC-0230] Reconcile `hive flow` and `plan_dag.json` into one scheduler surface.
-4. Add bounded parallel fan-out plus barrier join for safe internal/local
+4. [closed via ASC-0231] Add bounded parallel fan-out plus barrier join for safe internal/local
    steps first, provider execution later.
 5. Add schema-validated route-quality scoring and provider fallback.
 6. Extract structured disagreements from executed provider outputs.

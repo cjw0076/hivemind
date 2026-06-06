@@ -1,5 +1,34 @@
 # Agent Worklog
 
+## 2026-06-06 20:38 KST - Codex - ASC-0231 bounded fan-out scheduler
+
+- repo: hivemind
+- role: implementation
+- goal: Add bounded parallel fan-out plus barrier join for safe internal/local
+  steps first, provider execution later.
+- changed: `hivemind/fanout_scheduler.py`, `hivemind/plan_dag.py`,
+  `hivemind/hive.py`, `hivemind/supervisor.py`,
+  `tests/test_fanout_scheduler.py`, `docs/HIVE_PRODUCT_EVALUATION.md`,
+  `docs/TODO.md`, and this worklog.
+- evidence: Added regression tests proving `max_parallel` limits safe fan-out
+  dispatch, deferred safe parallel steps remain pending, provider-owned parallel
+  steps are reported as `deferred_unsafe_parallel`, and provider fan-out does
+  not call provider adapters before the later provider phase. Focused fan-out
+  tests passed 2/2; `test_plan_dag` passed 112/112; `test_supervisor` passed
+  17/17; `test_workloop_ledger` passed 11/11; `test_production_hardening`
+  passed 37/37; py_compile, `git diff --check`, and a `hive step fan-out
+  --max-parallel 1 --json` smoke passed; public release gate passed 19/19
+  with artifact root `.hivemind/release/20260606_203853`.
+- decision: The default fan-out scheduler is now bounded (`max_parallel=2`) and
+  safe-local/internal first. Provider parallel branches are not auto-dispatched
+  by the fan-out batch; provider execution remains a later contract.
+- risk: The fan-out runner still serializes step execution inside a bounded
+  batch to preserve the existing ledger hash-chain and DAG mutation semantics.
+  A future true concurrent runner needs ledger write locking or per-step proof
+  collection before parallel ledger append.
+- next: Add schema-validated route-quality scoring and provider fallback.
+- status: done
+
 ## 2026-06-06 20:52 KST - Codex - ASC-0230 scheduler surface reconciliation
 
 - repo: hivemind

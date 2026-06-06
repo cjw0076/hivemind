@@ -425,6 +425,7 @@ def run_supervisor(
     run_id: str | None = None,
     *,
     max_rounds: int = 20,
+    max_parallel: int = 2,
     execute: bool = False,
     interval: float = 0.0,
     scheduler: str = "fanout",
@@ -444,6 +445,8 @@ def run_supervisor(
         run_id,
         "--scheduler",
         scheduler,
+        "--max-parallel",
+        str(max_parallel),
     ]
 
     dag = load_dag(root, run_id)
@@ -461,6 +464,7 @@ def run_supervisor(
         "stopped_at": None,
         "rounds": 0,
         "max_rounds": max_rounds,
+        "max_parallel": max_parallel,
         "execute": execute,
         "scheduler": scheduler,
         "kernel_level": "L0" if scheduler == "pingpong" else "L3",
@@ -474,7 +478,7 @@ def run_supervisor(
         "last_heartbeat_epoch": None,
     }
     write_supervisor_state(root, run_id, sup_state)
-    append_supervisor_log(root, run_id, f"supervisor started pid={os.getpid()} execute={execute} max_rounds={max_rounds} scheduler={scheduler}")
+    append_supervisor_log(root, run_id, f"supervisor started pid={os.getpid()} execute={execute} max_rounds={max_rounds} max_parallel={max_parallel} scheduler={scheduler}")
     append_execution_ledger(
         root,
         run_id,
@@ -490,6 +494,7 @@ def run_supervisor(
             "command_hash": sup_state["command_hash"],
             "scheduler": scheduler,
             "kernel_level": sup_state["kernel_level"],
+            "max_parallel": max_parallel,
         },
     )
 
@@ -503,7 +508,7 @@ def run_supervisor(
             if dag.is_complete():
                 final_status = "completed"
                 break
-            result = execute_scheduler_round(root, dag, execute=execute, scheduler=scheduler)
+            result = execute_scheduler_round(root, dag, execute=execute, scheduler=scheduler, max_parallel=max_parallel)
             save_dag(root, dag)
             sup_state["rounds"] = round_index
             sup_state["last_result"] = result
@@ -565,10 +570,10 @@ def run_supervisor(
     return supervisor_status_report(root, run_id)
 
 
-def execute_scheduler_round(root: Path, dag: Any, *, execute: bool, scheduler: str) -> dict[str, Any]:
+def execute_scheduler_round(root: Path, dag: Any, *, execute: bool, scheduler: str, max_parallel: int = 2) -> dict[str, Any]:
     if scheduler == "pingpong":
         return execute_pingpong_round(root, dag, execute=execute)
-    return execute_fan_out(root, dag, execute=execute)
+    return execute_fan_out(root, dag, execute=execute, max_parallel=max_parallel)
 
 
 def execute_pingpong_round(root: Path, dag: Any, execute: bool = False, force: bool = False) -> dict[str, Any]:
@@ -702,6 +707,7 @@ def start_supervisor_detached(
     run_id: str,
     *,
     max_rounds: int,
+    max_parallel: int,
     execute: bool,
     interval: float,
     scheduler: str,
@@ -720,6 +726,8 @@ def start_supervisor_detached(
         run_id,
         "--max-rounds",
         str(max_rounds),
+        "--max-parallel",
+        str(max_parallel),
         "--interval",
         str(interval),
         "--scheduler",

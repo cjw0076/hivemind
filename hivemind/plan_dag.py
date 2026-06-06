@@ -2216,118 +2216,17 @@ def execute_fan_out(
     dag: PlanDAG,
     execute: bool = False,
     force: bool = False,
+    max_parallel: int = 2,
 ) -> dict[str, Any]:
-    """One round of DAG progression.
+    from .fanout_scheduler import execute_bounded_fan_out
 
-    Priority:
-      1. If runnable parallel steps exist → dispatch all of them (sequentially
-         in this implementation; concurrent dispatch is a later upgrade behind
-         the same interface).
-      2. After parallel steps complete → auto_close_barriers.
-      3. If no parallel steps were runnable → dispatch the next sequential/
-         verify/synthesize step (barriers are handled transparently).
-
-    Returns:
-      {ok, mode, dispatched, results, barriers_closed, next, dag_complete}
-
-    The caller must call save_dag() after this returns.
-    """
-    from .dag_state import recover_expired_leases
-
-    append_execution_ledger(
+    return execute_bounded_fan_out(
         root,
-        dag.run_id,
-        "scheduler_round_started",
-        actor="harness",
-        status="running",
-        bypass_mode="execute" if execute else "prepare",
-        extra={"force": force},
+        dag,
+        execute=execute,
+        force=force,
+        max_parallel=max_parallel,
     )
-
-    # Recover any crashed workers before scheduling
-    recovered = recover_expired_leases(root, dag.run_id, dag)
-
-    runnable = dag.runnable()
-    parallel_steps = [s for s in runnable if s.kind == "parallel"]
-
-    dispatched: list[str] = []
-    results: dict[str, Any] = {}
-    mode = "idle"
-
-    if parallel_steps:
-        mode = "parallel"
-        for step in parallel_steps:
-            result = execute_step(root, dag, step.step_id, execute=execute, force=force)
-            dispatched.append(step.step_id)
-            results[step.step_id] = result
-
-    # Auto-close any barriers whose deps are now satisfied
-    closed = auto_close_barriers(dag)
-
-    # If no parallel steps ran, fall through to the next sequential step
-    if not parallel_steps:
-        next_step = dag.next_sequential()
-        if next_step and next_step.kind != "parallel":
-            mode = "sequential"
-            result = execute_step(root, dag, next_step.step_id, execute=execute, force=force)
-            dispatched.append(next_step.step_id)
-            results[next_step.step_id] = result
-            # Close any barriers that opened after the sequential step
-            closed.extend(auto_close_barriers(dag))
-
-    if not dispatched and not closed:
-        mode = "idle"
-
-    # ok=False only when a hard stop-failure step actually failed
-    any_hard_fail = False
-    for r in results.values():
-        if r.get("status") == "failed":
-            s = dag.by_id(r.get("step_id", ""))
-            if s and s.on_failure == "stop":
-                any_hard_fail = True
-                break
-    reversibility_gates = [
-        {
-            "step_id": r.get("step_id"),
-            "reversibility": r.get("reversibility"),
-            "source": r.get("reversibility_source"),
-            "factors": r.get("reversibility_factors", []),
-            "error": r.get("error", ""),
-        }
-        for r in results.values()
-        if r.get("status") == "reversibility_gate"
-    ]
-
-    next_step = dag.next_sequential()
-    report = {
-        "ok": not any_hard_fail,
-        "mode": mode,
-        "dispatched": dispatched,
-        "results": results,
-        "barriers_closed": closed,
-        "recovered_leases": recovered,
-        "reversibility_gates": reversibility_gates,
-        "next": next_step.step_id if next_step else None,
-        "dag_complete": dag.is_complete(),
-        "dag_blocked": dag.is_blocked(),
-    }
-    append_execution_ledger(
-        root,
-        dag.run_id,
-        "scheduler_round_completed",
-        actor="harness",
-        status=mode,
-        bypass_mode="execute" if execute else "prepare",
-        extra={
-            "dispatched": dispatched,
-            "barriers_closed": closed,
-            "recovered_leases": recovered,
-            "next": report["next"],
-            "dag_complete": report["dag_complete"],
-            "dag_blocked": report["dag_blocked"],
-        },
-    )
-    return report
 
 
 # ---------------------------------------------------------------------------
