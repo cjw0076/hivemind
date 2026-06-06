@@ -36,6 +36,7 @@ from .run_receipts import (
     rel_or_empty,
 )
 from .run_validation import validate_run_artifacts
+from .route_quality import score_route_quality as compute_route_quality
 from .utils import ensure_valid_run_id, is_valid_run_id, now_iso, stable_id
 
 
@@ -4195,6 +4196,7 @@ def ask_router(root: Path, prompt: str, run_id: str | None = None, complexity: s
             "verdict": route_quality.get("verdict"),
             "risk_level": route_quality.get("risk_level"),
             "fallback_used": route_quality.get("fallback_used"),
+            "provider_fallback": route_quality.get("provider_fallback"),
             "risks": route_quality.get("risks", []),
         },
         "task_feature_vector": {
@@ -5639,77 +5641,14 @@ def score_route_quality(
     actions: list[dict[str, Any]],
     router_status: str,
 ) -> dict[str, Any]:
-    confidence = validation.get("confidence")
-    try:
-        confidence_value = float(confidence) if confidence is not None else 0.0
-    except (TypeError, ValueError):
-        confidence_value = 0.0
-    confidence_value = max(0.0, min(1.0, confidence_value))
-
-    required_keys = {"intent", "summary", "actions", "confidence", "should_escalate"}
-    missing_keys = sorted(key for key in required_keys if key not in parsed)
-    action_pairs = {(str(item.get("provider")), str(item.get("role"))) for item in actions}
-    risks: list[str] = []
-    score = confidence_value
-
-    schema_valid = bool(validation.get("valid")) and not missing_keys
-    if not schema_valid:
-        score -= 0.25
-        risks.append("router_schema_invalid")
-    if route_source != "local_llm":
-        risks.append(f"route_source={route_source}")
-    if router_status == "fallback" or "fallback" in route_source:
-        score -= 0.2
-        risks.append("fallback_used")
-    if validation.get("should_escalate"):
-        risks.append("router_escalation_requested")
-    if not actions:
-        score -= 0.4
-        risks.append("no_actions")
-    if parsed.get("intent") == "implementation" and ("codex", "executor") not in action_pairs:
-        score -= 0.2
-        risks.append("implementation_without_codex_executor")
-    if parsed.get("intent") in {"debugging", "review"} and not any(provider in {"claude", "gemini"} for provider, _role in action_pairs):
-        score -= 0.15
-        risks.append("review_intent_without_frontier_reviewer")
-
-    score = round(max(0.0, min(1.0, score)), 3)
-    if score >= 0.75 and not risks:
-        verdict = "pass"
-        risk_level = "low"
-    elif score >= 0.45:
-        verdict = "review"
-        risk_level = "medium"
-    else:
-        verdict = "escalate"
-        risk_level = "high"
-
-    return {
-        "schema_version": 1,
-        "kind": "routing_quality",
-        "generated_at": now_iso(),
-        "route_source": route_source,
-        "router_status": router_status,
-        "intent": parsed.get("intent", "unknown"),
-        "score": score,
-        "verdict": verdict,
-        "risk_level": risk_level,
-        "schema_valid": schema_valid,
-        "missing_keys": missing_keys,
-        "validation_issues": list(validation.get("issues") or []),
-        "confidence": confidence_value,
-        "should_escalate": bool(validation.get("should_escalate")),
-        "escalation_reason": validation.get("escalation_reason") or "",
-        "fallback_used": router_status == "fallback" or "fallback" in route_source,
-        "action_count": len(actions),
-        "action_coverage": [{"provider": item.get("provider"), "role": item.get("role")} for item in actions],
-        "risks": risks,
-        "prompt_features": {
-            "length": len(prompt),
-            "has_hangul": contains_hangul(prompt),
-            "has_code_terms": any(token in prompt.lower() for token in ["code", "cli", "api", "test", "bug", "fix", "구현", "수정", "테스트"]),
-        },
-    }
+    return compute_route_quality(
+        prompt=prompt,
+        parsed=parsed,
+        validation=validation,
+        route_source=route_source,
+        actions=actions,
+        router_status=router_status,
+    )
 
 
 def write_routing_quality(paths: RunPaths, quality: dict[str, Any]) -> Path:

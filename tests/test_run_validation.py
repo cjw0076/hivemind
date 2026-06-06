@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import tempfile
 import unittest
 
@@ -86,6 +87,19 @@ class RunValidationTest(unittest.TestCase):
 
             self.assertEqual(report["verdict"], "needs_review")
             self.assertFalse(report["checks"]["local_worker_results_schema_valid"])
+
+    def test_invalid_routing_quality_artifact_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = create_run(root, "bad routing quality", project="Hive Mind")
+            quality_path = paths.run_dir / "routing_quality.json"
+            quality_path.write_text(json.dumps({"kind": "routing_quality", "score": 2}), encoding="utf-8")
+
+            report = validate_run_artifacts(paths.run_dir, root)
+
+            self.assertEqual(report["verdict"], "needs_review")
+            self.assertFalse(report["checks"]["routing_quality_schema_valid"])
+            self.assertTrue(any("routing_quality.score must be between 0 and 1" in issue for issue in report["issues"]))
 
 if __name__ == "__main__":
     unittest.main()

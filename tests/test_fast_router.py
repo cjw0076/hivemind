@@ -190,6 +190,60 @@ class FastRouterTest(unittest.TestCase):
         self.assertEqual(quality["risk_level"], "low")
         self.assertFalse(quality["risks"])
 
+    def test_score_route_quality_recommends_provider_fallback_for_missing_executor(self) -> None:
+        quality = score_route_quality(
+            prompt="implement the parser and add tests",
+            parsed={
+                "intent": "implementation",
+                "summary": "Build parser",
+                "actions": [{"provider": "claude", "role": "planner"}],
+                "confidence": 0.85,
+                "should_escalate": False,
+            },
+            validation={"valid": True, "issues": [], "confidence": 0.85, "should_escalate": False, "escalation_reason": ""},
+            route_source="local_llm",
+            actions=[{"provider": "claude", "role": "planner", "reason": "plan", "execute": False}],
+            router_status="completed",
+        )
+
+        self.assertEqual(quality["provider_fallback"]["authority"], "prepare_only")
+        self.assertTrue(quality["provider_fallback"]["recommended"])
+        self.assertEqual(quality["provider_fallback"]["candidates"][0]["provider"], "codex")
+        self.assertEqual(quality["provider_fallback"]["candidates"][0]["role"], "executor")
+        self.assertIn("implementation_without_codex_executor", quality["risks"])
+
+    def test_routing_plan_projects_provider_fallback_without_auto_execution(self) -> None:
+        worker_output = {
+            "runtime": "ollama",
+            "model": "qwen3:1.7b",
+            "raw": "{}",
+            "parsed": {
+                "intent": "implementation",
+                "summary": "Build parser",
+                "complexity": "default",
+                "actions": [
+                    {"provider": "claude", "role": "planner", "reason": "Need plan", "execute": False},
+                ],
+                "risks": [],
+                "open_questions": [],
+                "confidence": 0.85,
+                "should_escalate": False,
+                "escalation_reason": "",
+            },
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch("hivemind.harness.run_worker", return_value=worker_output):
+                plan_path = ask_router(root, "implement the parser and add tests", complexity="default")
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            quality = json.loads((plan_path.parent / "routing_quality.json").read_text(encoding="utf-8"))
+
+            self.assertTrue(plan["route_quality"]["provider_fallback"]["recommended"])
+            self.assertTrue(quality["provider_fallback"]["recommended"])
+            self.assertEqual(quality["provider_fallback"]["candidates"][0]["provider"], "codex")
+            self.assertTrue(plan["prepared_artifacts"][0].endswith("agents/claude/planner_result.yaml"))
+            self.assertNotIn("codex/executor_result.yaml", "\n".join(plan["prepared_artifacts"]))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,32 @@
 # Agent Worklog
 
+## 2026-06-07 01:52 KST - Codex - ASC-0232 Route Quality Fallback Validation
+
+- Context: Hive Product P0 #5 still named schema-validated route-quality scoring
+  and provider fallback as open, while older debate TODOs had partial
+  route-quality support. Read-only review found missing `routing_quality.json`
+  schema validation and missing localized Codex PIN/access failure
+  classification.
+- Ownership: Codex touched Hive route-quality, provider-failure, run-validation,
+  focused tests, and product evaluation docs under ASC-0232.
+- Decision: Extract route-quality scoring and provider-failure classification
+  into focused modules under 250 pure LOC, keep fallback recommendations
+  `prepare_only`, validate route-quality artifacts during run validation, and
+  classify `틀렸습니다` / `접근 거부` as `pin_required_noninteractive`.
+- Evidence: Red tests first proved missing route-quality fallback projection,
+  malformed `routing_quality.json` passing validation, and Korean Codex failure
+  classifying as `unknown_provider_failure`; focused
+  `python -m pytest tests/test_fast_router.py tests/test_run_validation.py
+  tests/test_provider_loop.py -q` passed 35/35; wider
+  `python -m pytest tests/test_fast_router.py tests/test_run_validation.py
+  tests/test_provider_loop.py tests/test_production_hardening.py
+  tests/test_plan_dag.py tests/test_supervisor.py -q` passed 201/201;
+  py_compile and `git diff --check` passed; `bash
+  scripts/public-release-check.sh` passed 19/19 with artifact root
+  `.hivemind/release/20260607_013750`.
+- Next: Commit/push ASC-0232 and continue to Product P0 #6 structured
+  disagreements from executed provider outputs.
+
 ## 2026-06-06 20:38 KST - Codex - ASC-0231 bounded fan-out scheduler
 
 - repo: hivemind

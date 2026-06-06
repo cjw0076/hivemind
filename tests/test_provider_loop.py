@@ -151,6 +151,24 @@ class ProviderLoopTest(unittest.TestCase):
 
             self.assertEqual(category, "rate_limit")
 
+    def test_codex_korean_pin_failure_is_classified(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            stderr = root / "stderr.txt"
+            stderr.write_text("틀렸습니다. (1/3)\n틀렸습니다. (2/3)\n접근 거부.\n", encoding="utf-8")
+
+            category = classify_provider_failure(
+                {
+                    "status": "failed",
+                    "provider": "codex",
+                    "provider_mode": "native_passthrough",
+                    "stderr_path": "stderr.txt",
+                },
+                root,
+            )
+
+            self.assertEqual(category, "pin_required_noninteractive")
+
     def test_verify_fallback_promotes_completed_non_local_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -156,6 +156,12 @@ Resolved bounded fan-out concern: ASC-0231 extracts the fan-out scheduler into
 and defers provider-owned parallel branches as `deferred_unsafe_parallel` until
 a later provider execution contract.
 
+Resolved route-quality/fallback concern: ASC-0232 extracts route-quality scoring
+and provider failure classification into small focused modules, adds
+schema-validation for `routing_quality.json`, projects prepare-only provider
+fallback recommendations into routing plans, and classifies localized Codex
+PIN/access failures as `pin_required_noninteractive`.
+
 ## Next Product P0
 
 1. [closed via ASC-0228] Policy-gate or replace the unsafe Claude execute workaround before adding
@@ -165,7 +171,7 @@ a later provider execution contract.
 3. [closed via ASC-0230] Reconcile `hive flow` and `plan_dag.json` into one scheduler surface.
 4. [closed via ASC-0231] Add bounded parallel fan-out plus barrier join for safe internal/local
    steps first, provider execution later.
-5. Add schema-validated route-quality scoring and provider fallback.
+5. [closed via ASC-0232] Add schema-validated route-quality scoring and provider fallback.
 6. Extract structured disagreements from executed provider outputs.
 7. Make `hive "task"` and `hive ask` return a readable plan plus next command,
    not only artifact paths.

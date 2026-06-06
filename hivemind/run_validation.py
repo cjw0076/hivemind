@@ -8,6 +8,7 @@ from typing import Any
 
 import yaml
 
+from .run_routing_quality_validation import validate_routing_quality_artifact
 from .utils import is_valid_run_id
 
 
@@ -196,6 +197,7 @@ def validate_run_artifacts(run_dir: Path, root: Path) -> dict[str, Any]:
     checks["state_artifact_refs_valid"] = validate_state_artifact_refs(state, root, issues)
     checks["provider_results_schema_valid"] = validate_provider_results(run_dir, root, issues)
     checks["local_worker_results_schema_valid"] = validate_local_worker_results(run_dir, root, issues)
+    checks["routing_quality_schema_valid"] = validate_routing_quality_artifact(run_dir / "routing_quality.json", issues)
     checks["agent_states_valid"] = validate_agent_states(state, issues)
 
     if isinstance(task, dict) and task.get("run_id") != run_id:
