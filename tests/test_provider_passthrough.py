@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import yaml
 
+from hivemind.cloud_isolation import load_runtime_isolation_receipt, validate_runtime_isolation_receipt
 from hivemind.harness import create_run, external_command, provider_passthrough
 from hivemind.run_validation import validate_run_artifacts
 from hivemind.workloop import read_execution_ledger
@@ -46,6 +47,12 @@ class ProviderPassthroughTest(unittest.TestCase):
             command = (root / data["command_path"]).read_text(encoding="utf-8")
             self.assertIn("exec", command)
             self.assertIn("--sandbox", command)
+            runtime_refs = [ref for ref in data["artifacts_created"] if "runtime_isolation/" in ref]
+            self.assertEqual(len(runtime_refs), 1)
+            runtime_receipt = load_runtime_isolation_receipt(root / runtime_refs[0])
+            self.assertEqual(runtime_receipt["network_policy"], "denied")
+            self.assertEqual(runtime_receipt["credential_refs"], [])
+            self.assertEqual(validate_runtime_isolation_receipt(runtime_receipt), [])
             report = validate_run_artifacts(paths.run_dir, root)
             self.assertTrue(report["checks"]["events_schema_valid"])
             self.assertTrue(report["checks"]["provider_results_schema_valid"])
@@ -98,6 +105,11 @@ class ProviderPassthroughTest(unittest.TestCase):
             self.assertEqual(data["status"], "completed")
             self.assertEqual(data["returncode"], 0)
             self.assertEqual((root / data["stdout_path"]).read_text(encoding="utf-8"), "native output\n")
+            runtime_refs = [ref for ref in data["artifacts_created"] if "runtime_isolation/" in ref]
+            self.assertEqual(len(runtime_refs), 1)
+            runtime_receipt = load_runtime_isolation_receipt(root / runtime_refs[0])
+            self.assertEqual(runtime_receipt["network_policy"], "egress_allowlist")
+            self.assertEqual(validate_runtime_isolation_receipt(runtime_receipt), [])
             self.assertEqual(run.call_args.kwargs["cwd"], root)
 
     def test_execute_timeout_writes_timeout_receipt(self) -> None:

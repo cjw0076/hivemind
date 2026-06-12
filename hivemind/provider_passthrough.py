@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .cloud_isolation import build_runtime_isolation_receipt, write_runtime_isolation_receipt
 from .protocol import cast_vote, check_intent, create_proof, decide_intent, save_intent
 from .utils import now_iso, stable_id
 from .workloop import append_execution_ledger, relative_artifact
@@ -82,12 +83,29 @@ def provider_passthrough(
         timeout=timeout,
     )
     save_intent(root, intent)
+    runtime_receipt_path = write_provider_runtime_receipt(
+        paths.run_dir,
+        work_id=f"{intent.step_id}_{index:02d}",
+        run_id=paths.run_id,
+        agent=agent,
+        permission_mode=permission_mode,
+        command_path=command_path,
+        timeout=timeout,
+        execute=execute,
+        status_hint="prepared",
+    )
+    runtime_receipt_ref = h.rel_or_empty(root, runtime_receipt_path)
 
     h.append_agent_log(paths, agent, "native", f"passthrough_command artifact={command_path.relative_to(root).as_posix()} execute={execute}")
     h.append_event(
         paths,
         "provider_passthrough_prepared",
-        {"agent": agent, "artifact": command_path.relative_to(root).as_posix(), "execute": execute},
+        {
+            "agent": agent,
+            "artifact": command_path.relative_to(root).as_posix(),
+            "execute": execute,
+            "runtime_isolation_receipt": runtime_receipt_ref,
+        },
     )
 
     if danger:
@@ -119,7 +137,12 @@ def provider_passthrough(
             output_path=output_path,
             returncode=None,
             commands_run=[command_text],
-            artifacts_created=[h.rel_or_empty(root, result_path), h.rel_or_empty(root, command_path), h.rel_or_empty(root, stderr_path)],
+            artifacts_created=[
+                h.rel_or_empty(root, result_path),
+                h.rel_or_empty(root, command_path),
+                h.rel_or_empty(root, stderr_path),
+                runtime_receipt_ref,
+            ],
             risk_level="high",
             policy_violations=[danger],
             execute=execute,
@@ -136,7 +159,12 @@ def provider_passthrough(
             stderr_path=h.rel_or_empty(root, stderr_path),
             output_path=h.rel_or_empty(root, output_path),
             commands_run=[command_text],
-            artifacts_created=[h.rel_or_empty(root, result_path), h.rel_or_empty(root, command_path), h.rel_or_empty(root, stderr_path)],
+            artifacts_created=[
+                h.rel_or_empty(root, result_path),
+                h.rel_or_empty(root, command_path),
+                h.rel_or_empty(root, stderr_path),
+                runtime_receipt_ref,
+            ],
             policy_violations=[danger],
             verifier_status="policy_blocked",
         )
@@ -210,7 +238,7 @@ def provider_passthrough(
             stderr_path=stderr_path,
             output_path=output_path,
             commands_run=[command_text],
-            artifacts_created=[h.rel_or_empty(root, result_path), h.rel_or_empty(root, command_path)],
+            artifacts_created=[h.rel_or_empty(root, result_path), h.rel_or_empty(root, command_path), runtime_receipt_ref],
             risk_level=intent.risk_level,
             execute=False,
             reason=f"native passthrough prepared; decision={decision.decision}",
@@ -225,7 +253,7 @@ def provider_passthrough(
             stderr_path=h.rel_or_empty(root, stderr_path),
             output_path=h.rel_or_empty(root, output_path),
             commands_run=[command_text],
-            artifacts_created=[h.rel_or_empty(root, result_path), h.rel_or_empty(root, command_path)],
+            artifacts_created=[h.rel_or_empty(root, result_path), h.rel_or_empty(root, command_path), runtime_receipt_ref],
             verifier_status="not_run",
         )
         h.set_agent_status(paths, f"{agent}-native", "prepared")
@@ -249,7 +277,12 @@ def provider_passthrough(
             stderr_path=stderr_path,
             output_path=output_path,
             commands_run=[command_text],
-            artifacts_created=[h.rel_or_empty(root, result_path), h.rel_or_empty(root, command_path), h.rel_or_empty(root, stderr_path)],
+            artifacts_created=[
+                h.rel_or_empty(root, result_path),
+                h.rel_or_empty(root, command_path),
+                h.rel_or_empty(root, stderr_path),
+                runtime_receipt_ref,
+            ],
             risk_level=intent.risk_level,
             policy_violations=[reason],
             execute=True,
@@ -265,7 +298,12 @@ def provider_passthrough(
             stderr_path=h.rel_or_empty(root, stderr_path),
             output_path=h.rel_or_empty(root, output_path),
             commands_run=[command_text],
-            artifacts_created=[h.rel_or_empty(root, result_path), h.rel_or_empty(root, command_path), h.rel_or_empty(root, stderr_path)],
+            artifacts_created=[
+                h.rel_or_empty(root, result_path),
+                h.rel_or_empty(root, command_path),
+                h.rel_or_empty(root, stderr_path),
+                runtime_receipt_ref,
+            ],
             policy_violations=[reason],
             verifier_status="policy_blocked",
         )
@@ -315,6 +353,7 @@ def provider_passthrough(
             h.rel_or_empty(root, stdout_path),
             h.rel_or_empty(root, stderr_path),
             h.rel_or_empty(root, output_path),
+            runtime_receipt_ref,
         ],
         risk_level=intent.risk_level if status == "completed" else "medium",
         execute=True,
@@ -339,6 +378,7 @@ def provider_passthrough(
             h.rel_or_empty(root, stdout_path),
             h.rel_or_empty(root, stderr_path),
             h.rel_or_empty(root, output_path),
+            runtime_receipt_ref,
         ],
         verifier_status="timeout" if timed_out else "not_run",
     )
@@ -347,6 +387,47 @@ def provider_passthrough(
     h.set_agent_status(paths, f"{agent}-native", status)
     h.update_state(paths, phase="provider", status="in_progress" if status == "completed" else "needs_attention")
     return result_path
+
+
+def write_provider_runtime_receipt(
+    run_dir: Path,
+    *,
+    work_id: str,
+    run_id: str,
+    agent: str,
+    permission_mode: str,
+    command_path: Path,
+    timeout: int,
+    execute: bool,
+    status_hint: str,
+) -> Path:
+    network_policy = "egress_allowlist" if execute else "denied"
+    sandbox_backend = "hive-provider-passthrough-policy"
+    receipt = build_runtime_isolation_receipt(
+        run_id=run_id,
+        work_id=work_id,
+        provider=agent,
+        model_or_worker=f"{agent}-native",
+        filesystem_scope={
+            "mode": permission_mode,
+            "read_roots": ["."],
+            "write_roots": [run_dir.relative_to(run_dir.parent.parent).as_posix()],
+            "command_ref": command_path.relative_to(run_dir.parent.parent).as_posix(),
+        },
+        process_scope={
+            "max_processes": 1,
+            "kill_tree_on_timeout": True,
+            "execute": execute,
+            "status_hint": status_hint,
+        },
+        network_policy=network_policy,
+        package_manifest={"runtime": "provider_cli", "packages": [], "native_provider": agent},
+        timeout_s=timeout,
+        credential_refs=[],
+        sandbox_backend=sandbox_backend,
+        verification_refs=["hivemind.provider_passthrough"],
+    )
+    return write_runtime_isolation_receipt(run_dir, receipt)
 
 
 def next_passthrough_index(provider_dir: Path) -> int:

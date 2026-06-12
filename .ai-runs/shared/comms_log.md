@@ -1666,3 +1666,23 @@ gate 위치(lease 획득 직후, `step.status = "running"` 설정 전)도 맞다
 - Decision: Add `ChairLayerSchemas` projection over front, turn arbitration, frame drift, precommit, and disagreement artifacts.
 - Evidence: `python -m unittest tests.test_production_hardening` passed 36/36; CLI smoke confirmed `ChairLayerSchemas`, `DispatcherState`, `VerifierCheck`, `WorkingAgentTurn`, `RefereeDecision`, `NorthStarAudit`, and `ConflictReview`; focused `python -m unittest tests.test_production_hardening tests.test_run_validation tests.test_live tests.test_inspect` passed 67/67; `python -m py_compile hivemind/harness.py hivemind/run_validation.py tests/test_production_hardening.py` passed; `git diff --check` passed; full `python -m unittest discover -s tests -p 'test_*.py'` passed 403/403; `bash scripts/public-release-check.sh` passed 19/19.
 - Next: Commit the chair-layer schema slice and continue AIOS completion gaps.
+
+## 2026-06-12 10:46 KST - Claude
+
+- Context: Review of Hive scheduler/provider track (cba9696..7ca800c). Full suite 420 passed; module extraction is clean.
+- Decision: Flagged one P0 regression — `a399b1f` bounded fan-out permanently defers external-provider parallel steps (`plan_dag.py:260` `alt_planner`=gemini) with no provider phase wired into `supervisor.execute_scheduler_round` to pick them up, so autonomous `hive run` on planning-class tasks halts at `idle` before closeout. Plus: `decide_step_result` partial-status score/state mismatch (`step_result.py:51` vs :57), a pre-existing all-deps-skipped barrier livelock in `next_sequential`, and a dead `match` branch in `provider_failure.fallback_candidates`. Details in `docs/AGENT_WORKLOG.md` (2026-06-12 entry).
+- Evidence: read-only review + 2 scripted repros (planning deferral, implementation barrier livelock); `python -m pytest tests/ -q` 420 passed.
+- Next: founder/codex decision on finding-1 resolution (wire provider phase vs. sequential dispatch vs. sequential template steps); findings 2-4 into next hardening slice.
+## 2026-06-13 00:50 KST - Codex
+
+- Context: ASC-0240 Hive hosted runtime isolation receipt closeout.
+- Decision: Hive now has `hivemind/cloud_isolation.py` for marker-level hosted runtime isolation receipts. It fails closed without a sandbox backend, records denied network policy, allows credential refs only, and rejects raw provider body fields.
+- Evidence: `tests/test_cloud_isolation.py` 6/6 passed; provider passthrough/run validation focused tests 23/23 passed; py_compile and diff check passed.
+- Next: MyWorld should rerun world readiness and then continue from marker-level readiness to live hosted-run proof.
+
+## 2026-06-12 23:59 KST - Codex
+
+- Context: ASC-0241 live hosted-run proof and Akashic projection.
+- Decision: Provider passthrough now emits runtime isolation receipts automatically, and MyWorld proof script projects the receipt refs into MemoryOS Akashic lineage.
+- Evidence: `tests/test_provider_passthrough.py tests/test_cloud_isolation.py` passed 19/19; `scripts/aios_live_hosted_proof.py --write-memory --json` wrote Akashic index id `akashic_c12ae7508fd4cb1b` for run `run_20260612_235914_2fd12a`.
+- Next: Fresh-checkout install smoke and credential broker adoption.

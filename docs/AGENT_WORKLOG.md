@@ -1,5 +1,57 @@
 # Agent Worklog
 
+## 2026-06-12 10:46 KST - Claude - Review of Hive scheduler track (cba9696..7ca800c)
+
+- repo: hivemind
+- role: review / critique (read-only; no source changed)
+- goal: Review the last 5 commits of the Hive scheduler/provider track
+  (`cba9696` Harden DAG step result, `9c1f689` Reconcile flow scheduler surface,
+  `a399b1f` Bound Hive fan-out scheduler, `54c69c4` Route quality fallback,
+  `7ca800c` Provider output disagreements). Module extraction quality is good;
+  full suite `python -m pytest tests/ -q` = 420 passed.
+- finding-1 (P0, regression from `a399b1f`): external-provider parallel steps
+  are permanently deferred and never dispatched by the autonomous supervisor.
+  `fanout_scheduler.is_safe_parallel_step` only treats `local-*` / `{harness,
+  verifier}` owners as safe; everything else goes to `deferred_unsafe_parallel`,
+  and nothing in `supervisor.execute_scheduler_round` (pingpong/fan_out only)
+  ever picks it back up. `build_dag` "planning" template emits one such step:
+  `plan_dag.py:260` `alt_planner`=`gemini-planner` kind=parallel, with
+  `plan_dag.py:265` `barrier_plans` depending on it. Repro (prepare mode):
+  `alt_planner` never dispatched, stays `pending`, `barrier_plans` + tail
+  (`verify/memory/close`) never run, supervisor exits `idle`. Pre-`a399b1f`
+  `execute_fan_out` dispatched all parallel steps. Test
+  `test_fan_out_defers_provider_parallel_steps_until_provider_phase` asserts
+  deferral "until provider phase" but no provider phase is wired into the
+  supervisor loop. Decision needed: (a) wire a provider phase, (b) let the
+  sequential fallback dispatch one unsafe parallel step at a time, or (c) make
+  these template steps `sequential`.
+- finding-2 (confirm intent, `9c1f689`): `step_result.decide_step_result`
+  fails any status outside `completed/prepared/skipped`. A `"partial"` artifact
+  now hard-fails an `on_failure=stop` step (was `completed`), yet
+  `execution_score_from_status("partial")` still returns `0.5`
+  (`step_result.py:51`) — score/status mismatch. Also a `"prepared"` artifact
+  under `--execute` now fails (was `completed`). Hardening is reasonable but the
+  partial inconsistency should be reconciled and the execute/prepared change
+  confirmed against provider passthrough.
+- finding-3 (pre-existing, not from these commits): when all of a barrier's
+  deps are `skipped`, `auto_close_barriers` keeps it open by design
+  (`plan_dag.py:546`) but `next_sequential` does not filter barriers despite its
+  docstring (`plan_dag.py:129`), so fanout re-dispatches the open barrier every
+  round and burns `max_rounds`. Repro: "implementation" intent in a no-Ollama
+  env loops on `barrier_context`. Suggest `next_sequential` exclude barriers
+  and/or fanout report `blocked` on an all-deps-skipped barrier.
+- finding-4 (cleanup): `provider_failure.fallback_candidates`
+  (`provider_failure.py:73-87`) `case "policy_blocked"` and `case _` branches
+  are byte-identical — dead distinction; differentiate or drop the `match`.
+- evidence: read-only review + two scripted repros (planning deferral,
+  implementation barrier livelock); `python -m pytest tests/ -q` 420 passed.
+- risk: finding-1 means autonomous `hive run` on planning-class tasks does not
+  reach closeout today; defaults route provider steps into a phase that does
+  not execute.
+- next: founder/codex to choose the finding-1 resolution; findings 2-4 can be
+  folded into the next hardening slice. No source touched by this review.
+- status: review-only / awaiting decision on finding-1
+
 ## 2026-06-07 01:54 KST - Codex - ASC-0233 Provider Output Disagreements
 
 - repo: hivemind
@@ -1325,3 +1377,18 @@
   surface verdict + recommendation to founder for Phase 2 gating, and propose
   downstream contracts (Phase 1 implementation, local-first primacy DNA clause,
   Phase 1 evaluation).
+## 2026-06-13 00:50 KST - Codex
+
+- Context: ASC-0240 required Hive-owned hosted runtime isolation receipts so MyWorld world readiness would no longer rely on local sandbox pieces alone.
+- Decision: Added `hivemind/cloud_isolation.py` with `aios.hive_runtime_isolation_receipt.v1`. The receipt records filesystem, process, network, package, timeout, credential-reference, sandbox-backend, status, degraded-reason, and verification refs. Missing sandbox backend fails closed unless an explicit override is recorded; credential refs are allowed but credential-looking values and raw provider body fields are rejected.
+- Evidence: `python -m pytest tests/test_cloud_isolation.py -q` passed 6/6; `python -m pytest tests/test_run_validation.py tests/test_provider_passthrough.py -q` passed 23/23; `python -m py_compile hivemind/cloud_isolation.py tests/test_cloud_isolation.py` passed; `git diff --check` passed.
+- Next: Wire a real provider/local worker execution path to write this receipt automatically, then project the receipt into MemoryOS Akashic lineage.
+- Status: done
+
+## 2026-06-12 23:59 KST - Codex
+
+- Context: ASC-0241 required proof beyond marker-level readiness: a real Hive path had to emit runtime isolation receipts and project safe refs into MemoryOS Akashic lineage.
+- Decision: Wired provider passthrough prepare/execute/policy-blocked paths to write `runtime_isolation/*.json` receipts automatically. Added MyWorld proof script `scripts/aios_live_hosted_proof.py`, which creates a deterministic provider passthrough run, validates the runtime receipt, and appends an Akashic work index row.
+- Evidence: `python -m pytest tests/test_provider_passthrough.py tests/test_cloud_isolation.py -q` passed 19/19; workspace proof wrote run `run_20260612_235914_2fd12a` and MemoryOS Akashic index `akashic_c12ae7508fd4cb1b`.
+- Next: Move from deterministic prepare proof to fresh-checkout install smoke and provider credential broker adoption.
+- Status: done
